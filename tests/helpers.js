@@ -50,4 +50,12 @@ function callHost(sandbox, tool, fn, args) {
     return JSON.parse(decodeURIComponent(vm.runInContext(script, sandbox)));
 }
 
-module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, app };
+/** Cœur hôte chargé + accès direct au cœur Unparent (fonctions _core). */
+function loadUnparent() {
+    const h = loadHost();
+    const tool = h.S.getTool('unparent');
+    if (!tool) throw new Error('outil hôte « unparent » non chargé');
+    return Object.assign(h, { core: tool._core });
+}
+
+module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, loadUnparent, app };
