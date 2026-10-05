@@ -266,9 +266,141 @@
     }
 
     // ------------------------------------------------------------------------
-    //  Enregistrement (l'API publique est complétée à la tâche suivante)
+    //  API publique : chaque fonction renvoie l'état complet de la vue
     // ------------------------------------------------------------------------
-    var api = {};
+
+    var MSG_START        = 'Sélectionne un calque parent dans la timeline, puis clique sur la carte Parent';
+    var MSG_NO_COMP      = 'Aucune composition active : ouvre une composition';
+    var MSG_COMP_CHANGED = 'La composition active a changé : clique sur la carte Parent';
+    var MSG_COMP_GONE    = 'La composition du parent n\'existe plus : clique sur la carte Parent';
+
+    function status(text, level) { return { text: text, level: level }; }
+
+    function mapPending(groups) {
+        var out = [];
+        for (var i = 0; i < groups.length; i++) {
+            var g = groups[i];
+            out.push({ compId: g.comp.id, compName: g.compName, parentName: g.parentName, found: g.found, ids: g.ids });
+        }
+        return out;
+    }
+
+    /** État complet. `entries` peut être fourni pour éviter une seconde analyse. */
+    function snapshot(comp, target, st, report, entries) {
+        var hasTarget = !!(comp && target);
+        var list = entries || (hasTarget ? analyze(comp, target) : []);
+        return {
+            comp:    comp ? { id: comp.id, name: comp.name } : null,
+            target:  hasTarget ? { id: ae.layerId(target), name: target.name } : null,
+            entries: list,
+            plan:    planActions(list),
+            pending: mapPending(findPending(app.project, comp ? comp.id : null, hasTarget ? ae.layerId(target) : null)),
+            report:  report || null,
+            status:  st
+        };
+    }
+
+    /** « 3 enfants : 2 lié(s), 1 détaché(s) », précédé d'une note éventuelle. */
+    function describe(entries, note) {
+        var plan = planActions(entries);
+        return (note ? note + ' · ' : '') + S.plural(entries.length, 'enfant', 'enfants') + ' : ' +
+               plan.nLinked + ' lié(s), ' + plan.nDetached + ' détaché(s)';
+    }
+
+    /** Comp et parent courants d'après les identifiants envoyés par la vue. */
+    function current(args) {
+        var hasComp = args && args.compId !== undefined && args.compId !== null;
+        var comp = hasComp ? ae.findCompById(args.compId) : null;
+        var hasTarget = comp && args.targetId !== undefined && args.targetId !== null;
+        return { comp: comp, target: hasTarget ? ae.findLayerById(comp, args.targetId) : null };
+    }
+
+    /** « « A » détaché » pour un seul calque nommé, sinon « 3 enfants détachés ». */
+    function summarize(verb, rep, singleName) {
+        if (rep.done === 1 && singleName) return '« ' + singleName + ' » ' + verb;
+        return rep.done + ' ' + ((rep.done > 1) ? 'enfants ' + verb + 's' : 'enfant ' + verb);
+    }
+
+    function resultStatus(summary, rep) {
+        var text = summary;
+        if (rep.skipped.length > 0) text += ' · ' + rep.skipped.length + ' ignoré(s)';
+        return status(text + ' · Ctrl+Z pour annuler', (rep.skipped.length > 0) ? 'warn' : 'ok');
+    }
+
+    function act(action, args) {
+        var cur = current(args);
+        if (!cur.comp) return snapshot(null, null, status(MSG_COMP_GONE, 'warn'));
+        if (!cur.target) return snapshot(cur.comp, null, status('Le parent n\'existe plus dans « ' + cur.comp.name + ' »', 'warn'));
+        var active = ae.getActiveComp();
+        if (!active || active.id !== cur.comp.id) return snapshot(cur.comp, cur.target, status(MSG_COMP_CHANGED, 'warn'));
+
+        var ids = (args && args.ids) ? args.ids : [];
+        if (ids.length === 0) {
+            return snapshot(cur.comp, cur.target,
+                status((action === 'detach') ? 'Aucun enfant à détacher' : 'Aucun enfant à rattacher', 'warn'));
+        }
+        var single = null;
+        if (ids.length === 1) {
+            var layer = ae.findLayerById(cur.comp, ids[0]);
+            if (layer) single = layer.name;
+        }
+        var rep = (action === 'detach') ? detach(cur.comp, ids) : restore(cur.comp, ids);
+        var verb = (action === 'detach') ? 'détaché' : 'rattaché';
+        return snapshot(cur.comp, cur.target, resultStatus(summarize(verb, rep, single), rep), rep);
+    }
+
+    var api = {
+        /** État de départ : rien de ciblé, parents en attente. */
+        init: function () {
+            return snapshot(null, null, status(MSG_START, 'info'));
+        },
+
+        /** Lit la sélection. Sans sélection, ré-analyse le parent courant s'il y en a un. */
+        pick: function (args) {
+            var comp = ae.getActiveComp();
+            if (!comp) return snapshot(null, null, status(MSG_NO_COMP, 'error'));
+            var sel = comp.selectedLayers;
+            var nothingSelected = !sel || sel.length === 0;
+            if (nothingSelected && args && args.compId === comp.id && args.targetId !== null && args.targetId !== undefined) {
+                var kept = ae.findLayerById(comp, args.targetId);
+                if (kept) {
+                    return snapshot(comp, kept,
+                        status('Liste mise à jour · sélectionne un autre calque pour changer de parent', 'info'));
+                }
+            }
+            var r = resolveTarget(comp);
+            if (!r.target) return snapshot(comp, null, status(r.error, 'error'));
+            if (r.entries.length === 0) {
+                return snapshot(comp, r.target,
+                    status(r.error || ('« ' + r.target.name + ' » n\'a aucun enfant lié ni détaché'), 'warn'), null, r.entries);
+            }
+            return snapshot(comp, r.target, status(describe(r.entries, r.note), 'info'), null, r.entries);
+        },
+
+        /** Ré-analyse le parent courant (même si la comp active a changé). */
+        refresh: function (args) {
+            var cur = current(args);
+            if (!cur.comp) return snapshot(null, null, status(MSG_COMP_GONE, 'warn'));
+            if (!cur.target) return snapshot(cur.comp, null, status('Le parent n\'existe plus dans « ' + cur.comp.name + ' »', 'warn'));
+            var entries = analyze(cur.comp, cur.target);
+            return snapshot(cur.comp, cur.target, status(describe(entries), 'info'), null, entries);
+        },
+
+        detach: function (args) { return act('detach', args); },
+
+        restore: function (args) { return act('restore', args); },
+
+        /** Rattache un groupe en attente (éventuellement dans une autre comp). */
+        restorePending: function (args) {
+            var cur = current(args);
+            var pc = ae.findCompById(args.pendingCompId);
+            if (!pc) return snapshot(cur.comp, cur.target, status('Cette composition n\'existe plus', 'warn'));
+            var rep = restore(pc, args.ids || []);
+            var summary = rep.done + ' ' + ((rep.done > 1) ? 'enfants rattachés' : 'enfant rattaché') +
+                          ' à « ' + (args.parentName || '?') + ' »';
+            return snapshot(cur.comp, cur.target, resultStatus(summary, rep), rep);
+        }
+    };
 
     api._core = {
         memory:        memory,

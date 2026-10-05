@@ -12,6 +12,7 @@ const FILES = [
     './host-json.test.js',
     './host-router.test.js',
     './unparent-core.test.js',
+    './unparent-api.test.js',
 ];
 
 const queue = [];
