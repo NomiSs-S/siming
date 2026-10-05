@@ -107,6 +107,7 @@
                 entries.push(makeEntry(layer, STATE_LINKED));
                 continue;
             }
+            if (parent !== null) continue;   // re-parenté à la main ailleurs : pas détaché
             var link = getBrokenLink(comp, layer);
             if (link) {
                 var origin = resolveParent(comp, link);
@@ -127,7 +128,7 @@
         if (entries.length > 0) return { target: layer, entries: entries };
 
         // Pas d'enfant : le calque est peut-être lui-même un enfant détaché connu
-        var link = getBrokenLink(comp, layer);
+        var link = (layer.parent === null) ? getBrokenLink(comp, layer) : null;
         if (link) {
             var origin = resolveParent(comp, link);
             if (origin) {
@@ -157,9 +158,18 @@
                     if (parent === null) { report.skipped.push(layer.name + ' : déjà détaché'); continue; }
                     if (layer.locked)    { report.skipped.push(layer.name + ' : calque verrouillé'); continue; }
                     var link = { parentId: ae.layerId(parent), parentName: parent.name };
-                    layer.parent  = null;   // compense les transformations : pas de saut
-                    layer.comment = addTag(layer.comment, link.parentId, link.parentName);
-                    memory[memoryKey(comp, layer)] = link;
+                    // Balise et mémoire d'abord : si le détachement échoue, on annule.
+                    var key = memoryKey(comp, layer);
+                    var previousComment = layer.comment;
+                    layer.comment = addTag(previousComment, link.parentId, link.parentName);
+                    memory[key] = link;
+                    try {
+                        layer.parent = null;   // compense les transformations : pas de saut
+                    } catch (e2) {
+                        try { layer.comment = previousComment; } catch (e3) { }
+                        delete memory[key];
+                        throw e2;
+                    }
                     report.done++;
                 } catch (e) {
                     report.skipped.push(layer.name + ' : ' + e.toString());

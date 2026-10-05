@@ -91,6 +91,39 @@ module.exports = function (test) {
         assert.ok(/parent d.origine/.test(r.note), r.note);
     });
 
+    test('analyze ignore un enfant re-parenté à la main sur un autre calque', () => {
+        const { core } = loadUnparent();
+        const s = scene();
+        core.detach(s.comp, [s.A.id]);
+        s.A.parent = s.C;
+        const entries = core.analyze(s.comp, s.comp.layer(1));
+        assert.strictEqual(names(entries), 'B,D');
+    });
+
+    test("resolveTarget : un enfant re-parenté à la main ne remonte pas à l'ancien parent", () => {
+        const { core } = loadUnparent();
+        const s = scene();
+        core.detach(s.comp, [s.A.id]);
+        s.A.parent = s.C;
+        s.comp.select(s.A);
+        const r = core.resolveTarget(s.comp);
+        assert.strictEqual(r.target.name, 'A');
+        assert.strictEqual(r.entries.length, 0);
+        assert.ok(/aucun enfant/.test(r.error), r.error);
+    });
+
+    test('detach : calque verrouillé laissé intact (parent, commentaire, mémoire)', () => {
+        const { core } = loadUnparent();
+        const s = scene();
+        s.A.locked = true;
+        const report = core.detach(s.comp, [s.A.id]);
+        assert.strictEqual(report.done, 0);
+        assert.ok(/calque verrouillé/.test(report.skipped[0]), report.skipped[0]);
+        assert.strictEqual(s.A.parent, s.P);
+        assert.strictEqual(s.A.comment, '');
+        assert.strictEqual(core.memory['100:' + s.A.id], undefined);
+    });
+
     // ---------------------------------------------------------------- détacher
     test('detach : parent à null, balise posée, mémoire remplie, undo équilibré', () => {
         const { core } = loadUnparent();
