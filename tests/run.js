@@ -13,6 +13,7 @@ const FILES = [
     './host-router.test.js',
     './unparent-core.test.js',
     './unparent-api.test.js',
+    './bridge.test.js',
 ];
 
 const queue = [];

@@ -2,6 +2,7 @@
 /* Outils partagés par les tests : chemins, scènes After Effects. */
 const path = require('path');
 const vm = require('vm');
+const fs = require('fs');
 const { FakeComp, app, createSandbox, runFile } = require('./fake-ae');
 
 const ROOT   = path.join(__dirname, '..');
@@ -58,4 +59,25 @@ function loadUnparent() {
     return Object.assign(h, { core: tool._core });
 }
 
-module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, loadUnparent, app };
+/** Évalue des scripts de extension/client/ dans `win` (window jsdom ou contexte vm). */
+function loadClientScripts(win, files) {
+    for (const f of files) {
+        const src = fs.readFileSync(path.join(CLIENT, f), 'utf8');
+        if (typeof win.eval === 'function') win.eval(src);
+        else vm.runInContext(src, win);
+    }
+    return win;
+}
+
+/** Faux CSInterface.evalScript : évalue dans le faux AE, rappel asynchrone.
+ *  counter (facultatif) : objet { calls } incrémenté à chaque appel. */
+function hostEvalScript(sandbox, counter) {
+    return (script, callback) => {
+        if (counter) counter.calls++;
+        let result;
+        try { result = String(vm.runInContext(script, sandbox)); } catch (e) { result = 'EvalScript error.'; }
+        setTimeout(() => callback(result), 0);
+    };
+}
+
+module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, loadUnparent, loadClientScripts, hostEvalScript, app };
