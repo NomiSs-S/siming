@@ -1,7 +1,7 @@
 'use strict';
 /* Outils partagés par les tests : chemins, scènes After Effects. */
 const path = require('path');
-const { FakeComp, app } = require('./fake-ae');
+const { FakeComp, app, createSandbox, runFile } = require('./fake-ae');
 
 const ROOT   = path.join(__dirname, '..');
 const EXT    = path.join(ROOT, 'extension');
@@ -35,4 +35,11 @@ function otherComp() {
     return { comp, T, E1, E2 };
 }
 
-module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, app };
+/** Bac à sable neuf avec le cœur hôte chargé (il charge aussi host/tools/*.jsx). */
+function loadHost() {
+    const sandbox = createSandbox();
+    runFile(sandbox, HOST);
+    return { sandbox, S: sandbox.SIMING };
+}
+
+module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, app };

@@ -8,6 +8,8 @@ const { app } = require('./fake-ae');
 // Ajouter ici chaque nouveau fichier de tests, dans l'ordre des tâches.
 const FILES = [
     './fake-ae.test.js',
+    './syntax.test.js',
+    './host-json.test.js',
 ];
 
 const queue = [];
