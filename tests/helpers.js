@@ -1,6 +1,7 @@
 'use strict';
 /* Outils partagés par les tests : chemins, scènes After Effects. */
 const path = require('path');
+const vm = require('vm');
 const { FakeComp, app, createSandbox, runFile } = require('./fake-ae');
 
 const ROOT   = path.join(__dirname, '..');
@@ -42,4 +43,11 @@ function loadHost() {
     return { sandbox, S: sandbox.SIMING };
 }
 
-module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, app };
+/** Appelle le routeur comme le fait le pont, renvoie l'enveloppe décodée. */
+function callHost(sandbox, tool, fn, args) {
+    const script = 'SIMING.call(' + JSON.stringify(tool) + ',' + JSON.stringify(fn) + ',"' +
+        encodeURIComponent(JSON.stringify(args || {})) + '")';
+    return JSON.parse(decodeURIComponent(vm.runInContext(script, sandbox)));
+}
+
+module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, app };

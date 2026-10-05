@@ -165,6 +165,161 @@
 
     SIMING.json = json;
 
+    // ------------------------------------------------------------------------
+    //  Helpers After Effects
+    // ------------------------------------------------------------------------
+    var ae = {};
+
+    /** Composition active, ou null si l'élément actif n'en est pas une. */
+    ae.getActiveComp = function () {
+        if (!app.project) return null;
+        var item = app.project.activeItem;
+        return (item && item instanceof CompItem) ? item : null;
+    };
+
+    /** Identifiant stable d'un calque : Layer.id (AE 22+), sinon son index. */
+    ae.layerId = function (layer) {
+        return (typeof layer.id !== 'undefined') ? layer.id : layer.index;
+    };
+
+    /** Deux objets calque désignent-ils le même calque ? (comparaison par index) */
+    ae.sameLayer = function (a, b) {
+        return a !== null && b !== null && a.index === b.index;
+    };
+
+    /** Calque de la comp portant cet identifiant, ou null. */
+    ae.findLayerById = function (comp, id) {
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (ae.layerId(layer) === id) return layer;
+        }
+        return null;
+    };
+
+    /** Tous les calques de la comp portant ce nom (peut être vide). */
+    ae.findLayersByName = function (comp, name) {
+        var found = [];
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (layer.name === name) found.push(layer);
+        }
+        return found;
+    };
+
+    /** Composition du projet portant cet identifiant, ou null. */
+    ae.findCompById = function (id) {
+        var p = app.project;
+        if (!p) return null;
+        for (var i = 1; i <= p.numItems; i++) {
+            var item = p.item(i);
+            if (item instanceof CompItem && item.id === id) return item;
+        }
+        return null;
+    };
+
+    /** Exécute fn dans un groupe d'annulation unique, fermé quoi qu'il arrive. */
+    ae.undo = function (name, fn) {
+        app.beginUndoGroup(name);
+        try {
+            return fn();
+        } finally {
+            app.endUndoGroup();
+        }
+    };
+
+    SIMING.ae = ae;
+
+    /** "1 enfant", "3 enfants". */
+    SIMING.plural = function (n, one, many) {
+        return n + ' ' + ((n === 1) ? one : many);
+    };
+
+    // ------------------------------------------------------------------------
+    //  Routeur
+    // ------------------------------------------------------------------------
+    var tools = {};
+    var loadErrors = [];
+    var loaded = false;
+
+    /** Enregistre l'API publique d'un outil (objet de fonctions). */
+    SIMING.registerTool = function (id, api) {
+        tools[id] = api;
+        return api;
+    };
+
+    SIMING.getTool = function (id) {
+        return tools.hasOwnProperty(id) ? tools[id] : null;
+    };
+
+    /** Point d'entrée du panneau : appelle tools[toolId][fnName](args).
+     *  Renvoie toujours une enveloppe JSON encodée par encodeURIComponent. */
+    SIMING.call = function (toolId, fnName, encodedArgs) {
+        var env;
+        try {
+            var args = encodedArgs ? json.parse(decodeURIComponent(encodedArgs)) : {};
+            var api = tools.hasOwnProperty(toolId) ? tools[toolId] : null;
+            if (!api) throw new Error('Outil inconnu : ' + toolId);
+            var fn = api[fnName];
+            if (typeof fn !== 'function' || String(fnName).charAt(0) === '_') {
+                throw new Error('Fonction inconnue : ' + toolId + '.' + fnName);
+            }
+            var data = fn(args);
+            env = { ok: true, data: (data === undefined) ? null : data };
+        } catch (e) {
+            env = { ok: false, error: {
+                message: String((e && e.message) ? e.message : e),
+                line: (e && e.line) ? e.line : null
+            } };
+        }
+        return encodeURIComponent(json.stringify(env));
+    };
+
+    // ------------------------------------------------------------------------
+    //  Chargement des outils hôtes (host/tools/*.jsx)
+    // ------------------------------------------------------------------------
+
+    SIMING.loadTools = function (folder) {
+        loaded = true;
+        if (!folder.exists) {
+            loadErrors.push('Dossier introuvable : ' + folder.fsName);
+            return;
+        }
+        var files = folder.getFiles('*.jsx');
+        files.sort(function (a, b) { return (a.name < b.name) ? -1 : ((a.name > b.name) ? 1 : 0); });
+        for (var i = 0; i < files.length; i++) {
+            if (!(files[i] instanceof File)) continue;
+            try {
+                $.evalFile(files[i]);
+            } catch (e) {
+                loadErrors.push(files[i].name + ' : ' + e.toString() + (e.line ? ' (ligne ' + e.line + ')' : ''));
+            }
+        }
+    };
+
+    function status() {
+        var ids = [];
+        for (var k in tools) {
+            if (tools.hasOwnProperty(k) && k !== 'siming') ids.push(k);
+        }
+        ids.sort();
+        return { tools: ids, errors: loadErrors.slice(0) };
+    }
+
+    SIMING.registerTool('siming', {
+        status: status,
+        /** Le panneau donne la racine de l'extension : sert si $.fileName n'a pas suffi. */
+        init: function (args) {
+            if (!loaded && args && args.root) SIMING.loadTools(new Folder(args.root + '/host/tools'));
+            return status();
+        }
+    });
+
     $.global.SIMING = SIMING;
+
+    // Le chemin du script n'est fiable qu'au chargement : on charge les outils tout de suite.
+    try {
+        var me = new File($.fileName);
+        if (/siming\.jsx$/i.test(me.name)) SIMING.loadTools(new Folder(me.parent.absoluteURI + '/tools'));
+    } catch (e) { /* le panneau appellera siming.init avec la racine */ }
 
 })();

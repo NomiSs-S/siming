@@ -10,6 +10,7 @@ const FILES = [
     './fake-ae.test.js',
     './syntax.test.js',
     './host-json.test.js',
+    './host-router.test.js',
 ];
 
 const queue = [];
