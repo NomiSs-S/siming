@@ -17,6 +17,7 @@ const FILES = [
     './ui-dom.test.js',
     './ui-controls.test.js',
     './unparent-view.test.js',
+    './hub.test.js',
 ];
 
 const queue = [];
