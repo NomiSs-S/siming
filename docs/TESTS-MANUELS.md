@@ -34,6 +34,7 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 ## Unparent : rendu
 
 - [ ] Carte vide en pointillés, survol bleu ; remplie : nom en gras, « n enfants · Rig ».
+- [ ] Carte remplie : carré de la couleur d'étiquette de `Parent` devant le nom ; changer l'étiquette du calque puis recliquer la carte : la couleur suit ; étiquette « Aucune » : pas de carré ; couleur personnalisée dans Préférences › Étiquettes : c'est elle qui s'affiche (sinon la couleur par défaut d'AE apparaît : le noter dans `docs/SUIVI.md`).
 - [ ] Bandeau orange présent seulement quand un enfant est détaché, sans laisser de trou sinon.
 - [ ] Bouton secondaire présent seulement en cas mixte, sans laisser de trou sinon.
 - [ ] Lignes de 32 px ; au survol, la pastille laisse place à « Détacher » / « Rattacher ».

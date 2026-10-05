@@ -47,16 +47,20 @@
         return b;
     };
 
-    /** Carte cliquable (56 px) : vide = invitation à agir, remplie = objet courant. */
+    /** Carte cliquable (56 px) : vide = invitation à agir, remplie = objet courant
+     *  (avec, s'il y en a une, sa couleur d'étiquette en carré devant le titre). */
     ui.card = function ({ onClick, role }) {
         const icon = h('span', { class: 's-card-icon' });
+        const swatch = h('span', { class: 's-card-swatch', hidden: true });
         const title = h('span', { class: 's-card-title' });
         const sub = h('span', { class: 's-card-sub' });
         const el = h('button', { class: 's-card', type: 'button', 'data-role': role || 'card', onclick: onClick },
-            icon, h('span', { class: 's-card-text' }, title, sub));
-        el.set = function ({ title: t, subtitle, empty }) {
+            icon, swatch, h('span', { class: 's-card-text' }, title, sub));
+        el.set = function ({ title: t, subtitle, empty, color }) {
             title.textContent = t || '';
             sub.textContent = subtitle || '';
+            swatch.hidden = !!empty || !color;
+            swatch.style.backgroundColor = (!empty && color) ? color : '';
             el.classList.toggle('is-empty', !!empty);
             icon.replaceChildren(ui.icon(empty ? 'cibler' : 'rafraichir', empty ? 20 : 16));
             el.title = empty ? 'Prendre le calque sélectionné dans la timeline' : 'Reprendre la sélection';

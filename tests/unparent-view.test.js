@@ -56,12 +56,22 @@ module.exports = function (test) {
         assert.strictEqual(t.$('[data-role=pending]').hidden, true);
     });
 
+    test('vue : parent sans étiquette (0) -> pas de carré de couleur', async () => {
+        const t = await setup({ prepare: (s) => { s.P.label = 0; } });
+        await t.click(t.$('[data-role=card]'));
+        assert.strictEqual(t.$('.s-card-title').textContent, 'Parent');
+        assert.strictEqual(t.$('.s-card-swatch').hidden, true);
+    });
+
     test('vue : clic sur la carte = prendre la sélection, tout est à jour', async () => {
         const t = await setup();
         await t.click(t.$('[data-role=card]'));
         assert.ok(!t.$('[data-role=card]').classList.contains('is-empty'));
         assert.strictEqual(t.$('.s-card-title').textContent, 'Parent');
         assert.strictEqual(t.$('.s-card-sub').textContent, '3 enfants · Comp 1');
+        const swatch = t.$('.s-card-swatch');
+        assert.strictEqual(swatch.hidden, false, 'couleur d\'étiquette du parent affichée');
+        assert.ok(/#B53838|rgb\(181, 56, 56\)/i.test(swatch.style.backgroundColor), swatch.style.backgroundColor);
         assert.strictEqual(rowNames(t), 'A,B,D');
         assert.deepEqual(t.$$('.s-pill').map((p) => p.textContent), ['lié', 'lié', 'détaché']);
         assert.strictEqual(t.$('[data-role=primary]').textContent, 'Détacher les 2 restants');

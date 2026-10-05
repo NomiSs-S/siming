@@ -106,7 +106,7 @@
             if (s.pending) pendingGroups = s.pending;
             const t = s.target;
             card.set(t
-                ? { title: t.name, subtitle: SIMING.plural(s.entries.length, 'enfant', 'enfants') + ' · ' + s.comp.name, empty: false }
+                ? { title: t.name, subtitle: SIMING.plural(s.entries.length, 'enfant', 'enfants') + ' · ' + s.comp.name, empty: false, color: t.color }
                 : { title: 'Prendre le calque sélectionné', subtitle: 'Sélectionne un parent dans la timeline, puis clique ici', empty: true });
             banner.set(s.plan.banner);
             primary.set(s.plan.primary ? { label: s.plan.primary.label, enabled: true } : { label: 'Détacher', enabled: false });

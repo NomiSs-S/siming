@@ -296,7 +296,7 @@
         var list = entries || (hasTarget ? analyze(comp, target) : []);
         return {
             comp:    comp ? { id: comp.id, name: comp.name } : null,
-            target:  hasTarget ? { id: ae.layerId(target), name: target.name } : null,
+            target:  hasTarget ? { id: ae.layerId(target), name: target.name, label: target.label, color: ae.labelColor(target.label) } : null,
             entries: list,
             plan:    planActions(list),
             pending: noPending ? null : mapPending(findPending(app.project, comp ? comp.id : null, hasTarget ? ae.layerId(target) : null)),

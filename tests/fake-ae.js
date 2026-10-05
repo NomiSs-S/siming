@@ -36,6 +36,8 @@ function LayerRef(state, comp) {
         enumerable: true,
     });
     Object.defineProperty(this, 'locked', { get: () => state.locked, set: (v) => { state.locked = !!v; }, enumerable: true });
+    // Étiquette de couleur : 0 = aucune, 1 à 16 = couleurs des Préférences › Étiquettes
+    Object.defineProperty(this, 'label', { get: () => state.label, set: (v) => { state.label = Number(v); }, enumerable: true });
     Object.defineProperty(this, 'parent', {
         get: () => (state.parent && comp.layers.indexOf(state.parent) >= 0) ? new LayerRef(state.parent, comp) : null,
         set: (v) => {
@@ -71,7 +73,7 @@ class FakeComp extends CompItem {
     /** Ajoute un calque et renvoie son ÉTAT interne (pas une poignée). */
     addLayer(name, opts) {
         const state = Object.assign(
-            { id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null },
+            { id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1 },
             opts || {}
         );
         this.layers.push(state);
@@ -85,6 +87,36 @@ class FakeComp extends CompItem {
     }
 }
 
+/** Couleurs d'étiquettes par défaut d'After Effects (ARGB), étiquettes 1 à 16. */
+const LABEL_SECTION = 'Label Preference Color Section 5';
+const DEFAULT_LABELS = [
+    'FFB53838', 'FFE4D84C', 'FFA9CBC7', 'FFE5BCC9', 'FFA9A9CA', 'FFE7C19E', 'FFB3C7B3', 'FF677DE0',
+    'FF4AA44C', 'FF8E2C9A', 'FFE8920D', 'FF7F452A', 'FFF46DD6', 'FF3DA2A5', 'FFA89677', 'FF1E401E',
+];
+
+/** Faux app.preferences : getPrefAsString renvoie les 4 octets ARGB sous forme de
+ *  caractères, comme After Effects en encodage BINARY. `labels[i]` = étiquette n° i + 1. */
+function makePreferences() {
+    return {
+        labels: DEFAULT_LABELS.slice(),
+        reads: [],
+        havePref(section, key) { return this._index(section, key) !== null; },
+        getPrefAsString(section, key) {
+            const i = this._index(section, key);
+            if (i === null) throw new Error('Pref not found: ' + section + ' / ' + key);
+            this.reads.push(key);
+            let s = '';
+            for (let b = 0; b < 8; b += 2) s += String.fromCharCode(parseInt(this.labels[i].substr(b, 2), 16));
+            return s;
+        },
+        _index(section, key) {
+            const m = section === LABEL_SECTION ? /^Label Color ID 2 # (\d+)$/.exec(key) : null;
+            const n = m ? Number(m[1]) : 0;
+            return (n >= 1 && n <= this.labels.length) ? n - 1 : null;
+        },
+    };
+}
+
 const app = {
     // project.item(i) commence à 1, comme dans ExtendScript
     project: {
@@ -93,6 +125,7 @@ const app = {
         get numItems() { return this.items.length; },
         item(i) { return this.items[i - 1]; },
     },
+    preferences: makePreferences(),
     undoDepth: 0,
     undoGroups: [],
     beginUndoGroup(name) { this.undoDepth++; this.undoGroups.push(name); },
@@ -100,6 +133,7 @@ const app = {
     reset() {
         this.project.activeItem = null;
         this.project.items = [];
+        this.preferences = makePreferences();
         this.undoDepth = 0;
         this.undoGroups = [];
     },

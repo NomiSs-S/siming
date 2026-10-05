@@ -11,6 +11,7 @@ const FILES = [
     './syntax.test.js',
     './host-json.test.js',
     './host-router.test.js',
+    './host-labels.test.js',
     './unparent-core.test.js',
     './unparent-api.test.js',
     './bridge.test.js',

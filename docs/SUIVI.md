@@ -55,6 +55,14 @@ Corrections de revue : `analyze`/`resolveTarget` ignorent un enfant re-parenté 
 Revue finale : corrections (mot de passe masqué, installeurs robustes, Entrée, balise qui fait foi, en attente calculé moins souvent, noms de fichiers sans espaces). Aussi : erreur de démarrage affichée dans le panneau, pas de « Ctrl+Z » quand rien n'a été fait, parent en attente introuvable affiché désactivé. `node tests/run.js` : 132 tests, 0 échec.
 État : à valider dans After Effects avec `docs/TESTS-MANUELS.md` (Windows et macOS) ; Release v1.0.0 après validation.
 
+### 2026-10-05 : validation dans After Effects, couleur d'étiquette sur la carte Parent
+
+- Validation par Simon sous Windows : tout fonctionne (hub, panneau isolé, Unparent). macOS : pas encore testé.
+- Anomalie : la carte Parent n'affichait pas la couleur d'étiquette du calque, présente sur la maquette mais oubliée dans la spec § 7.3 et dans le plan.
+  Corrigé : l'hôte renvoie `target.label` et `target.color` (`SIMING.ae.labelColor` lit les Préférences › Étiquettes en encodage BINARY et se replie sur les 16 couleurs par défaut d'AE, voir `docs/NOTES-EXTENDSCRIPT.md`) ; le composant carte accepte `color` (carré 12 px, absent si « Aucune »).
+- `node tests/run.js` : 137 tests, 0 échec. Version inchangée : 1.0.0 n'est pas encore publiée.
+- État : prêt pour la Release v1.0.0 (dépôt GitHub public, certificat, signature) dès l'accord de l'auteur. À vérifier dans AE : une couleur d'étiquette personnalisée s'affiche bien (sinon repli silencieux sur la couleur par défaut).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -77,6 +85,7 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Nettoyage des balises orphelines (calques re-liés à la main avec une balise restante).
 - Enfants animés : poser des keyframes compensées plutôt que la compensation à l'instant courant.
 - Rafraîchissement automatique à la sélection (pas d'événement AE : à étudier côté CEP).
+- Couleur d'étiquette du parent aussi sur les boutons « En attente dans le projet » (présente sur la maquette, pas encore codée).
 
 **Hub et distribution**
 - Vérification automatique des mises à jour dans le panneau.
@@ -98,4 +107,5 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 ## Questions ouvertes à vérifier dans After Effects
 
 - `Layer.id` est-il stable après enregistrement et réouverture du projet ? (sinon la résolution par nom prend le relais)
+- Couleur d'étiquette personnalisée : `getPrefAsString` lu en `BINARY` donne-t-il bien la couleur des Préférences › Étiquettes ? (sinon la carte montre la couleur par défaut d'AE)
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).

@@ -104,7 +104,7 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 | Bouton discret | Transparent, texte `--text-muted`, fond `#2E2E2E` au survol. |
 | Bouton destructif | Transparent, bordure `#7A3530`, texte `#F0948B` ; toujours précédé d'une confirmation. |
 | Bouton icône | 32 × 32, icône 16 ; bascule « on » : fond `--accent`, icône blanche. |
-| Carte cliquable | 56 px, toute la carte réagit. Vide : bordure pointillée `#4A4A4A`, survol fond `#1E2A38` + bordure `--accent-text`. Remplie : fond `--bg-surface`, titre en gras, sous-titre discret, icône d'action à droite. |
+| Carte cliquable | 56 px, toute la carte réagit. Vide : bordure pointillée `#4A4A4A`, survol fond `#1E2A38` + bordure `--accent-text`. Remplie : fond `--bg-surface`, carré 12 px de la couleur d'étiquette AE du calque (absent si « Aucune »), titre en gras, sous-titre discret, icône d'action à droite. |
 | Bandeau | Fond `--warn-soft`, texte `--warn`, icône à gauche ; absent (pas masqué) quand il n'a rien à dire. |
 | Segmenté | Cadre `--bg-inset` + bordure `--line`, segments égaux, actif `--segment-on` / `--text-strong`, nombres en mono atténué. |
 | Liste à lignes | Cadre `--bg-inset`, lignes de 32, toute la ligne cliquable ; icône d'état, nom, pastille d'état ; au survol, fond `--bg-hover` et la pastille laisse place à l'action. |

@@ -45,7 +45,7 @@ module.exports = function (test) {
         const s = scene(); s.comp.select(s.P);
         const st = host()('pick', {});
         assert.deepEqual(st.comp, { id: 100, name: 'Comp 1' });
-        assert.deepEqual(st.target, { id: s.P.id, name: 'Parent' });
+        assert.deepEqual(st.target, { id: s.P.id, name: 'Parent', label: 1, color: '#B53838' });
         assert.strictEqual(rowNames(st), 'A,B,D');
         assert.strictEqual(st.plan.primary.label, 'Détacher les 2 restants');
         assert.strictEqual(st.plan.secondary.label, 'Rattacher 1 détaché');

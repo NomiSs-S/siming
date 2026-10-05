@@ -146,7 +146,7 @@ Toutes renvoient un **état complet** pour que la vue se redessine en un aller-r
 ```json
 {
   "comp":    { "id": 100, "name": "Comp 1" },
-  "target":  { "id": 1001, "name": "Parent" },
+  "target":  { "id": 1001, "name": "Parent", "label": 1, "color": "#B53838" },
   "entries": [ { "id": 1002, "name": "A", "state": "linked" } ],
   "plan":    { "nLinked": 2, "nDetached": 1,
                "primary":   { "action": "detach",  "ids": [1002, 1003], "label": "Détacher les 2 restants" },
@@ -164,7 +164,7 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
 ### 7.3 Vue (comportement validé sur la maquette)
 
 1. **Carte Parent** (56 px, toute la carte cliquable) : vide = « Prendre le calque
-   sélectionné » + aide ; remplie = nom du parent, « n enfants · Comp ». Clic = `pick`.
+   sélectionné » + aide ; remplie = carré de la couleur d'étiquette du parent (`target.color`, absent si `null`), nom du parent, « n enfants · Comp ». Clic = `pick`.
 2. **Bandeau ambre** (`plan.banner`), absent quand vide.
 3. **Bouton principal** (40 px) = `plan.primary` ; **bouton secondaire** (32 px)
    = `plan.secondary`, absent sinon. Bouton principal désactivé s'il n'y a rien à faire.

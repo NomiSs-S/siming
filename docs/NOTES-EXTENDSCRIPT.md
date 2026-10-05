@@ -26,6 +26,7 @@ d'After Effects où elle a été observée. Les notes propres à ScriptUI (aband
 - Parenter un calque à l'un de ses descendants lève une erreur (cycle) : envelopper dans un `try`.
 - `layer.comment` : chaîne libre visible dans la timeline, bon support d'une mémoire persistante discrète.
 - `comp.selectedLayers` : tableau d'objets calque, dans l'ordre de sélection.
+- `layer.label` : index d'étiquette, 0 (aucune) à 16. Les couleurs sont dans les préférences : `app.preferences.getPrefAsString('Label Preference Color Section 5', 'Label Color ID 2 # n')` renvoie **4 octets ARGB sous forme de caractères**, pas un texte hexadécimal (`getPrefAsLong` échoue). Les lire avec `$.appEncoding = 'BINARY'` (un caractère par octet), puis rendre l'encodage ; repli sur les couleurs par défaut si la forme est inconnue. Dans le fichier de préférences, les octets imprimables apparaissent entre guillemets (`FFB5"88"` = B53838).
 
 ## CEP (à compléter pendant l'implémentation)
 

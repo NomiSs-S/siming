@@ -227,6 +227,55 @@
         }
     };
 
+    /** Couleurs d'étiquettes par défaut d'After Effects (1 à 16), repli quand
+     *  les préférences ne se lisent pas. Index 0 = « Aucune ». */
+    ae.LABEL_DEFAULTS = [null,
+        '#B53838', '#E4D84C', '#A9CBC7', '#E5BCC9', '#A9A9CA', '#E7C19E', '#B3C7B3', '#677DE0',
+        '#4AA44C', '#8E2C9A', '#E8920D', '#7F452A', '#F46DD6', '#3DA2A5', '#A89677', '#1E401E'];
+
+    var LABEL_SECTION = 'Label Preference Color Section 5';
+
+    /** « #RRGGBB » d'après la valeur brute d'une préférence de couleur d'étiquette :
+     *  4 octets ARGB sous forme de caractères (lecture en encodage BINARY), ou
+     *  8 chiffres hexadécimaux. null si la forme est inconnue. */
+    SIMING.parseLabelPref = function (raw) {
+        if (typeof raw !== 'string') return null;
+        if (/^[0-9A-Fa-f]{8}$/.test(raw)) return '#' + raw.substring(2).toUpperCase();
+        if (raw.length !== 4) return null;
+        var hex = '';
+        for (var i = 1; i < 4; i++) {           // on saute l'alpha
+            var code = raw.charCodeAt(i);
+            if (code > 255) return null;         // octet mal décodé (autre encodage)
+            hex += (code < 16 ? '0' : '') + code.toString(16);
+        }
+        return '#' + hex.toUpperCase();
+    };
+
+    /** Couleur « #RRGGBB » de l'étiquette n° index (1 à 16) d'après les
+     *  Préférences › Étiquettes de l'utilisateur, sinon couleur par défaut.
+     *  null pour 0 (aucune) ou hors plage. */
+    ae.labelColor = function (index) {
+        var n = parseInt(index, 10);
+        if (!(n >= 1 && n <= 16)) return null;
+        var color = null;
+        try {
+            var prefs = app.preferences;
+            var key = 'Label Color ID 2 # ' + n;
+            if (prefs && (typeof prefs.havePref !== 'function' || prefs.havePref(LABEL_SECTION, key))) {
+                var previous = $.appEncoding;
+                try {
+                    $.appEncoding = 'BINARY';    // un caractère par octet, quel que soit l'encodage système
+                    color = SIMING.parseLabelPref(prefs.getPrefAsString(LABEL_SECTION, key));
+                } finally {
+                    $.appEncoding = previous;
+                }
+            }
+        } catch (e) {
+            color = null;
+        }
+        return color || ae.LABEL_DEFAULTS[n];
+    };
+
     SIMING.ae = ae;
 
     /** "1 enfant", "3 enfants". */
