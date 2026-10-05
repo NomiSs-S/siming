@@ -6,8 +6,8 @@ Gratuit. Une seule chose à faire, pour installer comme pour mettre à jour.
 
 Sur la page des versions de SIMING : https://github.com/NomiSs-S/siming/releases, télécharge :
 
-- **Windows** : `SIMING - Installer.bat`
-- **macOS** : `SIMING-Installer-macOS.zip`, puis double-clique dessus pour obtenir `SIMING - Installer.command`
+- **Windows** : `SIMING-Installer-Windows.bat`
+- **macOS** : `SIMING-Installer-macOS.zip`, puis double-clique dessus pour obtenir `SIMING-Installer.command`
 
 Range-le où tu veux (Bureau, Documents) : tu le réutiliseras à chaque mise à jour.
 
@@ -24,7 +24,8 @@ Range-le où tu veux (Bureau, Documents) : tu le réutiliseras à chaque mise à
 L'installeur vient d'Internet et n'est pas signé, le système te prévient la première fois :
 
 - **Windows** : « Windows a protégé votre ordinateur » → **Informations complémentaires** → **Exécuter quand même**.
-- **macOS** : clic droit sur `SIMING - Installer.command` → **Ouvrir** → **Ouvrir**.
+- **macOS 14 (Sonoma) et avant** : clic droit sur `SIMING-Installer.command` → **Ouvrir** → **Ouvrir**.
+- **macOS 15 (Sequoia) et après** : le clic droit ne suffit plus. Double-clique sur `SIMING-Installer.command` (macOS refuse de l'ouvrir), puis va dans **Réglages Système › Confidentialité et sécurité**, descends jusqu'au message sur `SIMING-Installer.command` et clique sur **Ouvrir quand même** (ton mot de passe de session peut être demandé). Relance ensuite l'installeur.
 
 ## Revenir à une version précédente
 

@@ -12,7 +12,8 @@ dans son propre panneau.
 
 ## Installation
 
-Télécharger `SIMING - Installer` (Windows `.bat`, macOS `.command`), fermer After
+Télécharger l'installeur (Windows `SIMING-Installer-Windows.bat`, macOS
+`SIMING-Installer-macOS.zip` qui contient `SIMING-Installer.command`), fermer After
 Effects, double-cliquer. L'installeur propose la dernière version (ou une autre)
 et l'installe. Pour mettre à jour : même geste. Détail : `docs/INSTALLATION.md`.
 

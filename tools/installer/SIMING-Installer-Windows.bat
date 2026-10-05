@@ -1,11 +1,14 @@
 @echo off
 rem SIMING - installation et mise a jour (Windows). Double-cliquer ce fichier.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = Get-Content -LiteralPath '%~f0' -Raw; $i = $s.IndexOf('#' + 'POWERSHELL#'); Invoke-Expression $s.Substring($i)"
+rem Chemin passe par une variable : un dossier avec une apostrophe ne casse pas la commande.
+set "SIMING_SELF=%~f0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = Get-Content -LiteralPath $env:SIMING_SELF -Raw; $i = $s.IndexOf('#' + 'POWERSHELL#'); Invoke-Expression $s.Substring($i)"
 echo.
 pause
 exit /b
 #POWERSHELL#
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $Repo = '__REPO__'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -33,7 +36,7 @@ $installed = Get-InstalledVersion
 if ($installed) { Write-Host "  Version installee : $installed" } else { Write-Host '  SIMING n''est pas encore installe.' }
 
 try {
-    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers @{ 'User-Agent' = 'SIMING-Installer'; 'Accept' = 'application/vnd.github+json' }
+    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=100" -Headers @{ 'User-Agent' = 'SIMING-Installer'; 'Accept' = 'application/vnd.github+json' }
 } catch {
     Write-Host "  Impossible de joindre GitHub : $($_.Exception.Message)" -ForegroundColor Red
     return
@@ -42,6 +45,7 @@ try {
 $list = @()
 foreach ($r in $releases) {
     if ($r.draft) { continue }
+    if ($r.prerelease) { continue }
     $asset = $r.assets | Where-Object { $_.name -like '*.zxp' } | Select-Object -First 1
     if (-not $asset) { continue }
     $note = ''
@@ -66,7 +70,12 @@ $choice = $list[$index]
 
 $tmp = Join-Path $env:TEMP $choice.Name
 Write-Host "  Telechargement de $($choice.Tag)..."
-Invoke-WebRequest -Uri $choice.Url -OutFile $tmp -UseBasicParsing -Headers @{ 'User-Agent' = 'SIMING-Installer' }
+try {
+    Invoke-WebRequest -Uri $choice.Url -OutFile $tmp -UseBasicParsing -Headers @{ 'User-Agent' = 'SIMING-Installer' }
+} catch {
+    Write-Host "  Telechargement impossible : $($_.Exception.Message)" -ForegroundColor Red
+    return
+}
 
 while (Get-Process -Name 'AfterFX' -ErrorAction SilentlyContinue) {
     Read-Host '  After Effects est ouvert : ferme-le, puis appuie sur Entree' | Out-Null
@@ -79,7 +88,12 @@ if (-not (Test-Path -LiteralPath $upia)) {
     return
 }
 Write-Host '  Installation...'
-& $upia /install $tmp
+try {
+    & $upia /install $tmp
+} catch {
+    Write-Host "  L'installeur Adobe n'a pas pu etre lance : $($_.Exception.Message)" -ForegroundColor Red
+    return
+}
 if ($LASTEXITCODE -ne 0) { Write-Host "  L'installeur Adobe a renvoye le code $LASTEXITCODE." -ForegroundColor Red; return }
 Write-Host ''
 Write-Host "  SIMING $($choice.Tag) installe. Ouvre After Effects > Fenetre > Extensions > SIMING." -ForegroundColor Green

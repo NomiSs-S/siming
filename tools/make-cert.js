@@ -9,7 +9,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { runZxpSign } = require('./release');
 
 const tool = process.env.ZXPSIGNCMD;
 const pwd = process.env.SIMING_CERT_PASSWORD;
@@ -28,5 +28,10 @@ if (fs.existsSync(cert)) {
     process.exit(1);
 }
 fs.mkdirSync(path.dirname(cert), { recursive: true });
-execFileSync(tool, ['-selfSignedCert', 'FR', 'IDF', 'SIMING', 'SIMING', pwd, cert, '-validityDays', '3650'], { stdio: 'inherit' });
+try {
+    runZxpSign(tool, ['-selfSignedCert', 'FR', 'IDF', 'SIMING', 'SIMING', pwd, cert, '-validityDays', '3650']);
+} catch (e) {
+    console.error('Échec : ' + e.message);
+    process.exit(1);
+}
 console.log('Certificat créé : ' + cert + '\nSauvegarde-le avec son mot de passe, hors du dépôt.');

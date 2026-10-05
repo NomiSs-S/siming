@@ -41,11 +41,11 @@ module.exports = function (test) {
 
     test('zip : contenu, noms UTF-8 et droits exécutables conservés', () => {
         const buf = zip([
-            { name: 'SIMING - Installer.command', data: Buffer.from('#!/bin/bash\necho é\n'), mode: 0o755 },
+            { name: 'SIMING-Installer.command', data: Buffer.from('#!/bin/bash\necho é\n'), mode: 0o755 },
             { name: 'LISEZ-MOI.txt', data: Buffer.from('notice'), mode: 0o644 },
         ]);
         const files = readZip(buf);
-        assert.deepEqual(files.map((f) => f.name), ['SIMING - Installer.command', 'LISEZ-MOI.txt']);
+        assert.deepEqual(files.map((f) => f.name), ['SIMING-Installer.command', 'LISEZ-MOI.txt']);
         assert.strictEqual(files[0].mode, 0o755);
         assert.strictEqual(files[1].mode, 0o644);
         assert.strictEqual(files[0].data.toString(), '#!/bin/bash\necho é\n');
@@ -63,6 +63,18 @@ module.exports = function (test) {
         assert.ok(bat.includes('AfterFX'));
     });
 
+    test('installeur Windows : chemin par variable, pré-versions exclues, erreurs rattrapées', () => {
+        const { bat } = R.installers(LIST);
+        assert.ok(bat.includes('set "SIMING_SELF=%~f0"'), 'chemin passé par une variable');
+        assert.ok(bat.includes('$env:SIMING_SELF'));
+        assert.ok(!bat.includes("'%~f0'"), 'pas de %~f0 entre apostrophes (dossier avec apostrophe)');
+        assert.ok(bat.includes('$r.prerelease'), 'pré-versions exclues');
+        assert.ok(bat.includes('releases?per_page=100'));
+        assert.ok(bat.includes("$ProgressPreference = 'SilentlyContinue'"));
+        assert.ok(bat.includes('Telechargement impossible'));
+        assert.ok(/try \{[^]*& \$upia \/install/.test(bat), 'appel UPIA dans un try');
+    });
+
     test('installeur macOS : dépôt rempli, LF, bash, UPIA et API GitHub', () => {
         const { cmd } = R.installers(LIST);
         assert.ok(cmd.startsWith('#!/bin/bash\n'));
@@ -71,14 +83,30 @@ module.exports = function (test) {
         assert.ok(cmd.includes('https://api.github.com/repos/$REPO/releases'));
         assert.ok(cmd.includes('UnifiedPluginInstallerAgent') && cmd.includes('--install'));
         assert.ok(cmd.includes('osascript -l JavaScript'));
+        assert.ok(cmd.includes('if (r.prerelease) return;'), 'pré-versions exclues');
+        assert.ok(cmd.includes('releases?per_page=100'));
+    });
+
+    test('ZXPSignCmd en échec : code affiché, mot de passe jamais repris', () => {
+        let err = null;
+        try {
+            R.runZxpSign(process.execPath, ['-e', 'process.exit(3)', 'SECRETPWD']);
+        } catch (e) {
+            err = e;
+        }
+        assert.ok(err, 'erreur levée');
+        assert.ok(/code 3/.test(err.message), err.message);
+        assert.ok(!err.message.includes('SECRETPWD'));
+        assert.ok(!String(err.stack).includes('SECRETPWD'));
     });
 
     test('writeInstallers : .bat et zip macOS exécutable dans le dossier donné', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-dist-'));
         R.writeInstallers(LIST, dir);
-        assert.ok(fs.existsSync(path.join(dir, 'SIMING - Installer.bat')));
+        assert.ok(fs.existsSync(path.join(dir, 'SIMING-Installer-Windows.bat')));
         const files = readZip(fs.readFileSync(path.join(dir, 'SIMING-Installer-macOS.zip')));
-        assert.strictEqual(files[0].name, 'SIMING - Installer.command');
+        assert.strictEqual(files[0].name, 'SIMING-Installer.command');
+        assert.deepEqual(fs.readdirSync(dir).filter((n) => / /.test(n)), [], 'aucun espace dans les noms');
         assert.strictEqual(files[0].mode, 0o755);
     });
 

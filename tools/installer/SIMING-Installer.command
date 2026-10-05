@@ -19,13 +19,14 @@ for d in "$HOME/Library/Application Support/Adobe/CEP/extensions/com.siming" "/L
 done
 if [ -n "$installed" ]; then echo "  Version installée : $installed"; else echo "  SIMING n'est pas encore installé."; fi
 
-json=$(curl -fsSL -H "User-Agent: SIMING-Installer" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases") || { echo "  Impossible de joindre GitHub."; finish 1; }
+json=$(curl -fsSL -H "User-Agent: SIMING-Installer" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases?per_page=100") || { echo "  Impossible de joindre GitHub."; finish 1; }
 
 list=$(osascript -l JavaScript - "$json" <<'JXA'
 function run(argv) {
   var out = [];
   JSON.parse(argv[0]).forEach(function (r) {
     if (r.draft) return;
+    if (r.prerelease) return;
     var a = (r.assets || []).filter(function (x) { return /\.zxp$/.test(x.name); })[0];
     if (!a) return;
     var note = (r.body || '').split('\n')[0].replace(/\t/g, ' ').trim();
