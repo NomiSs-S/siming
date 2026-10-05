@@ -1,0 +1,142 @@
+# Charte graphique SIMING (v2, CEP)
+
+Référence visuelle de tous les outils. Maquettes : canevas « SIMING Tools — DA »
+(https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ), planches « Charte graphique »
+et « Unparent v2 ». Implémentation : `extension/client/css/charte.css`.
+Version ScriptUI archivée : `_archive/scriptui/docs/CHARTE-GRAPHIQUE-scriptui.md`.
+
+Principe : **natif, dense, un seul bleu, tout tombe sous la souris**. Le panneau
+doit ressembler à un panneau d'After Effects, en plus net. Le bleu ne sert qu'à
+l'action principale, à l'outil actif et à la valeur sélectionnée.
+
+## 1. Couleurs (variables CSS)
+
+| Variable | Valeur | Usage |
+|---|---|---|
+| `--bg-deep` | `#161616` | séparateurs, contours de barre |
+| `--bg-inset` | `#1B1B1B` | fond des champs, listes, segmentés |
+| `--bg-bar` | `#1D1D1D` | rail d'outils, ligne de statut |
+| `--bg-panel` | `#232323` | fond du panneau (suit la couleur de panneau d'AE) |
+| `--bg-surface` | `#2C2C2C` | cartes, menus, outil actif, en-têtes de section |
+| `--bg-control` | `#343434` | boutons secondaires |
+| `--bg-hover` | `#2A2A2A` | survol d'une ligne |
+| `--segment-on` | `#3E3E3E` | choix actif d'un segmenté |
+| `--line` | `#3B3B3B` | bordures, pistes |
+| `--text-strong` | `#EDEDED` | titres |
+| `--text` | `#DADADA` | texte courant |
+| `--text-muted` | `#9A9A9A` | titres de section, unités, statut |
+| `--accent` | `#2A6FC0` | fond du bouton principal, case cochée |
+| `--accent-hover` | `#3079CF` | survol du bouton principal |
+| `--accent-press` | `#245FA6` | bouton principal appuyé |
+| `--accent-text` | `#5AA6F5` | icône active, repère, lien |
+| `--accent-soft` | `#2A3A4E` | ligne sélectionnée, pastille « lié » |
+| `--ok` | `#63C285` | statut « fait » |
+| `--warn` | `#E3A33B` | statut « attention », calque détaché |
+| `--warn-soft` | `#3A2F1C` | bandeau et pastille « détaché » |
+| `--error` | `#E5675B` | statut « erreur », champ invalide |
+
+Désactivé : opacité 0,38. Contraste du texte ≥ 4,5:1 sur son fond.
+
+## 2. Typographie
+
+Police du système (`system-ui`, Segoe UI sous Windows, SF sous macOS) ; valeurs en
+mono (`Consolas`, `ui-monospace`).
+
+| Rôle | Taille / graisse | Couleur |
+|---|---|---|
+| Titre d'outil | 13 px, 600 | `--text-strong` |
+| Titre de section | 10 px, 600, majuscules, +8 % d'espacement | `--text-muted` |
+| Libellé, bouton, liste | 12 px, 400 | `--text` |
+| Bouton principal | 13 px, 600 | blanc |
+| Valeur numérique | 12 px mono | `--text` |
+| Statut, aide | 11 px | `--text-muted` |
+
+## 3. Ergonomie : tout tombe sous la souris
+
+Règle n°1. On doit pouvoir enchaîner les outils vite, sans viser.
+
+- **Aucune cible cliquable sous 32 × 30 px.**
+- La zone cliquable est toujours plus grande que le dessin : toute la ligne d'une
+  liste ou d'une case, toute la carte, toute la barre d'un curseur, toute la case du point 9.
+- Pas de poignée de curseur à attraper : on glisse n'importe où dans la barre.
+- Choix fréquents à un clic (segmentés, valeurs rapides) plutôt que dans un menu
+  déroulant (réservé aux listes de plus de 4–5 choix).
+- L'action principale est la plus grosse cible (40 px), toujours au même endroit.
+- Raccourcis en bonus, jamais obligatoires (Entrée, chiffres du rail, molette, pavé numérique).
+
+## 4. Mesures
+
+| Élément | Valeur |
+|---|---|
+| Grille de base | 4 px |
+| Marges du panneau | 12 |
+| Entre contrôles / entre sections | 8 / 16 |
+| Champ, menu, barre de valeur, segmenté | hauteur 30 (segment 26 dans un cadre de 30) |
+| Ligne de liste | hauteur 32 |
+| Bouton, bouton icône | hauteur 32 |
+| Bouton principal | hauteur 40, pleine largeur |
+| Carte cliquable | hauteur 56 |
+| Rail d'outils | hauteur 48, boutons 44 × 40 |
+| Ligne de statut | hauteur 24 |
+| Rayon | 4 (pastilles : 9) |
+| Largeur minimale à tenir | 260 |
+
+## 5. Structure d'un panneau
+
+De haut en bas :
+
+1. **Rail d'outils horizontal** (48) : un bouton icône par outil ; l'actif en
+   `--bg-surface`, icône `--accent-text`, trait bas de 2 px. Réglages poussés à
+   droite. Débordement : bouton « … » qui ouvre la liste des outils restants.
+2. **En-tête d'outil** : nom, aide, « Ouvrir dans un panneau ».
+3. **Sections** : titre en petites majuscules, compteur aligné à droite, contenu.
+4. **Action principale** : verbe + quantité (« Détacher les 3 enfants »), actions
+   secondaires dessous.
+5. **Ligne de statut** (24) : pastille + message + version.
+
+Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est identique.
+
+## 6. Composants
+
+| Composant | Règles |
+|---|---|
+| Bouton principal | Fond `--accent`, texte blanc ; survol `--accent-hover`, appui `--accent-press`, désactivé à 0,38. Un seul par outil. |
+| Bouton secondaire | Fond `--bg-control`, bordure `#444`, 32 px. |
+| Bouton discret | Transparent, texte `--text-muted`, fond `#2E2E2E` au survol. |
+| Bouton destructif | Transparent, bordure `#7A3530`, texte `#F0948B` ; toujours précédé d'une confirmation. |
+| Bouton icône | 32 × 32, icône 16 ; bascule « on » : fond `--accent`, icône blanche. |
+| Carte cliquable | 56 px, toute la carte réagit. Vide : bordure pointillée `#4A4A4A`, survol fond `#1E2A38` + bordure `--accent-text`. Remplie : fond `--bg-surface`, titre en gras, sous-titre discret, icône d'action à droite. |
+| Bandeau | Fond `--warn-soft`, texte `--warn`, icône à gauche ; absent (pas masqué) quand il n'a rien à dire. |
+| Segmenté | Cadre `--bg-inset` + bordure `--line`, segments égaux, actif `--segment-on` / `--text-strong`, nombres en mono atténué. |
+| Liste à lignes | Cadre `--bg-inset`, lignes de 32, toute la ligne cliquable ; icône d'état, nom, pastille d'état ; au survol, fond `--bg-hover` et la pastille laisse place à l'action. |
+| Pastille d'état | « lié » : `--accent-soft` / `#BFDBFA` ; « détaché » : `--warn-soft` / `--warn`. |
+| Champ texte | 30 px, fond `--bg-inset`, focus : bordure + halo `--accent` ; erreur : bordure `--error` + message dessous. |
+| Champ numérique | Valeur à droite en mono, unité discrète ; glisser sur le libellé change la valeur ; ↑/↓ ±1, Maj ±10. |
+| Barre de valeur (curseur) | 30 px, libellé et valeur dedans, remplissage `--accent-soft` + repère 2 px `--accent-text` ; glisser n'importe où, Maj = précision, double-clic = saisie, Alt + clic = défaut, molette ±1 ; pendant le glissé fond `--accent`. Bipolaire : remplit depuis le centre. |
+| Menu déroulant | Fermé : fond `--bg-surface`, chevron ; ouvert : menu `--bg-surface`, élément survolé `--accent` ; séparateurs. |
+| Case, radio, interrupteur | Toute la ligne (30) cliquable ; case 16, interrupteur 36 × 20. Case = appliquée avec l'action ; interrupteur = effet immédiat. |
+| Point 9 positions | Carré 108 × 108, 9 cases de 36 entièrement cliquables ; pointillé = boîte du calque ; point 8 px `#5E5E5E`, choisi 12 px `--accent-text` avec halo ; pavé numérique 1–9. |
+| Étiquette de couleur | Carrés de 18, couleurs des étiquettes AE, choisie = contour `--text-strong`. |
+| Ligne de statut | Pastille 6 px : gris info, `--ok`, `--warn`, `--error` ; s'efface à l'action suivante. |
+| Dialogue | Fond `--bg-surface`, titre en question, conséquence en une ligne, actions à droite. Remplace `alert`. |
+| Infobulle | Attribut `title` ou bulle de la charte, phrase courte à l'infinitif. |
+| État vide | Cadre pointillé, icône, phrase qui dit quoi faire. |
+| Progression | Barre 4 px `--accent` sur `--line`, au-delà d'environ 50 éléments traités. |
+
+En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
+(spec § 8) ; les autres arrivent avec les outils qui les utilisent.
+
+## 7. Icônes
+
+- Grille 16 px, trait 1,5, extrémités rondes, sans remplissage, couleur `currentColor`.
+- Tracés : `docs/design/icons.json` (lier, délier, ancre, renommer, échelonner,
+  null, nettoyer, rafraîchir, cibler, chercher, réglages, aide, visible, verrou,
+  ajouter, fermer, valider, attention, déplier, menu, plus).
+- Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
+
+## 8. Textes
+
+- Verbes courts à l'infinitif : « Détacher », « Rattacher », « Créer le null ».
+- Le bouton principal dit combien d'éléments il touche.
+- Le statut dit ce qui s'est passé et rappelle `Ctrl+Z` après une action.
+- Tutoiement dans les aides et états vides.
