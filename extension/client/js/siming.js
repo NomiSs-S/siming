@@ -66,4 +66,80 @@
         apply();
         try { cs.addEventListener('com.adobe.csxs.events.ThemeColorChanged', apply); } catch (e) { /* idem */ }
     };
+
+    // --- Démarrage des pages ----------------------------------------------------
+
+    /** Lit un JSON local (XHR synchrone ; un fichier local répond avec le statut 0). */
+    SIMING.readJson = function (url) {
+        const xhr = new global.XMLHttpRequest();
+        xhr.open('GET', url, false);
+        xhr.send(null);
+        if (xhr.status !== 0 && xhr.status !== 200) throw new Error('Lecture impossible : ' + url);
+        return JSON.parse(xhr.responseText);
+    };
+
+    SIMING.loadScript = function (src) {
+        return new Promise((resolve, reject) => {
+            const s = global.document.createElement('script');
+            s.src = src;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('Script introuvable : ' + src));
+            global.document.head.append(s);
+        });
+    };
+
+    /** Outil d'un panneau isolé : identifiant d'extension com.siming.tool.<id>, sinon ?tool=<id>. */
+    SIMING.standaloneToolId = function (cs) {
+        try {
+            const m = /^com\.siming\.tool\.(.+)$/.exec(cs.getExtensionID());
+            if (m) return m[1];
+        } catch (e) { /* pas de CSInterface */ }
+        try {
+            return new global.URLSearchParams(global.location.search).get('tool');
+        } catch (e) {
+            return null;
+        }
+    };
+
+    /** Démarre la page : mode « hub » (index.html) ou « standalone » (tool.html). */
+    SIMING.boot = async function (mode) {
+        const root = global.document.getElementById('app');
+        let cs = null;
+        try { cs = new global.CSInterface(); } catch (e) { cs = null; }
+        if (cs) SIMING.applyTheme(cs);
+
+        const errors = [];
+        let list;
+        try {
+            list = SIMING.readJson('tools.json');
+        } catch (e) {
+            root.textContent = 'SIMING : liste des outils illisible (' + e.message + ')';
+            return null;
+        }
+
+        const evalScript = cs
+            ? (script, cb) => cs.evalScript(script, cb)
+            : (script, cb) => cb('EvalScript error.');
+        const bridge = SIMING.bridge = SIMING.createBridge(evalScript);
+
+        for (const tool of list.tools) {
+            try { await SIMING.loadScript(tool.script); } catch (e) { errors.push(e.message); }
+        }
+
+        try {
+            const extRoot = cs ? cs.getSystemPath(global.SystemPath.EXTENSION) : '';
+            const host = await bridge.call('siming', 'init', { root: extRoot });
+            if (host && host.errors) errors.push(...host.errors);
+        } catch (e) {
+            errors.push('Cœur hôte : ' + e.message);
+        }
+
+        const app = mode === 'standalone'
+            ? SIMING.startStandalone({ root, list, bridge, toolId: SIMING.standaloneToolId(cs) })
+            : SIMING.startHub({ root, list, bridge, openExtension: cs ? (id) => cs.requestOpenExtension(id, '') : null });
+
+        await app.ready;
+        if (errors.length) app.status.set(errors.join(' · '), 'warn');
+        return app;
+    };
 })(window);
