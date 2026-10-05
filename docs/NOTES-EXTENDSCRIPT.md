@@ -32,3 +32,8 @@ d'After Effects où elle a été observée. Les notes propres à ScriptUI (aband
 - Le panneau (Chromium) et le moteur ExtendScript sont séparés : ils ne s'échangent que des chaînes via `CSInterface.evalScript(script, callback)`. Le callback reçoit `EvalScript error.` si le script échoue sans être attrapé.
 - ExtendScript n'a pas `JSON` : le cœur hôte fournit son propre `stringify` / `parse` (sans `eval`).
 - En développement, les extensions non signées ne se chargent qu'avec `PlayerDebugMode = 1` pour la version CSXS concernée (registre Windows `HKCU\Software\Adobe\CSXS.<n>`, préférences macOS `com.adobe.CSXS.<n>`).
+- Sous macOS, après `defaults write com.adobe.CSXS.<n> PlayerDebugMode 1`, il peut falloir `killall cfprefsd` (ou une reconnexion) pour que After Effects voie le réglage.
+- `CSInterface.evalScript` est asynchrone : un seul appel à la fois par vue, commandes désactivées pendant l'appel (une seule action par double clic).
+- Les arguments passent encodés (`encodeURIComponent` du JSON) et le retour aussi : aucun texte de calque n'est interprété comme du code.
+- Un panneau CEP ne lit pas de paramètres fiables dans `MainPath` : le panneau isolé déduit son outil de `CSInterface.getExtensionID()`.
+- Tous les panneaux d'une extension partagent le moteur ExtendScript : chaque panneau recharge `host/siming.jsx` (mémoire de session d'Unparent remise à zéro, les balises suffisent).

@@ -43,6 +43,17 @@ Décisions :
 (`docs/superpowers/plans/2026-10-05-siming-cep-1-0-0*.md`, 14 tâches, 118 tests visés).
 L'ancien dossier d'archive a été supprimé : le plan réécrit intégralement le cœur Unparent et le faux AE.
 
+### 2026-10-05 : SIMING 1.0.0 (CEP) implémenté
+
+Plan : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`.
+Fait : cœur hôte (JSON, routeur), Unparent hôte + API, pont, charte CSS et composants,
+vue Unparent v2, hub à rail, panneau isolé, manifeste généré, dev-install, signature,
+installeurs Windows / macOS, documentation. `node tests/run.js` : 121 tests, 0 échec.
+Précisions par rapport à la spec : version dans `tools.json` (pas de fichier VERSION),
+outil du panneau isolé tiré de l'identifiant d'extension, API `unparent.init` et `siming.init`.
+Corrections de revue : `analyze`/`resolveTarget` ignorent un enfant re-parenté à la main ; `detach` écrit la balise avant de retirer le parent (avec retour arrière).
+État : à valider dans After Effects avec `docs/TESTS-MANUELS.md` (Windows et macOS) ; Release v1.0.0 après validation.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

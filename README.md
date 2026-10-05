@@ -4,15 +4,13 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> **Refonte en cours** : SIMING passe de ScriptUI à une extension CEP (interface
-> HTML/CSS) pour un rendu fidèle à la charte. Spec :
-> `docs/superpowers/specs/2026-10-05-siming-cep-design.md`.
+> Version 1.0.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
-| Unparent | 2.0.0 (prévu en 1.0.0) | Détacher temporairement les enfants d'un calque, puis les rattacher |
+| Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 
-## Installation (à partir de la 1.0.0)
+## Installation
 
 Télécharger `SIMING - Installer` (Windows `.bat`, macOS `.command`), fermer After
 Effects, double-cliquer. L'installeur propose la dernière version (ou une autre)
@@ -42,6 +40,10 @@ seuls les enfants directs sont traités.
 ```
 node tests/run.js        # tests sans After Effects (faux AE, pont, vues)
 ```
+
+Installation de développement : `tools/dev-install.bat` (Windows) ou
+`tools/dev-install.command` (macOS), puis recharger le panneau après chaque
+modification. Publication : `node tools/release.js` (voir le plan, Tâche 13).
 
 Documentation : `CLAUDE.md` (conventions), `docs/SUIVI.md` (journal, pistes,
 erreurs), `docs/NOTES-EXTENDSCRIPT.md` (pièges), `docs/CHARTE-GRAPHIQUE.md`,

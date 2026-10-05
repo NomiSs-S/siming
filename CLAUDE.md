@@ -6,9 +6,9 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : refonte CEP en cours** (plan : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
+**État : 1.0.0** (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
 
-## Structure (cible, voir la spec § 3)
+## Structure
 
 - `extension/client/tools.json` : version de l'ensemble, dépôt GitHub et liste des outils (seule source).
 - `extension/client/` : `index.html` (hub), `tool.html?tool=<id>` (outil seul),
@@ -64,3 +64,4 @@ version de l'outil dans `tools.json`, jamais le manifeste (généré).
 3. Cœur : `extension/host/tools/<id>.jsx` avec `SIMING.registerTool(id, api)`.
 4. Tests hôte et vue dans `tests/`, branchés dans `tests/run.js`.
 5. Monter la version mineure dans `tools.json`, documenter dans le README, noter les décisions dans `docs/SUIVI.md`.
+6. `node tools/release.js --dry-run`, puis `node tools/release.js` et la Release GitHub (notice des collègues : `docs/INSTALLATION.md`).
