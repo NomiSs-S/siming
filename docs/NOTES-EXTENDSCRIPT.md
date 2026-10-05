@@ -37,3 +37,4 @@ d'After Effects où elle a été observée. Les notes propres à ScriptUI (aband
 - Les arguments passent encodés (`encodeURIComponent` du JSON) et le retour aussi : aucun texte de calque n'est interprété comme du code.
 - Un panneau CEP ne lit pas de paramètres fiables dans `MainPath` : le panneau isolé déduit son outil de `CSInterface.getExtensionID()`.
 - Tous les panneaux d'une extension partagent le moteur ExtendScript : chaque panneau recharge `host/siming.jsx` (mémoire de session d'Unparent remise à zéro, les balises suffisent).
+- Ouvrir un panneau isolé ré-exécute `siming.jsx` dans ce moteur partagé et vide donc la mémoire de session du hub ouvert à côté. Conséquence : **la balise fait foi**. La mémoire n'est qu'un reflet des balises : un calque sans balise n'est jamais considéré comme détaché, même si la mémoire disait le contraire (cas d'un Ctrl+Z, qui retire la balise sans prévenir le panneau).

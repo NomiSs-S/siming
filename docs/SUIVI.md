@@ -52,6 +52,7 @@ installeurs Windows / macOS, documentation. `node tests/run.js` : 121 tests, 0 �
 Précisions par rapport à la spec : version dans `tools.json` (pas de fichier VERSION),
 outil du panneau isolé tiré de l'identifiant d'extension, API `unparent.init` et `siming.init`.
 Corrections de revue : `analyze`/`resolveTarget` ignorent un enfant re-parenté à la main ; `detach` écrit la balise avant de retirer le parent (avec retour arrière).
+Revue finale : corrections (mot de passe masqué, installeurs robustes, Entrée, balise qui fait foi, en attente calculé moins souvent, noms de fichiers sans espaces). Aussi : erreur de démarrage affichée dans le panneau, pas de « Ctrl+Z » quand rien n'a été fait, parent en attente introuvable affiché désactivé. `node tests/run.js` : 132 tests, 0 échec.
 État : à valider dans After Effects avec `docs/TESTS-MANUELS.md` (Windows et macOS) ; Release v1.0.0 après validation.
 
 ## Pistes

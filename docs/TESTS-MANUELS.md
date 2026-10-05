@@ -12,6 +12,9 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 - [ ] Release signée installée avec l'installeur (Windows et macOS) : le menu de versions s'affiche, « Entrée » installe la dernière, la version installée est indiquée au lancement suivant.
 - [ ] Retour à une version précédente avec l'installeur : la version choisie est bien installée.
 - [ ] AE ouvert pendant l'installation : l'installeur demande de le fermer.
+- [ ] Windows : `SIMING-Installer-Windows.bat` lancé depuis un dossier dont le nom contient une apostrophe (ex. `C:\Users\…\l'atelier`) : l'installeur démarre normalement.
+- [ ] macOS 15 (Sequoia) ou plus : premier lancement de `SIMING-Installer.command` refusé, puis **Réglages Système › Confidentialité et sécurité › Ouvrir quand même** : l'installeur s'ouvre (procédure de `docs/INSTALLATION.md`).
+- [ ] macOS : `SIMING-Installer.command` fonctionne avec le `/bin/bash` 3.2 livré par Apple (liste des versions lue par le heredoc dans `$(...)`).
 - [ ] Noter la commande et le chemin exacts d'UPIA qui fonctionnent sur chaque système (spec § 13).
 
 ## Hub
@@ -54,3 +57,6 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 - [ ] Détacher dans « Autre », revenir dans « Rig » : « En attente dans le projet » propose de rattacher `Tete` ; un clic le fait.
 - [ ] `B` (position animée) : saut possible sur d'autres images, comme le menu Parent d'AE (limite connue).
 - [ ] Projet lourd (centaines de calques) : le panneau reste réactif.
+- [ ] Projet de production réel : chronométrer un clic sur une ligne (de la souris au statut) et noter le temps dans `docs/SUIVI.md`.
+- [ ] Clic sur une ligne, puis touche Entrée sans toucher à la souris : le bouton principal agit (hub et panneau isolé).
+- [ ] Ctrl+Z juste après « Détacher » `A`, puis parent de `A` mis à « Aucun » à la main dans la timeline, puis clic sur la carte : `A` n'apparaît pas comme détaché (ni dans la liste, ni dans « En attente »).

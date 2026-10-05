@@ -11,7 +11,7 @@ projet (`extension/host/`). Spec de référence :
 ## Structure
 
 - `extension/client/tools.json` : version de l'ensemble, dépôt GitHub et liste des outils (seule source).
-- `extension/client/` : `index.html` (hub), `tool.html?tool=<id>` (outil seul),
+- `extension/client/` : `index.html` (hub), `tool.html` (outil seul, déduit de l'identifiant d'extension),
   `css/charte.css`, `js/bridge.js` (seul contact avec AE), `js/ui/` (composants),
   `tools/<id>.js` (vues).
 - `extension/host/` : `siming.jsx` (JSON, helpers AE, annulation, routeur),
