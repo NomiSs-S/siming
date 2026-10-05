@@ -106,6 +106,16 @@ module.exports = function (test) {
         assert.ok(/Cœur hôte/.test(app.status.text), app.status.text);
     });
 
+    test('démarrage : une erreur du hub s\'affiche dans la page au lieu d\'une page blanche', async () => {
+        const { sandbox } = loadHost();
+        const win = makeDom(BASE);
+        bootable(win, sandbox);
+        win.SIMING.startHub = () => { throw new Error('rail cassé'); };
+        const app = await win.SIMING.boot('hub');
+        assert.strictEqual(app, null);
+        assert.strictEqual(win.document.getElementById('app').textContent, 'SIMING : démarrage impossible (rail cassé)');
+    });
+
     test('démarrage panneau isolé : outil tiré de l\'identifiant d\'extension', async () => {
         scene();
         const { sandbox } = loadHost();

@@ -134,11 +134,17 @@
             errors.push('Cœur hôte : ' + e.message);
         }
 
-        const app = mode === 'standalone'
-            ? SIMING.startStandalone({ root, list, bridge, toolId: SIMING.standaloneToolId(cs) })
-            : SIMING.startHub({ root, list, bridge, openExtension: cs ? (id) => cs.requestOpenExtension(id, '') : null });
-
-        await app.ready;
+        let app;
+        try {
+            app = mode === 'standalone'
+                ? SIMING.startStandalone({ root, list, bridge, toolId: SIMING.standaloneToolId(cs) })
+                : SIMING.startHub({ root, list, bridge, openExtension: cs ? (id) => cs.requestOpenExtension(id, '') : null });
+            await app.ready;
+        } catch (e) {
+            // Sans cela, une erreur ici laisse un panneau vide sans explication.
+            root.textContent = 'SIMING : démarrage impossible (' + e.message + ')';
+            return null;
+        }
         if (errors.length) app.status.set(errors.join(' · '), 'warn');
         return app;
     };
