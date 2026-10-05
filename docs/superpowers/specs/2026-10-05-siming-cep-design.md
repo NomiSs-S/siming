@@ -1,6 +1,6 @@
 # Spec de design : SIMING, extension CEP pour After Effects (v1.0.0)
 
-Date : 2026-10-05. Remplace les specs ScriptUI archivées dans `_archive/scriptui/docs/`.
+Date : 2026-10-05. Remplace les specs ScriptUI (retirées).
 
 ## 1. Contexte et objectif
 
@@ -40,7 +40,6 @@ outil reste simple.
 
 ```
 siming/
-  VERSION                      version de l'ensemble, source de vérité (ex. 1.0.0)
   extension/                   contenu exact du paquet .zxp
     CSXS/manifest.xml          généré par tools/release.js (et tools/dev-install)
     client/
@@ -62,8 +61,9 @@ siming/
   tests/                       run.js, faux AE, tests hôte / pont / vues / paquet
   tools/                       dev-install, make-cert, release.js, installeurs
   docs/                        charte, notes, suivi, installation, tests manuels, specs
-  _archive/scriptui/           ancienne version ScriptUI (référence, supprimée après validation de la 1.0.0)
 ```
+
+La version de l'ensemble est le champ `version` de `extension/client/tools.json` (voir le plan).
 
 ## 4. Manifeste et panneaux
 
@@ -274,8 +274,7 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
 **1.0.0** : hub SIMING, Unparent v2, panneau isolé, composants listés au § 8,
 pont et cœur hôte, tests, dev-install, make-cert, release.js, installeurs Windows
 et macOS, notice, documentation à jour, dépôt git et GitHub public `siming`
-(créés avec l'accord de l'auteur), suppression de `_archive/` une fois la 1.0.0
-validée dans AE.
+(créés avec l'accord de l'auteur).
 
 **Hors 1.0.0** : autres outils (Quick Tools, Point d'ancrage, Renommer, Échelonner,
 Null de contrôle, Nettoyer le projet), barre de valeur, point 9, passage à UXP,

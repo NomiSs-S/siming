@@ -6,8 +6,7 @@ dans son propre panneau.
 
 > **Refonte en cours** : SIMING passe de ScriptUI à une extension CEP (interface
 > HTML/CSS) pour un rendu fidèle à la charte. Spec :
-> `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. L'ancienne version
-> ScriptUI est conservée dans `_archive/scriptui/` jusqu'à la sortie de la 1.0.0.
+> `docs/superpowers/specs/2026-10-05-siming-cep-design.md`.
 
 | Outil | Version | Rôle |
 |---|---|---|

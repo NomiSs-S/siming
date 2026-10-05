@@ -6,13 +6,11 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : refonte CEP en cours.** L'ancienne version ScriptUI est dans
-`_archive/scriptui/` (référence pour le cœur Unparent et le faux AE) ; ne pas la
-modifier, elle sera supprimée une fois la 1.0.0 validée dans AE.
+**État : refonte CEP en cours** (plan : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
 
 ## Structure (cible, voir la spec § 3)
 
-- `VERSION` : version de l'ensemble. `extension/client/tools.json` : seule liste des outils.
+- `extension/client/tools.json` : version de l'ensemble, dépôt GitHub et liste des outils (seule source).
 - `extension/client/` : `index.html` (hub), `tool.html?tool=<id>` (outil seul),
   `css/charte.css`, `js/bridge.js` (seul contact avec AE), `js/ui/` (composants),
   `tools/<id>.js` (vues).
@@ -50,7 +48,7 @@ Doit afficher `0 échoué(s)`. Le rendu se vérifie aussi dans After Effects ave
 
 ## Versions
 
-`1.x.y` : nouvel outil → mineure ; correction → correctif. Modifier `VERSION` et la
+`1.x.y` : nouvel outil → mineure ; correction → correctif. Modifier `version` et la
 version de l'outil dans `tools.json`, jamais le manifeste (généré).
 
 ## Pièges d'outillage de cette machine
@@ -65,4 +63,4 @@ version de l'outil dans `tools.json`, jamais le manifeste (généré).
 2. Vue : `extension/client/tools/<id>.js` avec `SIMING.registerTool(id, { help, mount })`.
 3. Cœur : `extension/host/tools/<id>.jsx` avec `SIMING.registerTool(id, api)`.
 4. Tests hôte et vue dans `tests/`, branchés dans `tests/run.js`.
-5. Monter la version mineure dans `VERSION`, documenter dans le README, noter les décisions dans `docs/SUIVI.md`.
+5. Monter la version mineure dans `tools.json`, documenter dans le README, noter les décisions dans `docs/SUIVI.md`.

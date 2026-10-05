@@ -1,8 +1,7 @@
 # Notes techniques : ExtendScript et CEP
 
 Pièges rencontrés ou anticipés. Ajouter chaque découverte ici, avec la version
-d'After Effects où elle a été observée. Les notes propres à ScriptUI (abandonné)
-sont archivées dans `_archive/scriptui/docs/NOTES-SCRIPTUI.md`.
+d'After Effects où elle a été observée. Les notes propres à ScriptUI (abandonné) ont été retirées avec l'ancienne version.
 
 ## Langage ExtendScript (cœur hôte)
 

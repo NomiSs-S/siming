@@ -3,7 +3,6 @@
 Fichier vivant : le **journal** retrace les décisions, les **pistes** gardent les
 idées sans les implémenter trop tôt, les **erreurs** évitent de retomber deux fois
 dans le même piège. Ajouter une entrée datée à chaque session.
-Historique détaillé de la période ScriptUI : `_archive/scriptui/docs/SUIVI-scriptui.md`.
 
 ## Journal
 
@@ -23,7 +22,7 @@ Historique détaillé de la période ScriptUI : `_archive/scriptui/docs/SUIVI-sc
   Détachés, section « En attente dans le projet ».
 - Test dans AE : ScriptUI ne permet pas d'approcher la maquette (éléments masqués
   qui gardent leur place, bouton du rail étiré, lignes de liste natives). Code
-  ScriptUI archivé dans `_archive/scriptui/` (55 tests, 0 échec au moment de l'archivage).
+  ScriptUI retiré du projet (55 tests, 0 échec à ce moment-là).
 
 ### 2026-10-05 : passage à une extension CEP
 

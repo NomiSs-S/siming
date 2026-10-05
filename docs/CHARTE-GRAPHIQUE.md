@@ -3,7 +3,6 @@
 Référence visuelle de tous les outils. Maquettes : canevas « SIMING Tools — DA »
 (https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ), planches « Charte graphique »
 et « Unparent v2 ». Implémentation : `extension/client/css/charte.css`.
-Version ScriptUI archivée : `_archive/scriptui/docs/CHARTE-GRAPHIQUE-scriptui.md`.
 
 Principe : **natif, dense, un seul bleu, tout tombe sous la souris**. Le panneau
 doit ressembler à un panneau d'After Effects, en plus net. Le bleu ne sert qu'à
