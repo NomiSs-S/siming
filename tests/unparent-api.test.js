@@ -160,6 +160,46 @@ module.exports = function (test) {
         assert.strictEqual(gone.status.level, 'warn');
     });
 
+    test('API detach / restore : « en attente » non recalculé (pending null)', () => {
+        const s = scene(); s.comp.select(s.P);
+        otherComp();
+        const call = host();
+        const st0 = call('pick', {});
+        assert.strictEqual(st0.pending.length, 1);
+        const st1 = call('detach', Object.assign(ids(st0), { ids: [s.A.id] }));
+        assert.strictEqual(st1.pending, null);
+        const st2 = call('restore', Object.assign(ids(st1), { ids: [s.A.id] }));
+        assert.strictEqual(st2.pending, null);
+        const st3 = call('refresh', ids(st2));
+        assert.strictEqual(st3.pending.length, 1, 'refresh recalcule');
+    });
+
+    test('API : rien de fait (tout ignoré) -> pas de « Ctrl+Z pour annuler »', () => {
+        const s = scene(); s.comp.select(s.P); s.A.locked = true;
+        const call = host();
+        const st0 = call('pick', {});
+        const st = call('detach', Object.assign(ids(st0), { ids: [s.A.id] }));
+        assert.strictEqual(st.report.done, 0);
+        assert.strictEqual(st.status.level, 'warn');
+        assert.ok(!/Ctrl\+Z/.test(st.status.text), st.status.text);
+        assert.ok(/1 ignoré\(s\)/.test(st.status.text), st.status.text);
+    });
+
+    test('API : la balise fait foi (balise effacée, ex. Ctrl+Z, puis parent mis à « Aucun »)', () => {
+        const s = scene(); s.comp.select(s.P);
+        const call = host();
+        const st0 = call('pick', {});
+        call('detach', Object.assign(ids(st0), { ids: [s.A.id] }));
+        // Ctrl+Z dans AE : balise retirée, parent rétabli ; la mémoire de session, elle, reste.
+        s.A.comment = '';
+        s.A.parent = s.P;
+        s.A.parent = null;                 // puis parent mis à « Aucun » à la main
+        const st = call('refresh', ids(st0));
+        assert.ok(!st.entries.some((e) => e.name === 'A'), rowNames(st));
+        const all = call('init', {});
+        assert.ok(!all.pending.some((g) => g.ids.indexOf(s.A.id) >= 0), JSON.stringify(all.pending));
+    });
+
     test('API : noms hostiles (guillemets, antislash, retour à la ligne, HTML) intacts', () => {
         const s = scene(); s.comp.select(s.P);
         s.A.name = 'Bras "G" l\'été \\ <b>x</b>\nfin';

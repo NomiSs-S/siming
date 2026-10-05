@@ -28,6 +28,7 @@
         let state = null;
         let filter = 'all';
         let busy = null;
+        let pendingGroups = [];   // dernière liste reçue : detach / restore renvoient pending null
 
         const ids = () => ({
             compId: state && state.comp ? state.comp.id : null,
@@ -54,16 +55,28 @@
             h('div', { class: 's-stack' }, banner, primary, secondary),
             children, pending);
 
-        view.addEventListener('keydown', (e) => {
+        // Entrée : écoutée sur la section qui reçoit le focus (hub ou outil seul), pas
+        // seulement sur le corps de la vue, sinon l'événement n'y passe jamais.
+        const focusRoot = view.closest('.s-view') || view;
+        focusRoot.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter' || e.defaultPrevented) return;
             if (e.target && e.target.tagName === 'BUTTON') return;   // le bouton focalisé gère Entrée lui-même
+            if (focusRoot.ownerDocument.querySelector('[data-role=dialog]')) return;   // le dialogue d'abord
             if (!primary.disabled) { e.preventDefault(); primary.click(); }
         });
+
+        /** Après une action, le focus tombe sur body (ligne redessinée) ou sur un
+         *  bouton désactivé : on le rend à la section pour qu'Entrée fonctionne. */
+        function restoreFocus() {
+            const doc = focusRoot.ownerDocument;
+            const a = doc.activeElement;
+            if (!a || a === doc.body || (a.tagName === 'BUTTON' && a.disabled)) focusRoot.focus();
+        }
 
         // --- Appels à l'hôte -------------------------------------------------------------
         function setBusy(on) {
             view.classList.toggle('is-busy', on);
-            view.querySelectorAll('button').forEach((b) => { b.disabled = on; });
+            view.querySelectorAll('button').forEach((b) => { b.disabled = on || b.hasAttribute('data-unavailable'); });
             if (!on) primary.disabled = !(state && state.plan && state.plan.primary);
         }
 
@@ -73,7 +86,7 @@
             busy = ctx.bridge.call('unparent', fn, args || {})
                 .then(render)
                 .catch((e) => { ctx.status.set(e.message, 'error'); })
-                .finally(() => { busy = null; setBusy(false); });
+                .finally(() => { busy = null; setBusy(false); restoreFocus(); });
             return busy;
         }
 
@@ -90,6 +103,7 @@
         // --- Rendu -------------------------------------------------------------------------
         function render(s) {
             state = s;
+            if (s.pending) pendingGroups = s.pending;
             const t = s.target;
             card.set(t
                 ? { title: t.name, subtitle: SIMING.plural(s.entries.length, 'enfant', 'enfants') + ' · ' + s.comp.name, empty: false }
@@ -135,15 +149,27 @@
         }
 
         function renderPending() {
-            const groups = state ? state.pending : [];
+            const groups = pendingGroups;
             pending.replaceChildren();
             pending.hidden = groups.length === 0;
             if (!groups.length) return;
             pending.append(ui.sectionTitle('En attente dans le projet'));
             groups.slice(0, MAX_PENDING).forEach((g) => {
+                if (!g.found) {
+                    // Parent d'origine introuvable : rien à rattacher automatiquement.
+                    pending.append(h('button', {
+                        class: 's-btn s-pending-btn', type: 'button', 'data-role': 'pending-item',
+                        disabled: true, 'data-unavailable': '',
+                        title: 'Composition « ' + g.compName + ' » : le parent « ' + g.parentName + ' » n\'existe plus (' +
+                               SIMING.plural(g.ids.length, 'enfant détaché', 'enfants détachés') + '). Rattache-les à la main.',
+                    },
+                    h('span', { class: 's-pending-name', text: 'parent « ' + g.parentName + ' » introuvable' }),
+                    h('span', { class: 's-pending-comp', text: g.compName })));
+                    return;
+                }
                 pending.append(h('button', {
                     class: 's-btn s-pending-btn', type: 'button', 'data-role': 'pending-item',
-                    title: 'Composition « ' + g.compName + ' »' + (g.found ? '' : ' · parent introuvable'),
+                    title: 'Composition « ' + g.compName + ' »',
                     onclick: () => run('restorePending', Object.assign(ids(), { pendingCompId: g.compId, ids: g.ids, parentName: g.parentName })),
                 },
                 h('span', { class: 's-pending-name', text: 'Rattacher ' + SIMING.plural(g.ids.length, 'enfant', 'enfants') + ' à « ' + g.parentName + ' »' }),

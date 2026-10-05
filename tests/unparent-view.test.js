@@ -15,9 +15,21 @@ async function setup(opts) {
     const counter = { calls: 0 };
     const bridge = opts.bridge ? opts.bridge(win) : win.SIMING.createBridge(hostEvalScript(sandbox, counter));
     const status = win.SIMING.ui.statusLine();
-    const view = win.document.createElement('section');
-    view.tabIndex = -1;
-    win.document.body.append(view, status);
+    // opts.wrap : vue montée comme dans le hub (corps .s-view-body dans une section .s-view focalisable)
+    let view, section = null;
+    if (opts.wrap) {
+        section = win.document.createElement('section');
+        section.className = 's-view';
+        section.tabIndex = -1;
+        view = win.document.createElement('div');
+        view.className = 's-view-body';
+        section.append(view);
+        win.document.body.append(section, status);
+    } else {
+        view = win.document.createElement('section');
+        view.tabIndex = -1;
+        win.document.body.append(view, status);
+    }
     const api = win.SIMING.toolDefs.unparent.mount(view, {
         bridge, ui: win.SIMING.ui, status, settings: win.SIMING.settings,
         meta: { id: 'unparent', name: 'Unparent', icon: 'delier', version: '2.0.0' },
@@ -26,7 +38,7 @@ async function setup(opts) {
     const $ = (sel) => view.querySelector(sel);
     const $$ = (sel) => Array.from(view.querySelectorAll(sel));
     const click = async (el) => { el.click(); await api.idle(); };
-    return { s, win, view, api, status, counter, $, $$, click };
+    return { s, win, view, section, api, status, counter, $, $$, click };
 }
 const rowNames = (t) => t.$$('.s-row-name').map((e) => e.textContent).join(',');
 
@@ -154,6 +166,63 @@ module.exports = function (test) {
         t.view.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         await t.api.idle();
         assert.strictEqual(t.s.A.parent, null);
+    });
+
+    test('vue (hub) : Entrée sur la section .s-view déclenche le bouton principal', async () => {
+        const t = await setup({ wrap: true });
+        await t.click(t.$('[data-role=card]'));
+        t.section.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await t.api.idle();
+        assert.strictEqual(t.s.A.parent, null);
+        assert.strictEqual(t.s.B.parent, null);
+    });
+
+    test('vue (hub) : après un clic sur une ligne, le focus revient à la section et Entrée agit', async () => {
+        const t = await setup({ wrap: true });
+        await t.click(t.$('[data-role=card]'));
+        const row = t.$$('.s-row')[0];
+        row.focus();
+        await t.click(row);
+        assert.strictEqual(t.s.A.parent, null);
+        assert.strictEqual(t.win.document.activeElement, t.section, 'focus rendu à la section');
+        t.win.document.activeElement.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await t.api.idle();
+        assert.strictEqual(t.s.B.parent, null, 'Entrée = bouton principal (détacher le dernier lié)');
+    });
+
+    test("vue (hub) : Entrée ignorée tant qu'un dialogue est ouvert", async () => {
+        const t = await setup({ wrap: true, prepare: (s) => { s.A.locked = true; } });
+        await t.click(t.$('[data-role=card]'));
+        await t.click(t.$('[data-role=primary]'));
+        assert.ok(t.win.document.querySelector('[data-role=dialog]'), 'dialogue affiché');
+        const before = t.counter.calls;
+        t.section.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await t.api.idle();
+        assert.strictEqual(t.counter.calls, before, 'aucun appel');
+    });
+
+    test('vue : « en attente » conservé après un détachement (pending null)', async () => {
+        const t = await setup({ prepare: () => otherComp() });
+        await t.click(t.$('[data-role=card]'));
+        assert.strictEqual(t.$$('[data-role=pending-item]').length, 1);
+        await t.click(t.$$('.s-row')[0]);
+        assert.strictEqual(t.api.getState().pending, null);
+        assert.strictEqual(t.$('[data-role=pending]').hidden, false);
+        assert.strictEqual(t.$$('[data-role=pending-item]').length, 1);
+    });
+
+    test('vue : groupe en attente au parent introuvable désactivé, texte explicite', async () => {
+        const t = await setup({ prepare: () => {
+            const o = otherComp();
+            o.E1.comment = '[UP|999|Fantome]';
+            o.E2.comment = '[UP|999|Fantome]';
+        } });
+        await t.click(t.$('[data-role=card]'));
+        const items = t.$$('[data-role=pending-item]');
+        assert.strictEqual(items.length, 1);
+        assert.strictEqual(items[0].disabled, true, "désactivé même après la fin de l'appel");
+        assert.strictEqual(items[0].querySelector('.s-pending-name').textContent, 'parent « Fantome » introuvable');
+        assert.ok(/n'existe plus/.test(items[0].title), items[0].title);
     });
 
     test('vue : un nom de calque contenant du HTML reste du texte', async () => {

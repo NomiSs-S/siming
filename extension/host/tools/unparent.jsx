@@ -63,16 +63,18 @@
     //  Lien rompu d'un calque
     // ------------------------------------------------------------------------
 
-    /** Lien mémorisé : mémoire de session d'abord, balise ensuite (recopiée). */
+    /** Lien mémorisé. La balise fait foi : sans balise (retirée par Ctrl+Z ou à
+     *  la main), l'entrée de session est oubliée ; avec balise, elle est recopiée
+     *  en mémoire. La mémoire n'est donc qu'un reflet des balises. */
     function getBrokenLink(comp, layer) {
         var key = memoryKey(comp, layer);
-        if (memory[key]) return memory[key];
         var tag = parseTag(layer.comment);
-        if (tag) {
-            memory[key] = tag;
-            return tag;
+        if (!tag) {
+            delete memory[key];
+            return null;
         }
-        return null;
+        memory[key] = tag;
+        return tag;
     }
 
     /** Parent décrit par un lien, ou null. Ordre de confiance : identifiant ET
@@ -285,8 +287,11 @@
         return out;
     }
 
-    /** État complet. `entries` peut être fourni pour éviter une seconde analyse. */
-    function snapshot(comp, target, st, report, entries) {
+    /** État complet. `entries` peut être fourni pour éviter une seconde analyse.
+     *  `noPending` : « en attente » non recalculé (pending null, la vue garde sa
+     *  liste). Détacher ou rattacher dans le parent courant ne la change pas (il
+     *  en est exclu) et le parcours de tout le projet coûte cher. */
+    function snapshot(comp, target, st, report, entries, noPending) {
         var hasTarget = !!(comp && target);
         var list = entries || (hasTarget ? analyze(comp, target) : []);
         return {
@@ -294,7 +299,7 @@
             target:  hasTarget ? { id: ae.layerId(target), name: target.name } : null,
             entries: list,
             plan:    planActions(list),
-            pending: mapPending(findPending(app.project, comp ? comp.id : null, hasTarget ? ae.layerId(target) : null)),
+            pending: noPending ? null : mapPending(findPending(app.project, comp ? comp.id : null, hasTarget ? ae.layerId(target) : null)),
             report:  report || null,
             status:  st
         };
@@ -324,20 +329,22 @@
     function resultStatus(summary, rep) {
         var text = summary;
         if (rep.skipped.length > 0) text += ' · ' + rep.skipped.length + ' ignoré(s)';
-        return status(text + ' · Ctrl+Z pour annuler', (rep.skipped.length > 0) ? 'warn' : 'ok');
+        if (rep.done > 0) text += ' · Ctrl+Z pour annuler';   // rien de fait : rien à annuler
+        return status(text, (rep.skipped.length > 0 || rep.done === 0) ? 'warn' : 'ok');
     }
 
+    /** Détacher / rattacher dans le parent courant : pending null (voir snapshot). */
     function act(action, args) {
         var cur = current(args);
-        if (!cur.comp) return snapshot(null, null, status(MSG_COMP_GONE, 'warn'));
-        if (!cur.target) return snapshot(cur.comp, null, status('Le parent n\'existe plus dans « ' + cur.comp.name + ' »', 'warn'));
+        if (!cur.comp) return snapshot(null, null, status(MSG_COMP_GONE, 'warn'), null, null, true);
+        if (!cur.target) return snapshot(cur.comp, null, status('Le parent n\'existe plus dans « ' + cur.comp.name + ' »', 'warn'), null, null, true);
         var active = ae.getActiveComp();
-        if (!active || active.id !== cur.comp.id) return snapshot(cur.comp, cur.target, status(MSG_COMP_CHANGED, 'warn'));
+        if (!active || active.id !== cur.comp.id) return snapshot(cur.comp, cur.target, status(MSG_COMP_CHANGED, 'warn'), null, null, true);
 
         var ids = (args && args.ids) ? args.ids : [];
         if (ids.length === 0) {
             return snapshot(cur.comp, cur.target,
-                status((action === 'detach') ? 'Aucun enfant à détacher' : 'Aucun enfant à rattacher', 'warn'));
+                status((action === 'detach') ? 'Aucun enfant à détacher' : 'Aucun enfant à rattacher', 'warn'), null, null, true);
         }
         var single = null;
         if (ids.length === 1) {
@@ -346,7 +353,7 @@
         }
         var rep = (action === 'detach') ? detach(cur.comp, ids) : restore(cur.comp, ids);
         var verb = (action === 'detach') ? 'détaché' : 'rattaché';
-        return snapshot(cur.comp, cur.target, resultStatus(summarize(verb, rep, single), rep), rep);
+        return snapshot(cur.comp, cur.target, resultStatus(summarize(verb, rep, single), rep), rep, null, true);
     }
 
     var api = {
