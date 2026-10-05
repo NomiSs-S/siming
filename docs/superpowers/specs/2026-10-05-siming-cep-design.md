@@ -81,7 +81,7 @@ La version de l'ensemble est le champ `version` de `extension/client/tools.json`
 - `tools.json` est la seule liste d'outils :
   `[{ "id": "unparent", "name": "Unparent", "icon": "delier", "version": "2.0.0", "script": "tools/unparent.js" }]`.
   Le hub le lit au démarrage et charge les scripts ; `release.js` le lit pour
-  générer le manifeste. Avec `VERSION`, aucun numéro n'est recopié à la main.
+  générer le manifeste. Avec le champ `version` de `tools.json`, aucun numéro n'est recopié à la main.
 
 ## 5. Pont client -> hôte
 
@@ -233,7 +233,7 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
   principal, le secondaire, le filtre, un parent en attente ; vérification des
   libellés, du bandeau, du statut, du dialogue et de l'état des calques. Hub :
   rail, changement d'outil, outil cassé isolé, réglages.
-- **Paquet** : `release.js --dry-run` produit un manifeste cohérent avec `VERSION`
+- **Paquet** : `release.js --dry-run` produit un manifeste cohérent avec le champ `version` de `tools.json`
   et `tools.json` (identifiants, titres, chemins, version), sans signer.
 - **Manuel** : `docs/TESTS-MANUELS.md` réécrit (installation, installeur, hub,
   panneau isolé, rendu, scénarios Unparent, mise à jour, retour à une version).
@@ -247,7 +247,7 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
 - **`tools/make-cert`** : crée une fois le certificat auto-signé avec ZXPSignCmd
   (outil gratuit d'Adobe, téléchargé une fois, chemin dans une variable
   d'environnement). Le certificat et son mot de passe restent **hors du dépôt**.
-- **`tools/release.js`** : lit `VERSION` et `tools.json`, génère le manifeste,
+- **`tools/release.js`** : lit le champ `version` de `tools.json`, génère le manifeste,
   signe `extension/` en `dist/SIMING-<version>.zxp` (horodaté). L'auteur crée
   ensuite la Release GitHub `v<version>` avec ce fichier et une ligne de notes
   (« Ajout : … », « Correction : … ») ; automatisable plus tard avec `gh`.
@@ -266,7 +266,7 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
   premier lancement (Windows SmartScreen : « Informations complémentaires ›
   Exécuter quand même » ; macOS : clic droit › Ouvrir), installer, mettre à jour,
   revenir à une version, trouver le panneau.
-- **Versions** : `VERSION` = `1.0.0` à la première Release ; nouvel outil → `1.(n+1).0` ;
+- **Versions** : `version` (dans `tools.json`) = `1.0.0` à la première Release ; nouvel outil → `1.(n+1).0` ;
   correction → `1.n.(m+1)`. Chaque outil a aussi sa version, affichée dans « À propos ».
 
 ## 12. Périmètre

@@ -41,7 +41,7 @@ Décisions :
 
 État : spec validée ; plan d'implémentation écrit en 3 parties
 (`docs/superpowers/plans/2026-10-05-siming-cep-1-0-0*.md`, 14 tâches, 118 tests visés).
-Le dossier `_archive/` a été supprimé : le plan réécrit intégralement le cœur Unparent et le faux AE.
+L'ancien dossier d'archive a été supprimé : le plan réécrit intégralement le cœur Unparent et le faux AE.
 
 ## Pistes
 

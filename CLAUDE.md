@@ -54,7 +54,7 @@ version de l'outil dans `tools.json`, jamais le manifeste (généré).
 ## Pièges d'outillage de cette machine
 
 - Les commandes Bash longues (au-delà d'environ 8 Ko) échouent : écrire les gros fichiers avec l'outil Write, les petits avec des heredocs, un fichier par commande.
-- Le dossier n'est pas encore un dépôt git : ne pas l'initialiser ni créer de dépôt GitHub sans accord explicite (prévu au début de l'implémentation de la 1.0.0).
+- Dépôt git local initialisé (branche de travail feat/siming-cep-1.0.0). Le dépôt GitHub public `siming` se crée à la Tâche 14 du plan.
 - Ne jamais committer le certificat de signature ni son mot de passe.
 
 ## Ajouter un outil
