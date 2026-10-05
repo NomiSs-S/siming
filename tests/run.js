@@ -19,6 +19,7 @@ const FILES = [
     './unparent-view.test.js',
     './hub.test.js',
     './pages.test.js',
+    './manifest.test.js',
 ];
 
 const queue = [];

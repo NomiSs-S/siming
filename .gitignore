@@ -4,3 +4,4 @@ dist/
 *.zxp
 .env
 .superpowers/
+extension/CSXS/manifest.xml
