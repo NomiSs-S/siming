@@ -20,6 +20,7 @@ const FILES = [
     './hub.test.js',
     './pages.test.js',
     './manifest.test.js',
+    './release.test.js',
 ];
 
 const queue = [];
