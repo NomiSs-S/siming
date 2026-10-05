@@ -14,6 +14,7 @@ const FILES = [
     './unparent-core.test.js',
     './unparent-api.test.js',
     './bridge.test.js',
+    './ui-dom.test.js',
 ];
 
 const queue = [];

@@ -80,4 +80,12 @@ function hostEvalScript(sandbox, counter) {
     };
 }
 
-module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, loadUnparent, loadClientScripts, hostEvalScript, app };
+/** Fenêtre jsdom avec des scripts du panneau chargés (chemins relatifs à extension/client/). */
+function makeDom(files, url) {
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><html lang="fr"><head></head><body><div id="app"></div></body></html>',
+        { runScripts: 'outside-only', url: url || 'http://localhost/index.html' });
+    return loadClientScripts(dom.window, files || []);
+}
+
+module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, loadUnparent, loadClientScripts, hostEvalScript, makeDom, app };
