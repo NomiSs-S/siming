@@ -78,6 +78,13 @@ Décisions de Simon : un seul outil à quatre sections empilées (Lissage, Elast
 Fait : faux AE étendu (`tests/fake-ae-props.js` : propriétés, keyframes, ease, expressions, effets, `applyPreset`, transformations), cœur hôte ES3 avec matrices 2D (parents, rotation, échelle, dimensions séparées, 3D en X/Y), composants `valueBar` et `point9`, vue, hub limité à la rangée de chiffres (le pavé numérique revient aux outils), 14 icônes, docs. `node tests/run.js` : 165 tests, 0 échec. `tools.json` 1.1.0, outil 1.0.0.
 État : à tester dans AE (section « Quick Tools » de `docs/TESTS-MANUELS.md`, lien de développement en place, redémarrer AE), puis corrections et Release 1.1.0 « Ajout : Quick Tools ».
 
+### 2026-10-06 : refonte de l'interface Quick Tools (avant Release 1.1.0)
+
+Maquette « Quick Tools v2 » sur le canvas de design (prototype cliquable + largeurs 260 / 400 px), puis implémentation directe à la demande de Simon. Spec : § 10 de `2026-10-06-quicktools-design.md`.
+Décisions de Simon : garder les trois curseurs de lissage distincts (pas d'influence commune) ; pas de courbe dessinée devant les curseurs mais trois pictos de keyframe sobres, moitié gauche / droite / entier remplie. Repris de la maquette sans objection : Ancrage et Aligner côte à côte, cases pleines de 36 px, plus de bouton bleu, dernier geste cerclé et rejoué par Entrée, Elastic avec icône ressort et croix.
+Fait : `ui.easeKey`, icône `ressort` (36 icônes), styles `s-ease-row`, `s-tool-grid`, `s-tool`, `s-gesture-row`, `s-place-row`, `is-last` (anciens `s-bar-row`, `s-icon-row`, `s-row-inline`, `s-btn-ghost`, `s-point9-row` retirés), vue réécrite, tests de vue mis à jour (165, 0 échec), charte, README, CLAUDE.md (« au plus un » bouton principal), tests manuels.
+État : à tester dans AE avec le reste de Quick Tools (redémarrer AE ou recharger le panneau), puis Release 1.1.0.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

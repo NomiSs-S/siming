@@ -64,18 +64,19 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 
 ## Quick Tools (1.1.0)
 
-Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` avec une échelle animée, `C` tourné de 45° à 150 %, `D` parenté à `C`, une caméra. Touche 2 : l'outil s'affiche, cinq sections visibles sans défilement dans un panneau de 640 px.
+Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` avec une échelle animée, `C` tourné de 45° à 150 %, `D` parenté à `C`, une caméra. Touche 2 : l'outil s'affiche, cinq sections visibles sans défilement dans un panneau de 640 px ; Ancrage et Aligner côte à côte, y compris à 260 px de large.
 
 - [ ] Barre de valeur : glisser n'importe où (saut au clic), Maj = précision, molette ±1 et Maj ±10, flèches, double-clic = saisie (Entrée valide, Échap annule), Alt + clic = 33. Valeurs retrouvées après fermeture/réouverture.
 - [ ] Keyframes de `A` sélectionnées, picto « Entrée » à 75 % : éditeur de graphiques = Bézier, vitesse 0, influence 75 en entrée, sortie inchangée ; statut « 2 keyframes lissées, entrée 75 % » ; un seul Ctrl+Z (« Quick Tools : lisser »).
 - [ ] Relâcher la barre « Les deux » applique aussi. Keyframes d'échelle (2D) : les deux dimensions reçoivent l'influence. Keyframe en maintien : ignorée et listée dans le dialogue.
 - [ ] Rien de sélectionné : « Aucune keyframe sélectionnée », rien ne change.
 - [ ] Position de `A` sélectionnée, « Appliquer Elastic » : effet « Elastic Controller » (20 / 40 / 60) sur `A` seul, même si `B` était aussi sélectionné ; sélection de calques rétablie après coup ; expression active, rebond visible après la dernière keyframe. Second clic : l'effet n'est pas doublé.
-- [ ] « Retirer » : expression vidée, effet retiré si plus aucune propriété du calque ne le cite (en garder une pour vérifier le contraire).
+- [ ] Croix « Retirer Elastic » : expression vidée, effet retiré si plus aucune propriété du calque ne le cite (en garder une pour vérifier le contraire).
 - [ ] `C` (tourné, 150 %) sélectionné, case 9 du carré puis touche 9 du pavé numérique : l'ancrage va en haut à droite de la boîte, le calque ne bouge pas à l'écran ; `D` parenté suit sans bouger. Touche 9 de la rangée de chiffres : rien (ou changement d'outil si un 9e outil existe). Case mémorisée.
 - [ ] Calque texte, forme, solide, précomposition : boîte correcte pour l'ancrage (noter les écarts, surtout précomposition). Caméra sélectionnée : « pas de boîte visible », listée.
 - [ ] `A`, `B`, `C` sélectionnés, Sélection, « Aligner à gauche » : bords gauches visibles alignés (calque tourné : son rectangle englobant) ; `D` parenté à `C` aligné sur la composition : se place bien malgré l'échelle et la rotation du parent.
 - [ ] Composition, « Centrer verticalement » : milieu de la comp. Position animée : keyframe posée à l'instant courant ; dimensions séparées : X et Y modifiées.
 - [ ] Répartir avec 2 calques : « au moins 3 » ; avec 4 calques : extrêmes fixes, espacement régulier ; calque verrouillé : dialogue « Éléments ignorés ».
-- [ ] Entrée dans la section = « Appliquer Elastic » ; Entrée dans un champ de saisie = valider la saisie seulement.
+- [ ] Pictos de keyframe : moitié gauche remplie = Entrée, moitié droite = Sortie, losange plein = Les deux ; nets à 100 % et 200 % d'échelle d'écran.
+- [ ] Dernier geste cerclé de bleu (un seul à la fois). Changer de sélection, Entrée : le geste est rejoué (alignement : avec Sélection / Comp au moment du rejeu). Aucun geste encore : Entrée ne fait rien. Entrée dans un champ de saisie = valider la saisie seulement.
 - [ ] Panneau isolé « SIMING – Quick Tools » : identique, pavé numérique actif quand le panneau a le focus.

@@ -52,11 +52,14 @@ async function setup(opts) {
 module.exports = function (test) {
     test('vue quicktools : quatre sections, valeurs par défaut, statut de départ', async () => {
         const t = await setup();
-        assert.deepEqual(t.$$('.s-section-label').map((e) => e.textContent), ['Lissage de vitesse', 'Elastic', 'Point d\'ancrage', 'Aligner', 'Répartir']);
+        assert.deepEqual(t.$$('.s-section-label').map((e) => e.textContent), ['Lissage de vitesse', 'Elastic', 'Ancrage', 'Aligner', 'Répartir']);
         assert.deepEqual(t.$$('.s-bar-value').map((e) => e.textContent), ['33 %', '33 %', '33 %']);
         assert.strictEqual(t.$$('[data-role^=ease-apply-]').length, 3);
-        assert.strictEqual(t.$('[data-role=primary]').textContent, 'Appliquer Elastic');
-        assert.strictEqual(t.$('[data-role=elastic-remove]').textContent, 'Retirer');
+        assert.strictEqual(t.$('[data-role=primary]'), null, 'pas de bouton principal');
+        assert.strictEqual(t.$('[data-role=elastic]').textContent, 'Appliquer Elastic');
+        assert.strictEqual(t.$('[data-role=elastic-remove]').getAttribute('aria-label'), 'Retirer Elastic');
+        assert.deepEqual(['in', 'out', 'both'].map((m) => t.$('[data-role=ease-apply-' + m + '] .s-ease-key-fill').getAttribute('d')), ['M8 2.5L2.5 8 8 13.5z', 'M8 2.5l5.5 5.5L8 13.5z', 'M8 2.5l5.5 5.5L8 13.5 2.5 8z'], 'moitié gauche, droite, entier');
+        assert.strictEqual(t.$$('.is-last').length, 0, 'aucun geste encore');
         assert.strictEqual(t.$('[data-role=point9]').value, 5);
         assert.deepEqual(t.$$('[data-role=align-to] .s-seg-btn').map((b) => b.classList.contains('is-on')), [true, false]);
         assert.strictEqual(t.$$('[data-role=align-row] button').length, 6);
@@ -81,23 +84,31 @@ module.exports = function (test) {
         assert.strictEqual(again.$('[data-role=ease-out]').value, 33, 'autre fenêtre jsdom : réglages à part');
     });
 
-    test('vue quicktools : Elastic appliqué puis retiré, Entrée = bouton principal (pas dans un champ)', async () => {
+    test('vue quicktools : Elastic appliqué puis retiré, Entrée = rejouer le dernier geste (pas dans un champ)', async () => {
         const t = await setup({ prepare: (s) => { s.L(1).position.selected = true; } });
-        await t.click(t.$('[data-role=primary]'));
+        const calls = t.counter.calls;
+        t.section.focus();
+        await t.key({ key: 'Enter' }, t.section);
+        assert.strictEqual(t.counter.calls, calls, 'aucun geste encore : Entrée ne fait rien');
+        await t.click(t.$('[data-role=elastic]'));
         assert.strictEqual(t.status.text, 'Elastic appliqué à 1 propriété · Ctrl+Z pour annuler');
         assert.ok(t.s.L(1).effect('Elastic Controller'));
+        assert.ok(t.$('[data-role=elastic]').classList.contains('is-last'));
         await t.click(t.$('[data-role=elastic-remove]'));
         assert.strictEqual(t.status.text, 'Elastic retiré de 1 propriété · Ctrl+Z pour annuler');
         assert.strictEqual(t.s.L(1).effect('Elastic Controller'), null);
+        assert.deepEqual(t.$$('.is-last').map((e) => e.getAttribute('data-role')), ['elastic-remove'], 'un seul dernier geste');
+        await t.click(t.$('[data-role=elastic]'));
         t.section.focus();
         await t.key({ key: 'Enter' }, t.section);
-        assert.ok(/Elastic appliqué/.test(t.status.text), 'Entrée sur la section = Appliquer Elastic');
+        assert.ok(/Elastic appliqué/.test(t.status.text), 'Entrée sur la section = rejouer Appliquer Elastic : ' + t.status.text);
         const input = t.$('[data-role=ease-in] .s-bar-input');
         t.$('[data-role=ease-in]').dispatchEvent(new t.win.MouseEvent('dblclick', { bubbles: true }));
         input.value = '80';
         await t.key({ key: 'Enter' }, input);
         assert.strictEqual(input.hidden, true);
-        assert.ok(/keyframe/.test(t.status.text), 'Entrée dans le champ = valider la saisie (lissage), pas le bouton principal : ' + t.status.text);
+        assert.ok(/keyframe/.test(t.status.text), 'Entrée dans le champ = valider la saisie (lissage), pas le rejeu : ' + t.status.text);
+        assert.ok(t.$('[data-role=ease-apply-in]').classList.contains('is-last'), 'la saisie devient le dernier geste');
         assert.strictEqual(t.$('[data-role=ease-in]').value, 80);
     });
 
@@ -127,6 +138,9 @@ module.exports = function (test) {
         assert.strictEqual(t.win.localStorage.getItem('siming.quicktools.alignTo'), 'comp');
         await t.click(t.$('[data-role=align-right]'));
         assert.strictEqual(t.status.text, '2 calques alignés à droite de la composition · Ctrl+Z pour annuler');
+        t.section.focus();
+        await t.key({ key: 'Enter' }, t.section);
+        assert.strictEqual(t.status.text, '2 calques alignés à droite de la composition · Ctrl+Z pour annuler', "Entrée rejoue l'alignement");
         await t.click(t.$('[data-role=dist-top]'));
         assert.strictEqual(t.status.level, 'warn');
         assert.ok(/au moins 3 calques/.test(t.status.text));
@@ -148,6 +162,6 @@ module.exports = function (test) {
         await t.api.idle();
         assert.strictEqual(t.counter.calls, before + 1, 'second clic ignoré pendant l\'appel');
         assert.strictEqual(t.$('[data-role=align-top]').disabled, false);
-        assert.strictEqual(t.$('[data-role=primary]').disabled, false);
+        assert.strictEqual(t.$('[data-role=elastic]').disabled, false);
     });
 };

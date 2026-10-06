@@ -298,6 +298,30 @@
         return el;
     };
 
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const EASE_FILLS = {
+        in:   'M8 2.5L2.5 8 8 13.5z',            // moitié gauche : côté qui arrive
+        out:  'M8 2.5l5.5 5.5L8 13.5z',           // moitié droite : côté qui repart
+        both: 'M8 2.5l5.5 5.5L8 13.5 2.5 8z',
+    };
+
+    /** Picto de keyframe (16) pour le lissage : contour du losange, moitié lissée remplie
+     *  (in = gauche, out = droite, both = entier). Couleur = currentColor. */
+    ui.easeKey = function (mode, size) {
+        const doc = global.document;
+        const px = String(size || 16);
+        const node = (tag, attrs) => {
+            const n = doc.createElementNS(SVG_NS, tag);
+            for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+            return n;
+        };
+        const svg = node('svg', { class: 's-icon s-ease-key', width: px, height: px, viewBox: '0 0 16 16', 'aria-hidden': 'true', 'data-mode': mode });
+        svg.append(
+            node('path', { class: 's-ease-key-fill', d: EASE_FILLS[mode] || EASE_FILLS.both, fill: 'currentColor' }),
+            node('path', { d: 'M8 2.5l5.5 5.5L8 13.5 2.5 8z', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linejoin': 'round' }));
+        return svg;
+    };
+
     const POINT9_TITLES = { 7: 'Haut gauche', 8: 'Haut centre', 9: 'Haut droite', 4: 'Milieu gauche', 5: 'Centre',
         6: 'Milieu droite', 1: 'Bas gauche', 2: 'Bas centre', 3: 'Bas droite' };
 

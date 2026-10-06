@@ -23,6 +23,7 @@
   "plus":       [{"path": "M4 8h.1M8 8h.1M12 8h.1"}],
   "eclair":      [{"path": "M9 1.5L3.5 9h4l-1 5.5L12.5 7h-4z"}],
   "keyframe":    [{"path": "M8 2.5l5.5 5.5L8 13.5 2.5 8z"}],
+  "ressort":     [{"path": "M1.5 11H3c1.5 0 1.5-8 3-8s1.5 9 3 9 1.2-4 2.5-4 1 1.5 2 1.5h1"}],
   "alignLeft":   [{"path": "M3 2v12M5.5 5h7M5.5 11h4"}],
   "alignCenterX":[{"path": "M8 2v12M3.5 5h9M5.5 11h5"}],
   "alignRight":  [{"path": "M13 2v12M3.5 5h7M6.5 11h4"}],

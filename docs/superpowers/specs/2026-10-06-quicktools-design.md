@@ -179,3 +179,22 @@ la durée (seul l'instant courant est posé).
 - `applyPreset` vise-t-il bien le calque visé une fois la sélection réduite à lui ?
 - `setTemporalEaseAtKey` sur une propriété spatiale : un seul `KeyframeEase` suffit-il ?
 - `sourceRectAtTime` sur une précomposition et un solide : boîte attendue ?
+
+## 10. Révision de l'interface (2026-10-06, avant la Release 1.1.0)
+
+Retour de l'auteur sur la maquette « Quick Tools v2 » du canvas de design. Remplace
+les points correspondants des § 2 et 3 ; le cœur hôte ne change pas.
+
+- **Lissage** : trois curseurs distincts conservés (Entrée, Sortie, Les deux), chacun
+  précédé d'un picto de keyframe sobre (`ui.easeKey(mode)`, bouton icône 32 × 30) :
+  moitié gauche remplie = Entrée, moitié droite = Sortie, losange plein = Les deux.
+  Clic sur le picto ou relâchement du curseur = appliquer, comme avant.
+- **Pas de bouton principal** : « Appliquer Elastic » devient un bouton secondaire de
+  40 px avec l'icône `ressort`, « Retirer » une croix carrée de 40 px. Le dernier geste
+  est cerclé `--accent-text` (classe `is-last`) et **Entrée le rejoue** ; aucun geste
+  encore : Entrée ne fait rien. Un alignement rejoué relit Sélection / Comp.
+- **Ancrage et Aligner côte à côte** : carré 3 × 3 à gauche ; à droite, segmenté
+  « Sélection | Comp » et grille de six cases (3 × 2). **Répartir** : grille de six cases
+  sur une ligne. Cases pleines de 36 px (`s-tool`), on vise une case, pas une icône.
+- Sections : « Lissage de vitesse », « Elastic », « Ancrage », « Aligner », « Répartir »,
+  avec une aide courte à droite du titre quand elle sert.

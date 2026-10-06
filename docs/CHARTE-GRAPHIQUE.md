@@ -61,6 +61,8 @@ Règle n°1. On doit pouvoir enchaîner les outils vite, sans viser.
 - Choix fréquents à un clic (segmentés, valeurs rapides) plutôt que dans un menu
   déroulant (réservé aux listes de plus de 4–5 choix).
 - L'action principale est la plus grosse cible (40 px), toujours au même endroit.
+- Un outil de gestes rapides (Quick Tools) n'a pas d'action principale : le dernier geste
+  est cerclé `--accent-text` et Entrée le rejoue sur la nouvelle sélection.
 - Raccourcis en bonus, jamais obligatoires (Entrée, chiffres du rail, molette, pavé numérique).
 
 ## 4. Mesures
@@ -99,7 +101,7 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 
 | Composant | Règles |
 |---|---|
-| Bouton principal | Fond `--accent`, texte blanc ; survol `--accent-hover`, appui `--accent-press`, désactivé à 0,38. Un seul par outil. |
+| Bouton principal | Fond `--accent`, texte blanc ; survol `--accent-hover`, appui `--accent-press`, désactivé à 0,38. Au plus un par outil, aucun dans un outil de gestes rapides. |
 | Bouton secondaire | Fond `--bg-control`, bordure `#444`, 32 px. |
 | Bouton discret | Transparent, texte `--text-muted`, fond `#2E2E2E` au survol. |
 | Bouton destructif | Transparent, bordure `#7A3530`, texte `#F0948B` ; toujours précédé d'une confirmation. |
@@ -115,6 +117,9 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 | Menu déroulant | Fermé : fond `--bg-surface`, chevron ; ouvert : menu `--bg-surface`, élément survolé `--accent` ; séparateurs. |
 | Case, radio, interrupteur | Toute la ligne (30) cliquable ; case 16, interrupteur 36 × 20. Case = appliquée avec l'action ; interrupteur = effet immédiat. |
 | Point 9 positions | Carré 108 × 108, 9 cases de 36 entièrement cliquables ; pointillé = boîte du calque ; point 8 px `#5E5E5E`, choisi 12 px `--accent-text` avec halo ; pavé numérique 1–9. |
+| Picto de keyframe (lissage) | Bouton icône 32 × 30 devant son curseur ; losange 16 au trait 1,5, moitié remplie selon le côté lissé : gauche = Entrée, droite = Sortie, entier = Les deux (comme les keyframes d'AE) ; repos `#8A8A8A`, survol `--accent-text`. Clic = appliquer la valeur du curseur. |
+| Grille de cases | Cases pleines de 36 px de haut (`--bg-surface`, icône 16), 3 ou 6 colonnes égales, 2 px d'écart ; survol `--accent-soft` / `--accent-text`. On vise une case, pas une icône. |
+| Dernier geste | Contour intérieur 1 px `--accent-text` (classe `is-last`) sur la commande du dernier geste ; un seul à la fois ; Entrée le rejoue. |
 | Étiquette de couleur | Carrés de 18, couleurs des étiquettes AE, choisie = contour `--text-strong`. |
 | Ligne de statut | Pastille 6 px : gris info, `--ok`, `--warn`, `--error` ; s'efface à l'action suivante. |
 | Dialogue | Fond `--bg-surface`, titre en question, conséquence en une ligne, actions à droite. Remplace `alert`. |
@@ -130,7 +135,8 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
 - Grille 16 px, trait 1,5, extrémités rondes, sans remplissage, couleur `currentColor`.
 - Tracés : `docs/design/icons.json` (lier, délier, ancre, renommer, échelonner,
   null, nettoyer, rafraîchir, cibler, chercher, réglages, aide, visible, verrou,
-  ajouter, fermer, valider, attention, déplier, menu, plus).
+  ajouter, fermer, valider, attention, déplier, menu, plus, éclair, keyframe, ressort,
+  aligner et répartir).
 - Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
 
 ## 8. Textes

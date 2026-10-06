@@ -42,11 +42,11 @@ seuls les enfants directs sont traités.
 Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun :
 
 1. **Lissage de vitesse** : règle l'influence (Entrée, Sortie, Les deux), puis clique le
-   picto de keyframe ou relâche la barre : les keyframes sélectionnées passent en Bézier,
+   picto de keyframe de la ligne ou relâche la barre : les keyframes sélectionnées passent en Bézier,
    vitesse 0, influence voulue sur ce côté.
 2. **Elastic** : « Appliquer Elastic » pose l'expression de rebond et l'effet « Elastic
    Controller » (Amplitude 20, Frequency 40, Decay 60, à régler dans le panneau Effets)
-   sur les propriétés animées sélectionnées ; « Retirer » les enlève.
+   sur les propriétés animées sélectionnées ; la croix les enlève.
 3. **Point d'ancrage** : une case du carré 3 × 3 (ou 1 à 9 au pavé numérique) place
    l'ancrage des calques sélectionnés sur leur boîte visible, position compensée.
 4. **Aligner et répartir** : comme la fenêtre Aligner d'After Effects, par rapport à la
@@ -54,7 +54,8 @@ Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun
    pris en compte).
 
 Les boutons portent le verbe seul : la sélection n'est connue qu'au clic, la ligne de
-statut dit ensuite combien d'éléments ont été traités.
+statut dit ensuite combien d'éléments ont été traités. Le dernier geste est cerclé de bleu :
+**Entrée** le rejoue sur la nouvelle sélection.
 
 ## Développement
 

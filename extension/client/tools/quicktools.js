@@ -1,8 +1,9 @@
 /*
- * SIMING : vue de l'outil Quick Tools (quatre gestes rapides sur la sélection).
+ * SIMING : vue de l'outil Quick Tools (gestes rapides sur la sélection).
  * Toute la logique After Effects est côté hôte (host/tools/quicktools.jsx) : chaque
  * geste appelle l'API, qui renvoie un compte rendu et un statut. La sélection n'est
  * connue qu'au clic : les boutons portent le verbe seul, le statut donne la quantité.
+ * Pas de bouton principal : le dernier geste est cerclé d'accent et Entrée le rejoue.
  */
 (function (global) {
     'use strict';
@@ -12,16 +13,17 @@
     const h = ui.h;
 
     const HELP = [
-        'Lissage de vitesse : sélectionne des keyframes, règle l\'influence, puis clique le picto',
-        '   de keyframe (ou relâche la barre) : Bézier, vitesse 0 et influence voulue sur ce côté.',
+        'Lissage de vitesse : sélectionne des keyframes, règle l\'influence de la ligne voulue, puis',
+        '   clique son picto de keyframe (ou relâche le curseur) : Bézier, vitesse 0 et influence sur ce côté.',
         'Elastic : sélectionne des propriétés animées, puis « Appliquer Elastic » : l\'expression',
-        '   et l\'effet « Elastic Controller » (Amplitude, Frequency, Decay) sont posés. « Retirer » les enlève.',
-        'Point d\'ancrage : sélectionne des calques, clique une case (ou tape 1 à 9 au pavé',
-        '   numérique) : l\'ancrage se place sur leur boîte, la position est compensée.',
-        'Aligner et répartir : sélectionne des calques, choisis Sélection ou Composition, clique un bouton.',
+        '   et l\'effet « Elastic Controller » (Amplitude, Frequency, Decay) sont posés. La croix les retire.',
+        'Ancrage : sélectionne des calques, clique une case (ou tape 1 à 9 au pavé numérique) :',
+        '   l\'ancrage se place sur leur boîte, la position est compensée (rien ne bouge à l\'écran).',
+        'Aligner et répartir : sélectionne des calques, choisis Sélection ou Comp, clique une case.',
         '',
-        'Chaque geste s\'annule d\'un seul Ctrl+Z. Les valeurs des barres : glisser (Maj = précision),',
-        'molette, flèches, double-clic pour saisir, Alt + clic pour la valeur par défaut.',
+        'Le dernier geste est cerclé de bleu : Entrée le rejoue sur la nouvelle sélection.',
+        'Chaque geste s\'annule d\'un seul Ctrl+Z. Curseurs : glisser (Maj = précision), molette,',
+        'flèches, double-clic pour saisir, Alt + clic pour la valeur par défaut.',
     ].join('\n');
 
     const EASE = [
@@ -43,74 +45,92 @@
     function mount(view, ctx) {
         let state = null;
         let busy = null;
+        let last = null;   // { el, replay } : dernier geste, rejoué par Entrée
         const settings = ctx.settings;
         const pref = (key, fallback) => {
             const v = parseFloat(settings.get('quicktools.' + key, fallback));
             return isNaN(v) ? fallback : v;
         };
+        const labelRow = (label, hint) => h('div', { class: 's-label-row' }, ui.sectionTitle(label),
+            hint ? h('span', { class: 's-label-hint', text: hint }) : null);
+
+        /** Lance un geste et s'en souvient : el est cerclé, replay le relance (Entrée). */
+        function gesture(el, replay) {
+            if (busy) return busy;
+            if (last && last.el !== el) last.el.classList.remove('is-last');
+            last = { el, replay };
+            el.classList.add('is-last');
+            return replay();
+        }
 
         // --- Lissage de vitesse -----------------------------------------------------
         const easeRows = EASE.map((d) => {
+            let picto = null;
+            const apply = () => run('ease', { mode: d.mode, influence: bar.value });
             const bar = ui.valueBar({
                 label: d.label, min: 1, max: 100, unit: ' %', value: pref(d.key, EASE_DEFAULT), defaultValue: EASE_DEFAULT,
                 role: 'ease-' + d.mode,
-                onChange: (v) => { settings.set('quicktools.' + d.key, v); run('ease', { mode: d.mode, influence: v }); },
+                onChange: (v) => { settings.set('quicktools.' + d.key, v); gesture(picto, apply); },
             });
-            const picto = h('button', {
+            picto = h('button', {
                 class: 's-icon-btn', type: 'button', 'data-role': 'ease-apply-' + d.mode, title: d.title, 'aria-label': d.title,
-                onclick: () => run('ease', { mode: d.mode, influence: bar.value }),
-            }, ui.icon('keyframe', 16));
-            return h('div', { class: 's-bar-row' }, picto, bar);
+                onclick: () => gesture(picto, apply),
+            }, ui.easeKey(d.mode, 16));
+            return h('div', { class: 's-ease-row' }, picto, bar);
         });
 
         // --- Elastic ------------------------------------------------------------------
-        const primary = ui.primaryButton({ label: 'Appliquer Elastic', onClick: () => run('elastic', {}) });
-        primary.title = 'Poser l\'expression Elastic et son contrôleur sur les propriétés animées sélectionnées';
+        const elastic = h('button', {
+            class: 's-btn', type: 'button', 'data-role': 'elastic',
+            title: 'Poser l\'expression Elastic et son contrôleur sur les propriétés animées sélectionnées',
+            onclick: () => gesture(elastic, () => run('elastic', {})),
+        }, ui.icon('ressort', 18), h('span', { text: 'Appliquer Elastic' }));
         const remove = h('button', {
-            class: 's-btn s-btn-ghost', type: 'button', 'data-role': 'elastic-remove', text: 'Retirer',
-            title: 'Retirer l\'expression Elastic des propriétés sélectionnées', onclick: () => run('elasticRemove', {}),
-        });
+            class: 's-btn s-btn-square', type: 'button', 'data-role': 'elastic-remove',
+            title: 'Retirer l\'expression Elastic des propriétés sélectionnées', 'aria-label': 'Retirer Elastic',
+            onclick: () => gesture(remove, () => run('elasticRemove', {})),
+        }, ui.icon('fermer', 16));
 
-        // --- Point d'ancrage ----------------------------------------------------------
+        // --- Ancrage ------------------------------------------------------------------
         const p9 = ui.point9({ value: pref('anchorCell', 5), onPick: (n) => anchor(n) });
         function anchor(cell) {
             p9.set(cell);
             settings.set('quicktools.anchorCell', cell);
-            return run('anchor', { cell });
+            return gesture(p9, () => run('anchor', { cell: p9.value }));
         }
 
         // --- Aligner et répartir --------------------------------------------------------
         const seg = ui.segmented({
-            role: 'align-to', labels: ['Sélection', 'Composition'],
+            role: 'align-to', labels: ['Sélection', 'Comp'],
             onChange: (i) => settings.set('quicktools.alignTo', i === 1 ? 'comp' : 'selection'),
         });
         seg.select(settings.get('quicktools.alignTo', 'selection') === 'comp' ? 1 : 0);
+        seg.querySelectorAll('.s-seg-btn')[1].title = 'Aligner sur la composition';
         const relative = () => (seg.selected === 1 ? 'comp' : 'selection');
-        const iconRow = (role, items) => h('div', { class: 's-icon-row', 'data-role': role }, items);
-        const alignRow = iconRow('align-row', EDGES.map((d) => h('button', {
-            class: 's-icon-btn', type: 'button', 'data-role': 'align-' + d.edge, title: d.align, 'aria-label': d.align,
-            onclick: () => run('align', { edge: d.edge, relative: relative() }),
-        }, ui.icon(d.icon, 16))));
-        const distRow = iconRow('dist-row', EDGES.map((d) => h('button', {
-            class: 's-icon-btn', type: 'button', 'data-role': 'dist-' + d.edge, title: d.dist, 'aria-label': d.dist,
-            onclick: () => run('distribute', { edge: d.edge }),
-        }, ui.icon(d.distIcon, 16))));
+        const toolButton = (role, title, icon, replay) => {
+            const b = h('button', {
+                class: 's-tool', type: 'button', 'data-role': role, title, 'aria-label': title,
+                onclick: () => gesture(b, replay),
+            }, ui.icon(icon, 16));
+            return b;
+        };
+        // L'alignement lit Sélection / Comp au moment du geste (et de chaque rejeu).
+        const alignGrid = h('div', { class: 's-tool-grid', 'data-role': 'align-row' }, EDGES.map((d) =>
+            toolButton('align-' + d.edge, d.align, d.icon, () => run('align', { edge: d.edge, relative: relative() }))));
+        const distGrid = h('div', { class: 's-tool-grid is-6', 'data-role': 'dist-row' }, EDGES.map((d) =>
+            toolButton('dist-' + d.edge, d.dist, d.distIcon, () => run('distribute', { edge: d.edge }))));
 
         view.append(
-            ui.sectionTitle('Lissage de vitesse'),
-            h('div', { class: 's-stack', 'data-role': 'ease' }, easeRows),
-            ui.sectionTitle('Elastic'),
-            h('div', { class: 's-row-inline', 'data-role': 'elastic' }, primary, remove),
-            ui.sectionTitle('Point d\'ancrage'),
-            h('div', { class: 's-point9-row' }, p9,
-                h('div', { class: 's-point9-hint', text: 'Clique une case, ou tape 1 à 9 au pavé numérique. La position est compensée : rien ne bouge à l\'écran.' })),
-            ui.sectionTitle('Aligner'),
-            h('div', { class: 's-stack' }, seg, alignRow),
-            ui.sectionTitle('Répartir'),
-            distRow);
+            h('div', { class: 's-stack', 'data-role': 'ease' }, labelRow('Lissage de vitesse', 'clic ou relâcher = appliquer'), easeRows),
+            h('div', { class: 's-stack' }, labelRow('Elastic'),
+                h('div', { class: 's-gesture-row', 'data-role': 'elastic-row' }, elastic, remove)),
+            h('div', { class: 's-place-row' },
+                h('div', { class: 's-place-col' }, labelRow('Ancrage', 'pavé 1–9'), p9),
+                h('div', { class: 's-place-col is-wide' }, labelRow('Aligner'), seg, alignGrid)),
+            h('div', { class: 's-stack' }, labelRow('Répartir', '3 calques ou plus'), distGrid));
 
         // --- Clavier --------------------------------------------------------------------
-        // Entrée = bouton principal quand la section a le focus ; pavé numérique = point d'ancrage
+        // Entrée = rejouer le dernier geste quand la vue a le focus ; pavé numérique = ancrage
         // quand la vue est visible (le hub garde les vues cachées montées).
         const focusRoot = view.closest('.s-view') || view;
         const doc = focusRoot.ownerDocument;
@@ -119,7 +139,7 @@
             if (e.key !== 'Enter' || e.defaultPrevented || inField(e)) return;
             if (e.target && e.target.tagName === 'BUTTON') return;
             if (doc.querySelector('[data-role=dialog]')) return;
-            if (!primary.disabled) { e.preventDefault(); primary.click(); }
+            if (last && !busy) { e.preventDefault(); last.replay(); }
         });
         doc.addEventListener('keydown', (e) => {
             const cell = NUMPAD[e.code];

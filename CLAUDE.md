@@ -33,7 +33,7 @@ projet (`extension/host/`). Spec de référence :
 **Client (`.js`, `.css`, `.html`)**
 - JS natif moderne, sans framework ni build. Pas d'appel direct à `CSInterface.evalScript` hors de `bridge.js`.
 - Composants de `js/ui/` réutilisés plutôt que recodés ; un composant nouveau s'écrit quand un outil en a besoin, pas avant.
-- Charte : jetons CSS de `charte.css`, un seul bouton principal par outil (verbe + quantité), cibles cliquables d'au moins 32 × 30, statut sur une ligne (info / ok / warn / error), pas d'`alert` (dialogue de la charte).
+- Charte : jetons CSS de `charte.css`, au plus un bouton principal par outil (verbe + quantité ; aucun dans un outil de gestes rapides, où Entrée rejoue le dernier geste), cibles cliquables d'au moins 32 × 30, statut sur une ligne (info / ok / warn / error), pas d'`alert` (dialogue de la charte).
 
 **Partout** : identifiants en anglais ; commentaires et textes d'interface en français, tutoiement dans les aides.
 
