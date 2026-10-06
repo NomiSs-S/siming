@@ -152,13 +152,37 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-about dt { color: var(--text); }
 .s-about dd { margin: 0; font-family: var(--mono); color: var(--text-muted); }
 .s-order, .s-keys { display: flex; flex-direction: column; gap: 1px; }
-.s-order-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 2px 0 8px; border-radius: 3px; }
+.s-settings-pane { display: flex; flex-direction: column; gap: 8px; }
+.s-order-row { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 2px 0 0; border-radius: 3px; }
 .s-order-row:hover { background: var(--bg-hover); }
+.s-order-row.is-off .s-order-icon, .s-order-row.is-off .s-order-name { opacity: .45; }
+.s-order-row.is-dragging { background: var(--bg-surface); box-shadow: 0 0 0 1px var(--accent-text); position: relative; z-index: 1; }
+.s-grip { flex: none; width: 28px; height: 32px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #5E5E5E; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; }
+.s-grip:hover { color: var(--text); background: #2E2E2E; }
+.s-grip:active, .s-order-row.is-dragging .s-grip { cursor: grabbing; color: var(--accent-text); }
+.s-grip:disabled { opacity: .3; cursor: default; }
+.s-kbd { flex: none; max-width: 72px; min-width: 22px; height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg-inset); font-family: var(--mono); font-size: 10px; line-height: 18px; text-align: center; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-kbd.is-empty { visibility: hidden; }
+.s-eye.is-off { color: var(--text-muted); }
+.s-eye:disabled { opacity: .3; cursor: default; }
+
+/* Champ de recherche et menu déroulant */
+.s-search { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 9px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); color: var(--icon-rest); }
+.s-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.s-search-input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: transparent; color: var(--text-strong); font: inherit; outline: none; -webkit-appearance: none; appearance: none; user-select: text; }
+.s-search-input::placeholder { color: #6E6E6E; }
+.s-search-input::-webkit-search-cancel-button { display: none; }
+.s-search-clear { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.s-search-clear:hover { background: #2E2E2E; color: var(--text); }
+.s-select { width: 100%; height: 30px; padding: 0 28px 0 10px; border: 1px solid var(--line); border-radius: var(--radius); color: var(--text-strong); font: inherit; cursor: pointer; color-scheme: dark; -webkit-appearance: none; appearance: none;
+    background: var(--bg-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239A9A9A' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center; }
+.s-select:hover { border-color: #5A5A5A; }
+.s-select:focus { outline: none; border-color: var(--accent); }
 .s-order-icon { display: flex; color: var(--icon-rest); }
 .s-order-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s-order-row .s-icon-btn { height: 30px; }
 .s-order-row .s-icon-btn:disabled { opacity: .3; cursor: default; }
-.s-keys-group { margin-top: 6px; padding: 0 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.s-keys-group { display: flex; justify-content: space-between; margin-top: 6px; padding: 0 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
 .s-key-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 2px 0 8px; border-radius: 3px; }
 .s-key-row:hover { background: var(--bg-hover); }
 .s-key-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

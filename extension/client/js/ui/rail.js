@@ -52,12 +52,19 @@
             buttons.forEach((b, key) => b.classList.toggle('is-active', key === id));
         };
 
-        /** Nouvel ordre d'affichage (ids) : ids inconnus ignorés, outils oubliés à la fin. */
-        el.setOrder = function (ids) {
+        /** Nouvel ordre d'affichage (ids) : ids inconnus ignorés, outils oubliés à la fin.
+         *  hidden (facultatif) : ids des outils masqués du rail (Réglages › Outils). */
+        el.setOrder = function (ids, hidden) {
+            const off = hidden || [];
             const next = ids.map((id) => all.find((t) => t.id === id)).filter(Boolean);
             for (const t of all) if (!next.includes(t)) next.push(t);
-            order = next;
-            for (const t of order) el.insertBefore(buttons.get(t.id), spacer);
+            for (const t of next) {
+                const b = buttons.get(t.id);
+                el.insertBefore(b, spacer);
+                b.classList.toggle('is-off', off.includes(t.id));
+                if (off.includes(t.id)) b.hidden = true;
+            }
+            order = next.filter((t) => !off.includes(t.id));
         };
 
         /** Infobulle « Nom (raccourci) » de chaque outil : hints = { id: 'libellé' | '' }. */

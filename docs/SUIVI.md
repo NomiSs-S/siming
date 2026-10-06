@@ -94,6 +94,13 @@ Trois retours après test de Quick Tools dans After Effects, corrigés et compl�
 - Faux AE : `setValueAtKey`, tangentes spatiales, Bézier automatique. `node tests/run.js` : 176 tests, 0 échec. Version inchangée (1.1.0 non publiée).
 État : à retester dans AE (sections Hub et Quick Tools de `docs/TESTS-MANUELS.md`, recharger le panneau), puis Release 1.1.0.
 
+### 2026-10-06 : Réglages repensés pour beaucoup d'outils
+
+Demande de Simon : retravailler la fenêtre Réglages en prévoyant beaucoup de futurs outils, en restant ergonomique.
+Fait : trois onglets (Outils, Raccourcis, Général ; dernier onglet mémorisé dans `siming.settingsTab`). Outils : liste unique qui remplace la liste radio de démarrage et les boutons Monter / Descendre ; poignée à glisser (ou ↑ ↓ au clavier), œil pour masquer un outil du rail (`siming.hiddenTools` ; jamais tous ; un outil masqué n'a pas de chiffre et reste ouvrable en panneau isolé), pastille de la touche de chaque outil, recherche à partir de 7 outils. Raccourcis : champ de recherche (action, outil ou touche, accents ignorés), compteur par groupe. Général : outil au lancement en menu déroulant, « À propos », rappel de l'installeur pour les mises à jour. Composants `ui.searchField` et `ui.select` ; icônes `masque` et `poignee` ajoutées, `monter` / `descendre` retirées (38 icônes). Tests : 179, 0 échec.
+Choix faits sans demander (à corriger si besoin) : masquer plutôt que désinstaller (un outil masqué reste installé et disponible en panneau isolé) ; recherche des outils seulement à partir de 7 outils ; « Outil au lancement » déplacé dans Général.
+État : à vérifier dans AE (section Hub de `docs/TESTS-MANUELS.md`), surtout le glisser de la poignée dans CEP et le menu déroulant en thème sombre.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

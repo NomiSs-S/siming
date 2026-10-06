@@ -58,9 +58,11 @@ module.exports = function (test) {
     test('hub : réglage « outil au lancement »', () => {
         const t = setup();
         t.$('.s-rail-btn[data-tool=__settings]').click();
-        const radio = t.win.document.querySelector('[data-role=start-tool] input[value=unparent]');
-        radio.checked = true;
-        radio.dispatchEvent(new t.win.Event('change'));
+        const select = t.$('[data-role=start-tool]');
+        assert.deepEqual(Array.from(select.options).map((o) => o.value), ['last', 'unparent', 'demo', 'casse', 'absent']);
+        assert.strictEqual(select.value, 'last');
+        select.value = 'unparent';
+        select.dispatchEvent(new t.win.Event('change'));
         assert.strictEqual(t.win.localStorage.getItem('siming.startTool'), 'unparent');
         t.$('.s-rail-btn[data-tool=demo]').click();
         const again = setup({ win: t.win });
@@ -71,7 +73,7 @@ module.exports = function (test) {
         const t = setup();
         t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '2', code: 'Digit2', bubbles: true }));
         assert.strictEqual(t.hub.current, 'demo');
-        const input = t.win.document.querySelector('[data-role=start-tool] input');
+        const input = t.$('[data-role=keys-search] input');
         input.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true }));
         assert.strictEqual(t.hub.current, 'demo');
         t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Numpad1', bubbles: true }));
@@ -85,31 +87,114 @@ module.exports = function (test) {
         assert.deepEqual(ids('casse, demo,inconnu,demo'), ['casse', 'demo', 'unparent', 'absent']);
     });
 
-    test('hub : Réglages › ordre des outils : rail, touches et infobulles suivent, mémorisé', () => {
+    test('hub : Réglages › ordre des outils (poignée au clavier et au glisser) : rail, touches et infobulles suivent, mémorisé', () => {
         const t = setup();
         const doc = t.win.document;
         t.$('.s-rail-btn[data-tool=__settings]').click();
         const rows = () => Array.from(doc.querySelectorAll('[data-role=tool-order] .s-order-row')).map((r) => r.getAttribute('data-tool'));
         const railIds = () => Array.from(doc.querySelectorAll('.s-rail-btn[data-tool]')).map((b) => b.getAttribute('data-tool'));
+        const grip = (id) => doc.querySelector('[data-role=tool-order] [data-tool="' + id + '"] [data-role=order-grip]');
+        const keydown = (el, key) => el.dispatchEvent(new t.win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
         assert.deepEqual(rows(), ['unparent', 'demo', 'casse', 'absent']);
-        const ups = () => doc.querySelectorAll('[data-role=tool-order] [data-role=order-up]');
-        const downs = () => doc.querySelectorAll('[data-role=tool-order] [data-role=order-down]');
-        assert.strictEqual(ups()[0].disabled, true, 'premier : pas de Monter');
-        assert.strictEqual(downs()[3].disabled, true, 'dernier : pas de Descendre');
-        ups()[1].click();                                   // Démo monte
+        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=tool-key]')).map((k) => k.textContent), ['1', '2', '3', '4']);
+        keydown(grip('demo'), 'ArrowUp');                    // Démo monte
         assert.deepEqual(rows(), ['demo', 'unparent', 'casse', 'absent']);
+        assert.strictEqual(doc.activeElement, grip('demo'), 'le focus reste sur la poignée');
         assert.deepEqual(railIds(), ['demo', 'unparent', 'casse', 'absent', '__settings']);
         assert.strictEqual(t.win.localStorage.getItem('siming.toolOrder'), 'demo,unparent,casse,absent');
+        keydown(grip('absent'), 'ArrowDown');
+        assert.deepEqual(rows(), ['demo', 'unparent', 'casse', 'absent'], 'dernier : ↓ inerte');
         doc.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true, cancelable: true }));
         assert.strictEqual(t.hub.current, 'demo', 'la touche 1 suit le rail');
         assert.strictEqual(t.$('.s-rail-btn[data-tool=demo]').title, 'Démo (1)');
         assert.strictEqual(t.$('.s-rail-btn[data-tool=unparent]').title, 'Unparent (2)');
         assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=shortcuts] [data-action^="hub.show."]')).map((b) => b.textContent), ['1', '2', '3', '4']);
-        downs()[3].click();
-        assert.deepEqual(rows(), ['demo', 'unparent', 'casse', 'absent'], 'dernier : Descendre inerte');
+        // Glisser : lignes de 34 px empilées ; « Absent » lâché en haut
+        t.$('.s-rail-btn[data-tool=__settings]').click();
+        doc.querySelectorAll('[data-role=tool-order] .s-order-row').forEach((r) => {
+            r.getBoundingClientRect = () => { const i = Array.from(r.parentNode.children).indexOf(r); return { top: i * 34, height: 34, bottom: i * 34 + 34 }; };
+        });
+        const g = grip('absent');
+        const ptr = (type, y) => g.dispatchEvent(new t.win.MouseEvent(type, { bubbles: true, button: 0, clientY: y }));
+        ptr('pointerdown', 110);
+        assert.ok(g.closest('.s-order-row').classList.contains('is-dragging'));
+        ptr('pointermove', 5);
+        ptr('pointerup', 5);
+        assert.deepEqual(rows(), ['absent', 'demo', 'unparent', 'casse']);
+        assert.strictEqual(t.win.localStorage.getItem('siming.toolOrder'), 'absent,demo,unparent,casse');
+        assert.strictEqual(t.hub.status.text, 'Ordre des outils enregistré');
         const again = setup({ win: t.win });
-        assert.deepEqual(Array.from(again.win.document.querySelectorAll('.s-rail-btn[data-tool]')).map((b) => b.getAttribute('data-tool')).slice(0, 2), ['demo', 'unparent']);
-        assert.deepEqual(again.hub.tools().map((x) => x.id), ['demo', 'unparent', 'casse', 'absent']);
+        assert.deepEqual(again.hub.tools().map((x) => x.id), ['absent', 'demo', 'unparent', 'casse']);
+    });
+
+    test('hub : Réglages › masquer un outil du rail : touches décalées, jamais tous, mémorisé', () => {
+        const t = setup();
+        const doc = t.win.document;
+        t.$('.s-rail-btn[data-tool=__settings]').click();
+        const eye = (id) => doc.querySelector('[data-role=tool-order] [data-tool="' + id + '"] [data-role=tool-visible]');
+        const shownRail = () => Array.from(doc.querySelectorAll('.s-rail-btn[data-tool]:not([hidden])')).map((b) => b.getAttribute('data-tool'));
+        eye('unparent').click();
+        assert.deepEqual(t.hub.hidden(), ['unparent']);
+        assert.deepEqual(shownRail(), ['demo', 'casse', 'absent', '__settings']);
+        assert.strictEqual(t.win.localStorage.getItem('siming.hiddenTools'), 'unparent');
+        assert.ok(doc.querySelector('.s-order-row[data-tool="unparent"]').classList.contains('is-off'));
+        assert.strictEqual(t.$('[data-pane=tools] .s-counter').textContent, '4 · 1 masqué');
+        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=tool-key]')).map((k) => k.textContent), ['', '1', '2', '3']);
+        assert.ok(!Array.from(t.$('[data-role=start-tool]').options).some((o) => o.value === 'unparent'), 'outil masqué absent du lancement');
+        doc.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true, cancelable: true }));
+        assert.strictEqual(t.hub.current, 'demo');
+        eye('demo').click(); eye('casse').click();
+        assert.strictEqual(eye('absent').disabled, true, 'le dernier outil visible ne se masque pas');
+        t.hub.show('unparent');
+        assert.strictEqual(t.hub.current, 'absent', "un outil masqué ne s'affiche pas");
+        eye('unparent').click();
+        assert.deepEqual(t.hub.hidden(), ['demo', 'casse']);
+        const again = setup({ win: t.win });
+        assert.deepEqual(again.hub.hidden(), ['demo', 'casse']);
+    });
+
+    test('hub : Réglages › onglets mémorisés, recherche des raccourcis et des outils', () => {
+        const t = setup();
+        const doc = t.win.document;
+        const pane = (id) => doc.querySelector('[data-pane=' + id + ']');
+        t.$('.s-rail-btn[data-tool=__settings]').click();
+        assert.deepEqual(['tools', 'keys', 'general'].map((id) => pane(id).hidden), [false, true, true]);
+        doc.querySelectorAll('[data-role=settings-tabs] .s-seg-btn')[1].click();
+        assert.deepEqual(['tools', 'keys', 'general'].map((id) => pane(id).hidden), [true, false, true]);
+        assert.strictEqual(t.win.localStorage.getItem('siming.settingsTab'), 'keys');
+        const search = t.$('[data-role=keys-search] input');
+        search.value = 'cassé';
+        search.dispatchEvent(new t.win.Event('input'));
+        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=shortcuts] [data-action]')).map((b) => b.getAttribute('data-action')), ['hub.show.casse']);
+        search.value = 'zzz';
+        search.dispatchEvent(new t.win.Event('input'));
+        assert.strictEqual(t.$('[data-role=shortcuts] .s-empty').textContent, 'Aucune action ne correspond');
+        search.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        assert.strictEqual(search.value, '');
+        assert.strictEqual(doc.querySelectorAll('[data-role=shortcuts] [data-action]').length, 5);
+        assert.strictEqual(t.$('[data-role=tools-search]').hidden, true, "peu d'outils : pas de recherche");
+        const again = setup({ win: t.win });
+        assert.strictEqual(again.$('[data-pane=keys]').hidden, false, 'onglet retrouvé');
+        // Beaucoup d'outils : recherche, poignées inertes pendant le filtre, pas de chiffre au-delà de 9
+        const win = makeDom(SCRIPTS);
+        const extra = [1, 2, 3, 4, 5, 6].map((n) => ({ id: 'x' + n, name: 'Outil ' + n, icon: 'ancre', version: '1.0.0', script: 'tools/x.js' }));
+        const many = Object.assign({}, LIST, { tools: LIST.tools.concat(extra) });
+        win.SIMING.registerTool('demo', { mount() { return {}; } });
+        win.SIMING.startHub({ root: win.document.getElementById('app'), list: many, bridge: win.SIMING.createBridge(() => {}) });
+        const ts = win.document.querySelector('[data-role=tools-search]');
+        assert.strictEqual(ts.hidden, false);
+        assert.deepEqual(Array.from(win.document.querySelectorAll('[data-role=tool-key]')).map((k) => k.textContent).slice(8), ['9', ''], '10e outil : pas de chiffre');
+        ts.querySelector('input').value = 'outil 3';
+        ts.querySelector('input').dispatchEvent(new win.Event('input'));
+        assert.deepEqual(Array.from(win.document.querySelectorAll('[data-role=tool-order] .s-order-row:not([hidden])')).map((r) => r.getAttribute('data-tool')), ['x3']);
+        assert.strictEqual(win.document.querySelector('[data-tool=x3] [data-role=order-grip]').disabled, true);
+    });
+
+    test('hub : moveItem et fold', () => {
+        const t = setup();
+        assert.deepEqual(t.win.SIMING.moveItem(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']);
+        assert.deepEqual(t.win.SIMING.moveItem(['a', 'b', 'c'], 0, 9), ['b', 'c', 'a']);
+        assert.strictEqual(t.win.SIMING.fold('Élastique Déjà'), 'elastique deja');
     });
 
     test('hub : Réglages › raccourcis : capture, conflit signalé, infobulle du rail, Retour, Échap, rétablir', () => {
@@ -118,7 +203,7 @@ module.exports = function (test) {
         const press = (init) => doc.dispatchEvent(new t.win.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init)));
         const keyBtn = (id) => t.$('[data-role=shortcuts] [data-action="' + id + '"]');
         t.$('.s-rail-btn[data-tool=__settings]').click();
-        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=shortcuts] .s-keys-group')).map((g) => g.textContent), ['Panneau']);
+        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=shortcuts] .s-keys-group-name')).map((g) => g.textContent), ['Panneau']);
         assert.strictEqual(keyBtn('hub.show.demo').textContent, '2');
         assert.strictEqual(keyBtn('hub.settings').textContent, '—');
         keyBtn('hub.show.demo').click();

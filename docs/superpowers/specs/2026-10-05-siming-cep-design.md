@@ -204,10 +204,11 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
   seul outil avec sa propre ligne de statut. Même code dans les deux cas.
 - **Hub** : rail horizontal (outil actif : fond surface, icône bleue, trait bas
   2 px), touches 1…n (rangée de chiffres, `e.code`) pour changer d'outil dans l'ordre
-  du rail, ligne de statut commune `vX.Y.Z`, vue Réglages : outil au lancement
-  (dernier ou un outil précis), ordre des outils (Monter / Descendre, le rail et les
-  touches suivent), raccourcis clavier (voir ci-dessous), « À propos » (version de
-  SIMING et de chaque outil).
+  du rail, ligne de statut commune `vX.Y.Z`, vue Réglages en trois onglets
+  (revue le 2026-10-06 pour tenir avec beaucoup d'outils) : **Outils** (ordre par
+  poignée à glisser ou ↑ ↓, œil pour masquer du rail, touche de chaque outil, recherche
+  dès 7 outils), **Raccourcis** (recherche, actions groupées par outil), **Général**
+  (outil au lancement en menu déroulant, « À propos »).
 - **Raccourcis clavier** (`js/keys.js`, ajouté le 2026-10-06) : registre d'actions
   `{ id, label, group, defaultKey, run, when }` rempli par le hub (« Afficher <outil> »,
   chiffre de la place dans le rail ; « Afficher les réglages » sans touche) et par
@@ -219,7 +220,8 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
   bouton « Rétablir ») ; conflit = l'autre action perd sa touche, sauf entre deux outils
   (jamais actifs ensemble) ; le groupe du hub est toujours actif.
 - **Réglages** : `localStorage` du panneau (`siming.startTool`, `siming.lastTool`,
-  `siming.toolOrder` = ids séparés par des virgules, `siming.keys` = JSON
+  `siming.toolOrder` et `siming.hiddenTools` = ids séparés par des virgules,
+  `siming.settingsTab` = onglet ouvert, `siming.keys` = JSON
   `{ id: { code, label } | null }`).
 - **Icônes** : SVG en ligne (`currentColor`), tracés repris de `docs/design/icons.json`.
 

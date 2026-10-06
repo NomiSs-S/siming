@@ -62,12 +62,21 @@ statut dit ensuite combien d'éléments ont été traités. Le dernier geste est
 
 ## Réglages
 
-Le bouton Réglages du rail ouvre : l'**outil au lancement** (dernier utilisé ou un
-outil précis), l'**ordre des outils** (Monter / Descendre : le rail et les touches 1…n
-suivent), les **raccourcis clavier** (une touche par action : afficher un outil, rejouer
-le dernier geste, chaque geste de Quick Tools ; clic sur la touche, puis frappe du
-nouveau raccourci, Retour arrière = aucun, « Rétablir » pour revenir aux défauts) et
-« À propos ». Les raccourcis agissent quand le panneau a le focus ; ils sont repérés
+Le bouton Réglages du rail ouvre trois onglets, pensés pour beaucoup d'outils :
+
+- **Outils** : la liste des outils du rail. Glisse la poignée d'une ligne pour changer
+  l'ordre (ou ↑ ↓ au clavier sur la poignée) ; l'œil masque un outil du rail (il reste
+  disponible en panneau isolé, et on ne peut pas tout masquer). Chaque ligne montre la
+  touche de l'outil : les 9 premiers outils visibles ont 1 à 9. Un champ de recherche
+  apparaît à partir de 7 outils.
+- **Raccourcis** : recherche (action, outil ou touche), puis une touche par action
+  (afficher un outil, rejouer le dernier geste, chaque geste de Quick Tools) ; clic sur
+  la touche, puis frappe du nouveau raccourci, Retour arrière = aucun, « Rétablir » pour
+  revenir aux défauts.
+- **Général** : outil au lancement (menu déroulant : dernier utilisé ou un outil
+  précis) et « À propos ».
+
+Le dernier onglet ouvert est retrouvé. Les raccourcis agissent quand le panneau a le focus ; ils sont repérés
 par la touche physique, donc valables en AZERTY comme en QWERTY.
 
 ## Développement

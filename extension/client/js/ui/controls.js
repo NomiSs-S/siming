@@ -112,6 +112,38 @@
         return el;
     };
 
+    /** Champ de recherche (30 px) : loupe, texte, croix pour vider (Échap vide aussi).
+     *  onInput(texte) à chaque frappe. el.value, el.clear(). */
+    ui.searchField = function ({ placeholder, onInput, role }) {
+        const input = h('input', { class: 's-search-input', type: 'search', placeholder: placeholder || 'Chercher', 'aria-label': placeholder || 'Chercher', spellcheck: 'false' });
+        const clear = h('button', { class: 's-search-clear', type: 'button', title: 'Vider', 'aria-label': 'Vider la recherche', hidden: true }, ui.icon('fermer', 12));
+        const el = h('div', { class: 's-search', 'data-role': role || 'search' }, ui.icon('chercher', 14), input, clear);
+        const changed = () => { clear.hidden = !input.value; if (onInput) onInput(input.value); };
+        input.addEventListener('input', changed);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && input.value) { e.preventDefault(); e.stopPropagation(); el.clear(); }
+        });
+        clear.addEventListener('click', () => { el.clear(); input.focus(); });
+        el.clear = () => { input.value = ''; changed(); };
+        el.input = input;
+        Object.defineProperty(el, 'value', { get: () => input.value });
+        return el;
+    };
+
+    /** Menu déroulant (30 px, pleine largeur) : options [{ value, label }].
+     *  onChange(value) au choix. el.setOptions(options, value), el.value. */
+    ui.select = function ({ options, value, onChange, role, label }) {
+        const el = h('select', { class: 's-select', 'data-role': role || 'select', 'aria-label': label || '' });
+        el.addEventListener('change', () => { if (onChange) onChange(el.value); });
+        el.setOptions = function (opts, current) {
+            el.replaceChildren(...opts.map((o) => h('option', { value: o.value, text: o.label })));
+            if (current !== undefined) el.value = current;
+            if (el.selectedIndex < 0 && opts.length) el.selectedIndex = 0;
+        };
+        el.setOptions(options || [], value);
+        return el;
+    };
+
     /** Liste à lignes de 32 px, chaque ligne entièrement cliquable. */
     ui.rowList = function ({ onRow, emptyText, role }) {
         const el = h('div', { class: 's-rows', 'data-role': role || 'rows' });

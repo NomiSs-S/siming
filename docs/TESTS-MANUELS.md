@@ -22,8 +22,10 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 - [ ] Fond, rail horizontal (48 px), icônes nettes, outil actif bleu avec trait bas, Réglages à droite, statut en bas avec `v1.0.0`.
 - [ ] Panneau étroit (≈ 260 px) : rien ne déborde ; avec plusieurs outils, le menu « … » apparaît.
 - [ ] Touches 1…n (rangée de chiffres, avec ou sans Maj en AZERTY) changent d'outil dans l'ordre du rail (pas dans un champ) ; infobulle du rail « Nom (1) ».
-- [ ] Réglages : outil au lancement respecté après fermeture/réouverture ; « À propos » liste les versions.
-- [ ] Réglages › Ordre des outils : Monter / Descendre réordonne le rail aussitôt, les touches 1…n et les infobulles suivent, l'ordre est retrouvé après fermeture/réouverture.
+- [ ] Réglages : trois onglets Outils / Raccourcis / Général, le dernier ouvert est retrouvé après fermeture/réouverture. Général : outil au lancement (menu déroulant lisible en thème sombre) respecté après réouverture ; « À propos » liste les versions.
+- [ ] Réglages › Outils : glisser une ligne par sa poignée (la ligne suit la souris, contour bleu) réordonne le rail au relâchement ; ↑ ↓ sur la poignée aussi ; les touches 1…n, les infobulles et la pastille de touche de chaque ligne suivent ; ordre retrouvé après réouverture.
+- [ ] Réglages › Outils : l'œil masque un outil du rail (ligne atténuée, compteur « n · 1 masqué »), les chiffres se décalent ; l'outil masqué reste ouvrable par Fenêtre › Extensions › SIMING – <Outil> ; le dernier outil visible ne peut pas être masqué.
+- [ ] Réglages › Raccourcis : la recherche filtre par action, outil ou touche (accents ignorés) ; Échap vide le champ ; « Aucune action ne correspond » si rien.
 - [ ] Réglages › Raccourcis clavier : groupes « Panneau » puis un par outil ; clic sur la touche d'« Afficher Quick Tools », frappe Ctrl+Q : le bouton affiche « Ctrl + Q », l'infobulle du rail aussi, Ctrl+Q change d'outil et la touche 2 ne fait plus rien. Choisir pour « Afficher Unparent » la touche 1 déjà prise : statut orange « Raccourci repris à : … », l'autre action affiche « — ». Retour arrière = « — », Échap = inchangé. « Rétablir » remet 1, 2… Lettre tapée en AZERTY (A) : libellé « A », pas « Q ».
 - [ ] Raccourci choisi dans le hub, puis panneau isolé « SIMING – Quick Tools » : noter s'il s'applique aussi (mémoire `localStorage` partagée entre extensions du bundle ?) ; sinon les touches par défaut.
 - [ ] Changer la luminosité de l'interface d'AE (Préférences › Apparence) : le fond du panneau suit.
