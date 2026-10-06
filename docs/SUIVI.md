@@ -114,7 +114,11 @@ Demande de Simon (4 points).
 - **Geste en un clic** : `ui.pressToOpen` ouvre le sélecteur au bouton enfoncé (pointerdown) ; relâcher sur une couleur la choisit, relâcher sur le bouton laisse ouvert (simple clic), relâcher ailleurs ferme. Clavier (Entrée / Espace) : ouverture classique, focus sur la couleur. Lignes du récapitulatif, pastilles de règle et des natures.
 - **Pictos du canevas** (maquette Quick Tools) : `reglages` = deux curseurs, nouvelle icône `panneau` (fenêtre à barre de titre) pour « Ouvrir dans un panneau », placé après l'aide comme sur le canevas (40 icônes).
 - **Raccourcis combinés** : le registre gérait déjà Ctrl / Alt / Maj / Cmd, mais un panneau CEP ne reçoit pas ces combinaisons tant qu'il ne les réclame pas à After Effects. `SIMING.keys.interest(os)` liste les frappes à réclamer (codes VK Windows, kVK macOS ; chiffres aussi avec Maj ; toutes les touches pendant la capture d'un raccourci), `SIMING.claimKeys(cs)` appelle `registerKeyEventsInterest` au démarrage et à chaque changement (`keys.onChange`). Capture : le bouton affiche « Ctrl + Alt + … » pendant qu'on tient les modificateurs ; libellé correct avec AltGr (« Ctrl + Alt + E », pas « € ») ; Ctrl + Retour arrière devient une touche, Retour arrière seul = aucun.
-Tests : 200, 0 échec. Rendu et geste vérifiés dans Chrome (page de démonstration). Version : toujours 1.2.0 (non publiée).
+Tests : 200, 0 échec. Rendu et geste vérifiés dans Chrome (page de démonstration).
+
+### 2026-10-06 : SIMING 1.2.0 publiée, partage avec les collègues
+
+Demande de Simon : commencer à partager SIMING avec des collègues, mises à jour par l'installeur. Publiée sans test complet dans AE, à sa demande (corrections éventuelles en 1.2.1). Release https://github.com/NomiSs-S/siming/releases/tag/v1.2.0 : `SIMING-1.2.0.zxp` (signature vérifiée), installeurs Windows et macOS, `INSTALLATION.md` ; notes « Ajout : Quick Tools et Libellés, raccourcis combinés ». La 1.1.0 n'a jamais été publiée : la 1.2.0 apporte Quick Tools et Libellés d'un coup. Commit 3654966 sur `main`.
 
 ## Pistes
 
