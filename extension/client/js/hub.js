@@ -78,7 +78,9 @@
             const tag = e.target && e.target.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
-            const n = parseInt(e.key, 10);
+            // Rangée de chiffres seulement : le pavé numérique est réservé aux outils (point d'ancrage).
+            const m = /^Digit(\d)$/.exec(e.code || '');
+            const n = m ? parseInt(m[1], 10) : NaN;
             if (n >= 1 && n <= tools.length) {
                 e.preventDefault();
                 show(tools[n - 1].id);

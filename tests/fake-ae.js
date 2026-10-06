@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const P = require('./fake-ae-props');
 
 let nextId = 1000;
 
@@ -24,7 +25,26 @@ function CompItem() {}
 /** Poignée vers l'état d'un calque : un objet neuf par accès, état partagé. */
 function LayerRef(state, comp) {
     Object.defineProperty(this, '_state', { value: state, enumerable: false });
+    Object.defineProperty(this, '_comp', { value: comp, enumerable: false });
+    const ctx = { comp, layerState: state, layerRef: () => refOf(state, comp) };
+    Object.defineProperty(this, '_ctx', { value: ctx, enumerable: false });
     Object.defineProperty(this, 'id', { get: () => state.id, enumerable: true });
+    Object.defineProperty(this, 'selected', {
+        get: () => comp.selection.indexOf(state) >= 0,
+        set: (v) => {
+            const i = comp.selection.indexOf(state);
+            if (v && i < 0) comp.selection.push(state);
+            if (!v && i >= 0) comp.selection.splice(i, 1);
+        },
+        enumerable: true,
+    });
+    Object.defineProperty(this, 'threeDLayer', { get: () => state.threeD, enumerable: true });
+    Object.defineProperty(this, 'numProperties', { get: () => 2, enumerable: false });   // Transformation, Effets
+    Object.defineProperty(this, 'transform', { get: () => new P.GroupRef(state.transform, ctx), enumerable: false });
+    Object.defineProperty(this, 'anchorPoint', { get: () => this.transform.property('ADBE Anchor Point'), enumerable: false });
+    Object.defineProperty(this, 'position', { get: () => this.transform.property('ADBE Position'), enumerable: false });
+    Object.defineProperty(this, 'scale', { get: () => this.transform.property('ADBE Scale'), enumerable: false });
+    Object.defineProperty(this, 'rotation', { get: () => this.transform.property('ADBE Rotate Z'), enumerable: false });
     Object.defineProperty(this, 'index', { get: () => comp.layers.indexOf(state) + 1, enumerable: true });
     Object.defineProperty(this, 'name', { get: () => state.name, set: (v) => { state.name = String(v); }, enumerable: true });
     Object.defineProperty(this, 'comment', {
@@ -55,6 +75,58 @@ function LayerRef(state, comp) {
     });
 }
 
+/** property('ADBE Transform Group' | 'Transform' | 'ADBE Effect Parade' | 'Effects' | matchName ou nom d'une propriété de transformation). */
+LayerRef.prototype.property = function (x) {
+    const st = this._state;
+    if (x === 1 || x === 'ADBE Transform Group' || x === 'Transform') return new P.GroupRef(st.transform, this._ctx);
+    if (x === 2 || x === 'ADBE Effect Parade' || x === 'Effects') return new P.GroupRef(st.effects, this._ctx);
+    if (typeof x === 'number') return null;
+    return this.transform.property(x) || this.property('ADBE Effect Parade').property(x);
+};
+
+/** effect(nom | index 1..n) -> poignée de l'effet, ou null. */
+LayerRef.prototype.effect = function (x) {
+    return this.property('ADBE Effect Parade').property(x);
+};
+
+/** Boîte visible du calque dans son propre espace ({ top, left, width, height }). */
+LayerRef.prototype.sourceRectAtTime = function () {
+    return Object.assign({}, this._state.rect);
+};
+
+/** Imite AE : le préréglage s'applique aux calques SÉLECTIONNÉS de la comp
+ *  (au calque appelé si rien n'est sélectionné). Seul ElasticController.ffx est connu. */
+LayerRef.prototype.applyPreset = function (file) {
+    if (!file || !file.exists) throw new Error('Unable to apply preset: file not found (' + (file && file.fsName) + ')');
+    if (!/ElasticController\.ffx$/i.test(file.name)) throw new Error('Unknown preset in this fake: ' + file.name);
+    const comp = this._comp;
+    const targets = comp.selection.length ? comp.selection.slice() : [this._state];
+    for (const st of targets) {
+        if (st.locked) throw new Error('Unable to apply preset: layer is locked');
+        const fx = P.makeElasticController();
+        fx.parent = st.effects;
+        st.effects.children.push(fx);
+    }
+    app.presetsApplied.push({ file: file.name, layers: targets.map((s) => s.name) });
+};
+
+/** Caméras et lumières : pas de boîte visible ni de préréglage. */
+function CameraLayerRef(state, comp) { LayerRef.call(this, state, comp); }
+CameraLayerRef.prototype = Object.create(LayerRef.prototype);
+CameraLayerRef.prototype.constructor = CameraLayerRef;
+CameraLayerRef.prototype.sourceRectAtTime = undefined;
+function LightLayerRef(state, comp) { LayerRef.call(this, state, comp); }
+LightLayerRef.prototype = Object.create(LayerRef.prototype);
+LightLayerRef.prototype.constructor = LightLayerRef;
+LightLayerRef.prototype.sourceRectAtTime = undefined;
+
+/** Poignée de la bonne classe selon le genre du calque. */
+function refOf(state, comp) {
+    if (state.kind === 'camera') return new CameraLayerRef(state, comp);
+    if (state.kind === 'light') return new LightLayerRef(state, comp);
+    return new LayerRef(state, comp);
+}
+
 class FakeComp extends CompItem {
     constructor(id, name, opts) {
         super();
@@ -63,18 +135,38 @@ class FakeComp extends CompItem {
         this.layers = [];
         this.selection = [];
         this.noIds = !!(opts && opts.noIds);   // imite une version d'AE sans Layer.id
+        this.time = 0;
+        this.width = (opts && opts.width) || 1920;
+        this.height = (opts && opts.height) || 1080;
+        this.frameDuration = 1 / 25;
     }
     get numLayers() { return this.layers.length; }
     layer(i) {
         if (i < 1 || i > this.layers.length) throw new Error('Layer index out of range: ' + i);
-        return new LayerRef(this.layers[i - 1], this);
+        return refOf(this.layers[i - 1], this);
     }
-    get selectedLayers() { return this.selection.map((s) => new LayerRef(s, this)); }
-    /** Ajoute un calque et renvoie son ÉTAT interne (pas une poignée). */
+    get selectedLayers() { return this.selection.map((s) => refOf(s, this)); }
+    /** Propriétés sélectionnées de tous les calques, dans l'ordre des calques puis de l'arbre. */
+    get selectedProperties() {
+        const out = [];
+        for (const st of this.layers) {
+            const ctx = refOf(st, this)._ctx;
+            P.selectedStates(st.transform).concat(P.selectedStates(st.effects)).forEach((s) => out.push(P.refFor(s, ctx)));
+        }
+        return out;
+    }
+    /** Ajoute un calque et renvoie son ÉTAT interne (pas une poignée).
+     *  opts : kind ('av' | 'camera' | 'light'), threeD, rect { top, left, width, height }, locked, label… */
     addLayer(name, opts) {
+        const o = opts || {};
         const state = Object.assign(
-            { id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1 },
-            opts || {}
+            {
+                id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1,
+                kind: o.kind || 'av', threeD: !!o.threeD,
+                transform: P.makeTransform(!!o.threeD), effects: P.makeEffects(),
+                rect: { top: 0, left: 0, width: 100, height: 100 },
+            },
+            o
         );
         this.layers.push(state);
         return state;
@@ -126,6 +218,7 @@ const app = {
         item(i) { return this.items[i - 1]; },
     },
     preferences: makePreferences(),
+    presetsApplied: [],
     undoDepth: 0,
     undoGroups: [],
     beginUndoGroup(name) { this.undoDepth++; this.undoGroups.push(name); },
@@ -134,6 +227,7 @@ const app = {
         this.project.activeItem = null;
         this.project.items = [];
         this.preferences = makePreferences();
+        this.presetsApplied = [];
         this.undoDepth = 0;
         this.undoGroups = [];
     },
@@ -194,11 +288,19 @@ function runFile(sandbox, file) {
 
 /** Nouveau bac à sable : app, CompItem, File, Folder, $, alert. $.global = le global. */
 function createSandbox() {
-    const sandbox = { app, CompItem, File: FakeFile, Folder: FakeFolder, alerts: [] };
+    const sandbox = {
+        app, CompItem, File: FakeFile, Folder: FakeFolder, alerts: [],
+        AVLayer: LayerRef, CameraLayer: CameraLayerRef, LightLayer: LightLayerRef,
+        KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType,
+        PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType,
+    };
     sandbox.alert = (msg) => sandbox.alerts.push(String(msg));
     sandbox.$ = { global: sandbox, fileName: '', evalFile: (file) => runFile(sandbox, file) };
     vm.createContext(sandbox);
     return sandbox;
 }
 
-module.exports = { CompItem, FakeComp, LayerRef, app, FakeFile, FakeFolder, createSandbox, runFile };
+module.exports = {
+    CompItem, FakeComp, LayerRef, CameraLayerRef, LightLayerRef, app, FakeFile, FakeFolder, createSandbox, runFile,
+    KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType, PropertyType: P.PropertyType,
+};

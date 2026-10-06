@@ -67,13 +67,15 @@ module.exports = function (test) {
         assert.strictEqual(again.hub.current, 'unparent');
     });
 
-    test('hub : touches 1…n changent d\'outil, sauf dans un champ', () => {
+    test('hub : touches 1…n (rangée de chiffres) changent d\'outil, sauf dans un champ ou au pavé numérique', () => {
         const t = setup();
-        t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '2', bubbles: true }));
+        t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '2', code: 'Digit2', bubbles: true }));
         assert.strictEqual(t.hub.current, 'demo');
         const input = t.win.document.querySelector('[data-role=start-tool] input');
-        input.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', bubbles: true }));
+        input.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true }));
         assert.strictEqual(t.hub.current, 'demo');
+        t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Numpad1', bubbles: true }));
+        assert.strictEqual(t.hub.current, 'demo', 'le pavé numérique est réservé aux outils');
     });
 
     test('hub : outil cassé ou sans script isolé, les autres fonctionnent', async () => {

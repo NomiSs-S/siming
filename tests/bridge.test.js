@@ -18,7 +18,7 @@ module.exports = function (test) {
         const win = clientContext();
         const bridge = win.SIMING.createBridge(hostEvalScript(sandbox));
         const st = await bridge.call('siming', 'status', {});
-        assert.deepEqual(st.tools, ['unparent']);
+        assert.deepEqual(st.tools, ['quicktools', 'unparent']);
         assert.deepEqual(st.errors, []);
     });
 

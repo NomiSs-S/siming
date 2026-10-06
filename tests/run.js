@@ -14,6 +14,8 @@ const FILES = [
     './host-labels.test.js',
     './unparent-core.test.js',
     './unparent-api.test.js',
+    './quicktools-core.test.js',
+    './quicktools-api.test.js',
     './bridge.test.js',
     './ui-dom.test.js',
     './ui-controls.test.js',
