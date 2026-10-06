@@ -63,6 +63,14 @@ Revue finale : corrections (mot de passe masqué, installeurs robustes, Entrée,
 - `node tests/run.js` : 137 tests, 0 échec. Version inchangée : 1.0.0 n'est pas encore publiée.
 - État : prêt pour la Release v1.0.0 (dépôt GitHub public, certificat, signature) dès l'accord de l'auteur. À vérifier dans AE : une couleur d'étiquette personnalisée s'affiche bien (sinon repli silencieux sur la couleur par défaut).
 
+### 2026-10-06 : SIMING 1.0.0 publiée
+
+- Dépôt GitHub public créé : https://github.com/NomiSs-S/siming (branche `main`, fusion fast-forward de `feat/siming-cep-1.0.0`).
+- ZXPSignCmd 4.1.3 (x64, dépôt Adobe-CEP/CEP-Resources) installé dans `~/.siming/`, avec le certificat auto-signé `siming-cert.p12` (valable jusqu'au 2036-10-03) et son mot de passe `cert-password.txt`. Tout est hors dépôt : à sauvegarder, chaque mise à jour doit être signée avec ce certificat.
+- Release : `ZXPSIGNCMD` = chemin Windows de `~/.siming/ZXPSignCmd.exe`, `SIMING_CERT_PASSWORD` = contenu de `cert-password.txt`, puis `node tools/release.js` ; `SIMING-1.0.0.zxp` signé et horodaté (`-verify` : signature valide), installeurs Windows et macOS.
+- Release v1.0.0 : https://github.com/NomiSs-S/siming/releases/tag/v1.0.0 (zxp, deux installeurs, `INSTALLATION.md`). L'API `releases` répond 200 et expose le `.zxp` avec la note « Ajout : Unparent » : l'installeur verra la version.
+- Reste à faire : tester l'installeur téléchargé sur une machine sans lien de développement (ou après suppression de `%APPDATA%\Adobe\CEP\extensions\com.siming`), valider sous macOS, noter les chemins UPIA ; `MIN_AE` laissé à 24.0.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

@@ -54,7 +54,7 @@ version de l'outil dans `tools.json`, jamais le manifeste (généré).
 ## Pièges d'outillage de cette machine
 
 - Les commandes Bash longues (au-delà d'environ 8 Ko) échouent : écrire les gros fichiers avec l'outil Write, les petits avec des heredocs, un fichier par commande.
-- Dépôt git local initialisé (branche de travail feat/siming-cep-1.0.0). Le dépôt GitHub public `siming` se crée à la Tâche 14 du plan.
+- Dépôt GitHub public `NomiSs-S/siming`, branche `main` (`origin`). ZXPSignCmd, certificat de signature et son mot de passe sont dans `~/.siming/`, hors dépôt.
 - Ne jamais committer le certificat de signature ni son mot de passe.
 
 ## Ajouter un outil
