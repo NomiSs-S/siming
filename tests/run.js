@@ -20,6 +20,7 @@ const FILES = [
     './bridge.test.js',
     './ui-dom.test.js',
     './ui-controls.test.js',
+    './keys.test.js',
     './unparent-view.test.js',
     './hub.test.js',
     './pages.test.js',

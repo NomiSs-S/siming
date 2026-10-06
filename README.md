@@ -43,12 +43,15 @@ Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun
 
 1. **Lissage de vitesse** : règle l'influence (Entrée, Sortie, Les deux), puis clique le
    picto de keyframe de la ligne ou relâche la barre : les keyframes sélectionnées passent en Bézier,
-   vitesse 0, influence voulue sur ce côté.
+   vitesse 0, influence voulue sur ce côté. Entrée = le départ du mouvement (côté sortant
+   de la keyframe), Sortie = son arrivée.
 2. **Elastic** : « Appliquer Elastic » pose l'expression de rebond et l'effet « Elastic
    Controller » (Amplitude 20, Frequency 40, Decay 60, à régler dans le panneau Effets)
    sur les propriétés animées sélectionnées ; la croix les enlève.
 3. **Point d'ancrage** : une case du carré 3 × 3 (ou 1 à 9 au pavé numérique) place
-   l'ancrage des calques sélectionnés sur leur boîte visible, position compensée.
+   l'ancrage des calques sélectionnés sur leur boîte visible, position compensée : rien
+   ne bouge, à aucune image. Les keyframes d'ancrage et de position existantes sont
+   décalées, aucune n'est créée.
 4. **Aligner et répartir** : comme la fenêtre Aligner d'After Effects, par rapport à la
    sélection ou à la composition, sur les bords visibles (rotation, échelle et parents
    pris en compte).
@@ -56,6 +59,16 @@ Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun
 Les boutons portent le verbe seul : la sélection n'est connue qu'au clic, la ligne de
 statut dit ensuite combien d'éléments ont été traités. Le dernier geste est cerclé de bleu :
 **Entrée** le rejoue sur la nouvelle sélection.
+
+## Réglages
+
+Le bouton Réglages du rail ouvre : l'**outil au lancement** (dernier utilisé ou un
+outil précis), l'**ordre des outils** (Monter / Descendre : le rail et les touches 1…n
+suivent), les **raccourcis clavier** (une touche par action : afficher un outil, rejouer
+le dernier geste, chaque geste de Quick Tools ; clic sur la touche, puis frappe du
+nouveau raccourci, Retour arrière = aucun, « Rétablir » pour revenir aux défauts) et
+« À propos ». Les raccourcis agissent quand le panneau a le focus ; ils sont repérés
+par la touche physique, donc valables en AZERTY comme en QWERTY.
 
 ## Développement
 

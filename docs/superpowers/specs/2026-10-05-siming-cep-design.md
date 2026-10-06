@@ -50,6 +50,7 @@ siming/
       lib/CSInterface.js       bibliothèque officielle Adobe, copiée telle quelle
       js/siming.js             espace de noms, registre, réglages, thème
       js/bridge.js             appels client -> hôte
+      js/keys.js               raccourcis clavier : registre d'actions, liaisons, écouteur
       js/ui/*.js               composants de la charte
       js/hub.js                rail, pile de vues, statut, réglages, à propos
       js/standalone.js         page tool.html
@@ -202,10 +203,24 @@ hors action. `status.level` ∈ `info | ok | warn | error`.
   monte tous les outils dans une pile de vues ; `tool.html?tool=<id>` monte un
   seul outil avec sa propre ligne de statut. Même code dans les deux cas.
 - **Hub** : rail horizontal (outil actif : fond surface, icône bleue, trait bas
-  2 px), touches 1…n pour changer d'outil, ligne de statut commune `vX.Y.Z`,
-  vue Réglages : outil au lancement (dernier ou un outil précis), « À propos »
-  (version de SIMING et de chaque outil).
-- **Réglages** : `localStorage` du panneau (`siming.startTool`, `siming.lastTool`).
+  2 px), touches 1…n (rangée de chiffres, `e.code`) pour changer d'outil dans l'ordre
+  du rail, ligne de statut commune `vX.Y.Z`, vue Réglages : outil au lancement
+  (dernier ou un outil précis), ordre des outils (Monter / Descendre, le rail et les
+  touches suivent), raccourcis clavier (voir ci-dessous), « À propos » (version de
+  SIMING et de chaque outil).
+- **Raccourcis clavier** (`js/keys.js`, ajouté le 2026-10-06) : registre d'actions
+  `{ id, label, group, defaultKey, run, when }` rempli par le hub (« Afficher <outil> »,
+  chiffre de la place dans le rail ; « Afficher les réglages » sans touche) et par
+  chaque outil au montage (`ctx.keys`, groupe = nom de l'outil, `when` = vue visible).
+  Un seul écouteur `keydown` par page : frappe identifiée par `e.code` et les
+  modificateurs (Maj ignorée sur la rangée de chiffres, AZERTY), ignorée dans un champ,
+  sur un bouton pour Entrée / Espace, et quand un dialogue est ouvert. Liaisons choisies
+  dans Réglages (clic sur la touche, frappe, Retour arrière = aucun, Échap = annuler,
+  bouton « Rétablir ») ; conflit = l'autre action perd sa touche, sauf entre deux outils
+  (jamais actifs ensemble) ; le groupe du hub est toujours actif.
+- **Réglages** : `localStorage` du panneau (`siming.startTool`, `siming.lastTool`,
+  `siming.toolOrder` = ids séparés par des virgules, `siming.keys` = JSON
+  `{ id: { code, label } | null }`).
 - **Icônes** : SVG en ligne (`currentColor`), tracés repris de `docs/design/icons.json`.
 
 ## 9. Gestion des erreurs

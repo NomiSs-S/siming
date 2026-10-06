@@ -151,6 +151,22 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-about { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }
 .s-about dt { color: var(--text); }
 .s-about dd { margin: 0; font-family: var(--mono); color: var(--text-muted); }
+.s-order, .s-keys { display: flex; flex-direction: column; gap: 1px; }
+.s-order-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 2px 0 8px; border-radius: 3px; }
+.s-order-row:hover { background: var(--bg-hover); }
+.s-order-icon { display: flex; color: var(--icon-rest); }
+.s-order-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-order-row .s-icon-btn { height: 30px; }
+.s-order-row .s-icon-btn:disabled { opacity: .3; cursor: default; }
+.s-keys-group { margin-top: 6px; padding: 0 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.s-key-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 2px 0 8px; border-radius: 3px; }
+.s-key-row:hover { background: var(--bg-hover); }
+.s-key-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-key-btn { flex: none; min-width: 96px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); font-family: var(--mono); font-size: 11px; color: var(--text-strong); cursor: pointer; }
+.s-key-btn:hover { border-color: #5A5A5A; background: var(--bg-surface); }
+.s-key-btn.is-empty { color: var(--text-muted); }
+.s-key-btn.is-recording { border-color: var(--accent-text); color: var(--accent-text); font-family: var(--font); }
+.s-settings-actions { display: flex; gap: 8px; margin-top: 4px; }
 
 /* Barre de valeur (curseur) */
 .s-bar { position: relative; flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); overflow: hidden; cursor: ew-resize; touch-action: none; }

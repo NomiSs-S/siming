@@ -36,7 +36,7 @@ function makePropState(opts) {
         name: opts.name, matchName: opts.matchName || opts.name,
         value: copy(opts.value === undefined ? 0 : opts.value),
         spatial: !!opts.spatial,
-        keys: [],                         // { time, value, inType, outType, inEase, outEase, selected }
+        keys: [],                         // { time, value, inType, outType, inEase, outEase, selected, inTangent, outTangent, autoBezier }
         expression: '', expressionEnabled: false,
         canSetExpression: opts.canSetExpression !== false,
         selected: false,
@@ -198,8 +198,10 @@ class PropertyRef {
         let i = keys.findIndex((k) => Math.abs(k.time - t) < EPS);
         if (i < 0) {
             const n = easeDims(this._state);
+            const zero = Array.isArray(v) ? v.map(() => 0) : 0;
             keys.push({ time: t, value: copy(v), inType: KeyframeInterpolationType.LINEAR, outType: KeyframeInterpolationType.LINEAR,
-                inEase: defaultEase(n), outEase: defaultEase(n), selected: false });
+                inEase: defaultEase(n), outEase: defaultEase(n), selected: false,
+                inTangent: copy(zero), outTangent: copy(zero), autoBezier: this._state.spatial });
             keys.sort((a, b) => a.time - b.time);
             i = keys.findIndex((k) => Math.abs(k.time - t) < EPS);
         } else {
@@ -216,6 +218,29 @@ class PropertyRef {
     }
     keyTime(i) { return this._key(i).time; }
     keyValue(i) { return copy(this._key(i).value); }
+    /** Change la valeur d'une keyframe existante (jamais d'ajout) ; tangentes conservées. */
+    setValueAtKey(i, v) {
+        if (this._ctx.layerState.locked) throw new Error('Unable to set value: layer is locked');
+        this._checkSeparation();
+        if (dimsOf(v) !== dimsOf(this._state.value)) throw new Error('Wrong number of dimensions for ' + this._state.name);
+        this._key(i).value = copy(v);
+    }
+    _spatialKey(i) {
+        if (!this._state.spatial) throw new Error('Property is not spatial: ' + this._state.name);
+        return this._key(i);
+    }
+    keySpatialAutoBezier(i) { return this._spatialKey(i).autoBezier; }
+    setSpatialAutoBezierAtKey(i, v) { this._spatialKey(i).autoBezier = !!v; }
+    keyInSpatialTangent(i) { return copy(this._spatialKey(i).inTangent); }
+    keyOutSpatialTangent(i) { return copy(this._spatialKey(i).outTangent); }
+    /** Tangentes posées à la main : la keyframe n'est plus en Bézier automatique (comme AE). */
+    setSpatialTangentsAtKey(i, inT, outT) {
+        if (this._ctx.layerState.locked) throw new Error('Unable to set tangents: layer is locked');
+        const k = this._spatialKey(i);
+        k.inTangent = copy(inT);
+        k.outTangent = copy(outT === undefined ? inT : outT);
+        k.autoBezier = false;
+    }
     keySelected(i) { return this._key(i).selected; }
     setSelectedAtKey(i, v) { this._key(i).selected = !!v; }
     get selectedKeys() {

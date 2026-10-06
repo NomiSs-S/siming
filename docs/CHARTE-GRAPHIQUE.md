@@ -63,7 +63,8 @@ Règle n°1. On doit pouvoir enchaîner les outils vite, sans viser.
 - L'action principale est la plus grosse cible (40 px), toujours au même endroit.
 - Un outil de gestes rapides (Quick Tools) n'a pas d'action principale : le dernier geste
   est cerclé `--accent-text` et Entrée le rejoue sur la nouvelle sélection.
-- Raccourcis en bonus, jamais obligatoires (Entrée, chiffres du rail, molette, pavé numérique).
+- Raccourcis en bonus, jamais obligatoires (Entrée, chiffres du rail, molette, pavé numérique) ;
+  chaque geste est une action nommée, réglable dans Réglages › Raccourcis clavier.
 
 ## 4. Mesures
 
@@ -117,9 +118,11 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 | Menu déroulant | Fermé : fond `--bg-surface`, chevron ; ouvert : menu `--bg-surface`, élément survolé `--accent` ; séparateurs. |
 | Case, radio, interrupteur | Toute la ligne (30) cliquable ; case 16, interrupteur 36 × 20. Case = appliquée avec l'action ; interrupteur = effet immédiat. |
 | Point 9 positions | Carré 108 × 108, 9 cases de 36 entièrement cliquables ; pointillé = boîte du calque ; point 8 px `#5E5E5E`, choisi 12 px `--accent-text` avec halo ; pavé numérique 1–9. |
-| Picto de keyframe (lissage) | Bouton icône 32 × 30 devant son curseur ; losange 16 au trait 1,5, moitié remplie selon le côté lissé : gauche = Entrée, droite = Sortie, entier = Les deux (comme les keyframes d'AE) ; repos `#8A8A8A`, survol `--accent-text`. Clic = appliquer la valeur du curseur. |
+| Picto de keyframe (lissage) | Bouton icône 32 × 30 devant son curseur ; losange 16 au trait 1,5, moitié remplie selon le côté lissé : droite = Entrée (le mouvement part de la keyframe), gauche = Sortie (il y arrive), entier = Les deux : c'est l'icône de la keyframe obtenue dans AE ; repos `#8A8A8A`, survol `--accent-text`. Clic = appliquer la valeur du curseur. |
 | Grille de cases | Cases pleines de 36 px de haut (`--bg-surface`, icône 16), 3 ou 6 colonnes égales, 2 px d'écart ; survol `--accent-soft` / `--accent-text`. On vise une case, pas une icône. |
 | Dernier geste | Contour intérieur 1 px `--accent-text` (classe `is-last`) sur la commande du dernier geste ; un seul à la fois ; Entrée le rejoue. |
+| Ordre des outils (Réglages) | Lignes de 32 : icône, nom, boutons icône Monter / Descendre (32 × 30, le premier et le dernier désactivés à 0,3) ; le rail et les touches suivent aussitôt. |
+| Raccourci (Réglages) | Ligne de 30 : libellé de l'action, touche à droite en mono dans un cadre `--bg-inset` (96 px mini), « — » atténué si aucune ; clic = « Appuie sur une touche… » cerclé `--accent-text`, Retour arrière = aucun, Échap = annuler ; conflit signalé dans la ligne de statut (l'autre action perd sa touche) ; bouton « Rétablir les raccourcis par défaut ». |
 | Étiquette de couleur | Carrés de 18, couleurs des étiquettes AE, choisie = contour `--text-strong`. |
 | Ligne de statut | Pastille 6 px : gris info, `--ok`, `--warn`, `--error` ; s'efface à l'action suivante. |
 | Dialogue | Fond `--bg-surface`, titre en question, conséquence en une ligne, actions à droite. Remplace `alert`. |

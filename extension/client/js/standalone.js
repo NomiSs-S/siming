@@ -19,7 +19,8 @@
             status.set('Outil introuvable : ' + toolId, 'error');
             return { status, view, mounted: null, ready: Promise.resolve() };
         }
-        const mounted = SIMING.mountTool(view, meta, { bridge, ui, status, settings: SIMING.settings }, {});
+        const mounted = SIMING.mountTool(view, meta, { bridge, ui, status, settings: SIMING.settings, keys: SIMING.keys }, {});
+        SIMING.keys.attach(global.document);   // raccourcis de l'outil (réglés dans le hub, mémoire commune)
         return { status, view, mounted, ready: (mounted && mounted.ready) || Promise.resolve() };
     };
 })(window);

@@ -4,7 +4,7 @@ const assert = require('assert');
 const { loadHost, makeDom, hostEvalScript, app } = require('./helpers');
 const { FakeComp } = require('./fake-ae');
 
-const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/bridge.js', 'tools/quicktools.js'];
+const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/bridge.js', 'js/keys.js', 'tools/quicktools.js'];
 
 /** Comp « Rig » active : A (100 × 50) en [100, 100] avec Position animée, B (100 × 100) en [500, 300], C (10 × 10). */
 function rig() {
@@ -37,8 +37,10 @@ async function setup(opts) {
     view.className = 's-view-body';
     section.append(view);
     win.document.body.append(section, status);
+    const keys = win.SIMING.keys;
+    keys.attach(win.document);   // comme le hub ou le panneau isolé
     const api = win.SIMING.toolDefs.quicktools.mount(view, {
-        bridge, ui: win.SIMING.ui, status, settings: win.SIMING.settings,
+        bridge, ui: win.SIMING.ui, status, settings: win.SIMING.settings, keys,
         meta: { id: 'quicktools', name: 'Quick Tools', icon: 'eclair', version: '1.0.0' },
     });
     await api.ready;
@@ -46,7 +48,7 @@ async function setup(opts) {
     const $$ = (sel) => Array.from(view.querySelectorAll(sel));
     const click = async (el) => { el.click(); await api.idle(); };
     const key = async (init, target) => { (target || win.document).dispatchEvent(new win.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init))); await api.idle(); };
-    return { s, win, view, section, api, status, counter, $, $$, click, key };
+    return { s, win, view, section, api, status, counter, keys, $, $$, click, key };
 }
 
 module.exports = function (test) {
@@ -58,7 +60,12 @@ module.exports = function (test) {
         assert.strictEqual(t.$('[data-role=primary]'), null, 'pas de bouton principal');
         assert.strictEqual(t.$('[data-role=elastic]').textContent, 'Appliquer Elastic');
         assert.strictEqual(t.$('[data-role=elastic-remove]').getAttribute('aria-label'), 'Retirer Elastic');
-        assert.deepEqual(['in', 'out', 'both'].map((m) => t.$('[data-role=ease-apply-' + m + '] .s-ease-key-fill').getAttribute('d')), ['M8 2.5L2.5 8 8 13.5z', 'M8 2.5l5.5 5.5L8 13.5z', 'M8 2.5l5.5 5.5L8 13.5 2.5 8z'], 'moitié gauche, droite, entier');
+        assert.deepEqual(['in', 'out', 'both'].map((m) => t.$('[data-role=ease-apply-' + m + '] .s-ease-key-fill').getAttribute('d')), ['M8 2.5l5.5 5.5L8 13.5z', 'M8 2.5L2.5 8 8 13.5z', 'M8 2.5l5.5 5.5L8 13.5 2.5 8z'], 'entrée = moitié droite (le mouvement part), sortie = gauche (il arrive), entier');
+        const groups = t.keys.actions().filter((a) => a.group === 'Quick Tools').map((a) => a.id);
+        assert.strictEqual(groups.length, 27, 'un raccourci réglable par geste');
+        assert.deepEqual(t.keys.binding('quicktools.anchor.5'), { code: 'Numpad5', label: 'Pavé 5', user: false });
+        assert.deepEqual(t.keys.binding('quicktools.replay'), { code: 'Enter', label: 'Entrée', user: false });
+        assert.strictEqual(t.keys.binding('quicktools.align-left'), null, 'sans touche par défaut');
         assert.strictEqual(t.$$('.is-last').length, 0, 'aucun geste encore');
         assert.strictEqual(t.$('[data-role=point9]').value, 5);
         assert.deepEqual(t.$$('[data-role=align-to] .s-seg-btn').map((b) => b.classList.contains('is-on')), [true, false]);
@@ -79,7 +86,8 @@ module.exports = function (test) {
         await t.api.idle();
         assert.strictEqual(t.status.text, '1 keyframe lissée, sortie 34 % · Ctrl+Z pour annuler');
         assert.strictEqual(t.win.localStorage.getItem('siming.quicktools.easeOut'), '34');
-        assert.strictEqual(t.s.L(1).position.keyOutTemporalEase(2)[0].influence, 34);
+        assert.strictEqual(t.s.L(1).position.keyInTemporalEase(2)[0].influence, 34, '« sortie » = arrivée du mouvement = côté entrant de la keyframe');
+        assert.strictEqual(t.s.L(1).position.keyOutTemporalEase(2)[0].influence, 33, '« entrée » posée avant = côté sortant');
         const again = await setup({ prepare: (s) => { s.L(1).position.setSelectedAtKey(2, true); s.L(1).position.selected = true; } });
         assert.strictEqual(again.$('[data-role=ease-out]').value, 33, 'autre fenêtre jsdom : réglages à part');
     });
@@ -88,7 +96,7 @@ module.exports = function (test) {
         const t = await setup({ prepare: (s) => { s.L(1).position.selected = true; } });
         const calls = t.counter.calls;
         t.section.focus();
-        await t.key({ key: 'Enter' }, t.section);
+        await t.key({ key: 'Enter', code: 'Enter' }, t.section);
         assert.strictEqual(t.counter.calls, calls, 'aucun geste encore : Entrée ne fait rien');
         await t.click(t.$('[data-role=elastic]'));
         assert.strictEqual(t.status.text, 'Elastic appliqué à 1 propriété · Ctrl+Z pour annuler');
@@ -100,23 +108,27 @@ module.exports = function (test) {
         assert.deepEqual(t.$$('.is-last').map((e) => e.getAttribute('data-role')), ['elastic-remove'], 'un seul dernier geste');
         await t.click(t.$('[data-role=elastic]'));
         t.section.focus();
-        await t.key({ key: 'Enter' }, t.section);
+        await t.key({ key: 'Enter', code: 'Enter' }, t.section);
         assert.ok(/Elastic appliqué/.test(t.status.text), 'Entrée sur la section = rejouer Appliquer Elastic : ' + t.status.text);
+        await t.key({ key: 'Enter', code: 'Enter' }, t.$('[data-role=elastic-remove]'));
+        assert.ok(/Elastic appliqué/.test(t.status.text), 'Entrée sur un bouton : le navigateur clique, pas de rejeu ici (jsdom ne clique pas)');
         const input = t.$('[data-role=ease-in] .s-bar-input');
         t.$('[data-role=ease-in]').dispatchEvent(new t.win.MouseEvent('dblclick', { bubbles: true }));
         input.value = '80';
-        await t.key({ key: 'Enter' }, input);
+        await t.key({ key: 'Enter', code: 'Enter' }, input);
         assert.strictEqual(input.hidden, true);
         assert.ok(/keyframe/.test(t.status.text), 'Entrée dans le champ = valider la saisie (lissage), pas le rejeu : ' + t.status.text);
         assert.ok(t.$('[data-role=ease-apply-in]').classList.contains('is-last'), 'la saisie devient le dernier geste');
         assert.strictEqual(t.$('[data-role=ease-in]').value, 80);
     });
 
-    test('vue quicktools : point d\'ancrage à la souris et au pavé numérique, case mémorisée, vue cachée inerte', async () => {
+    test('vue quicktools : point d\'ancrage à la souris et au pavé numérique, keyframes décalées, case mémorisée, vue cachée inerte', async () => {
         const t = await setup({ prepare: (s) => { s.comp.select(s.A); } });
         await t.click(t.$('[data-cell="9"]'));
         assert.strictEqual(t.status.text, 'Point d\'ancrage placé sur 1 calque · Ctrl+Z pour annuler');
         assert.deepEqual(t.s.L(1).anchorPoint.value, [100, 0]);
+        assert.strictEqual(t.s.L(1).position.numKeys, 2, 'position animée : aucune keyframe créée');
+        assert.deepEqual([t.s.L(1).position.keyValue(1), t.s.L(1).position.keyValue(2)], [[200, 100], [400, 100]], 'les deux keyframes décalées');
         assert.strictEqual(t.win.localStorage.getItem('siming.quicktools.anchorCell'), '9');
         await t.key({ key: '1', code: 'Numpad1' });
         assert.deepEqual(t.s.L(1).anchorPoint.value, [0, 50]);
@@ -127,6 +139,20 @@ module.exports = function (test) {
         t.section.hidden = true;
         await t.key({ key: '5', code: 'Numpad5' });
         assert.strictEqual(t.counter.calls, calls, 'vue cachée : le pavé ne fait rien');
+    });
+
+    test('vue quicktools : raccourci choisi dans Réglages (mémoire commune), touche par défaut reprise', async () => {
+        const t = await setup({ prepare: (s) => { s.comp.select(s.A, s.B); } });
+        t.keys.setBinding('quicktools.align-left', { code: 'KeyL', label: 'L' });
+        await t.key({ key: 'l', code: 'KeyL' });
+        assert.strictEqual(t.status.text, '2 calques alignés à gauche · Ctrl+Z pour annuler');
+        assert.ok(t.$('[data-role=align-left]').classList.contains('is-last'), 'le raccourci est un geste comme un autre');
+        assert.deepEqual(t.keys.setBinding('quicktools.elastic', { code: 'Numpad5' }), ['Ancrage : centre'], 'la touche du pavé change de geste');
+        const calls = t.counter.calls;
+        await t.key({ key: '5', code: 'Numpad5' });
+        assert.strictEqual(t.counter.calls, calls + 1);
+        assert.ok(/Aucune propriété animée/.test(t.status.text), t.status.text);
+        assert.strictEqual(t.$('[data-role=point9]').value, 5, 'ancrage inchangé');
     });
 
     test('vue quicktools : aligner sur la sélection puis la composition, répartir, dialogue des ignorés', async () => {

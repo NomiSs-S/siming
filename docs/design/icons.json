@@ -19,6 +19,8 @@
   "valider":    [{"path": "M3 8.5l3 3 7-7"}],
   "attention":  [{"path": "M8 2.5l6 10.5H2z"}, {"path": "M8 6.5v3M8 11.3v.1"}],
   "deplier":    [{"path": "M4 6l4 4 4-4"}],
+  "monter":     [{"path": "M4 10l4-4 4 4"}],
+  "descendre":  [{"path": "M4 6l4 4 4-4"}],
   "menu":       [{"path": "M3 5h10M3 8h10M3 11h10"}],
   "plus":       [{"path": "M4 8h.1M8 8h.1M12 8h.1"}],
   "eclair":      [{"path": "M9 1.5L3.5 9h4l-1 5.5L12.5 7h-4z"}],

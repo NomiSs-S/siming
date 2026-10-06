@@ -17,13 +17,13 @@ geste, un Ctrl+Z par geste, résultat annoncé dans la ligne de statut.
 |---|---|
 | Découpage | Un seul outil `quicktools` (« Quick Tools »), quatre sections empilées, livré complet en 1.1.0 |
 | Structure | Sections toujours visibles : Lissage, Elastic, Point d'ancrage, Aligner ; pictos et icônes agissent au clic ; un seul bouton principal (Elastic) |
-| Lissage | « Lissage de vitesse + influence » : Bézier, vitesse 0 et influence voulue sur le côté visé, autre côté conservé |
+| Lissage | « Lissage de vitesse + influence » : Bézier, vitesse 0 et influence voulue sur le côté visé, autre côté conservé. Les côtés sont ceux du mouvement : « entrée » = son départ = côté **sortant** de la keyframe, « sortie » = son arrivée = côté entrant (§ 11) |
 | Geste du lissage | Le relâchement d'une barre applique, le picto de keyframe applique aussi |
 | Elastic | Pseudo-effet « Elastic Controller » (Amplitude 20, Frequency 40, Decay 60) livré en préréglage `.ffx`, expression de l'auteur reprise telle quelle ; réglages dans le panneau Effets, pas dans l'outil ; bouton « Retirer » |
-| Point d'ancrage | Carré 3 × 3 de la charte et pavé numérique 1–9 ; position compensée (rien ne bouge à l'écran) |
+| Point d'ancrage | Carré 3 × 3 de la charte et pavé numérique 1–9 ; position compensée (rien ne bouge à l'écran, à aucune image) : les keyframes existantes d'ancrage et de position sont décalées, aucune n'est créée (§ 11) |
 | Aligner | Comme la fenêtre Aligner d'AE : 6 alignements + 6 répartitions, par rapport à la sélection ou à la composition, sur les bords visibles |
 | Quantités | Les boutons portent le verbe seul ; la quantité traitée vient dans le statut (la sélection n'est connue qu'au clic) |
-| Touches | Le hub ne réagit qu'à la rangée de chiffres (`e.code` Digit…) ; le pavé numérique revient au point d'ancrage |
+| Touches | Le hub ne réagit qu'à la rangée de chiffres (`e.code` Digit…) ; le pavé numérique revient au point d'ancrage. Depuis le § 11, chaque geste est une action du registre `SIMING.keys`, réglable dans Réglages |
 
 ## 3. Interface (`extension/client/tools/quicktools.js`)
 
@@ -97,7 +97,9 @@ Keyframes sélectionnées = pour chaque propriété de `comp.selectedProperties`
 `selectedKeys`. Pour chaque keyframe : interpolation Bézier sur le côté visé (l'autre
 côté conservé), puis `setTemporalEaseAtKey` avec `KeyframeEase(0, influence)` sur ce
 côté, une par dimension (une seule pour une propriété spatiale), l'autre côté recopié
-de l'existant. Influence bornée de 0,1 à 100. Ignorées : keyframe en maintien, calque
+de l'existant. Côté visé : mode `in` (Entrée, départ du mouvement) = côté **sortant**
+de la keyframe (`keyOutInterpolationType`, `keyOutTemporalEase`) ; mode `out` (Sortie,
+arrivée) = côté entrant. After Effects nomme à l'envers (Easy Ease In = côté entrant). Influence bornée de 0,1 à 100. Ignorées : keyframe en maintien, calque
 verrouillé, propriété sans lissage temporel (erreur AE attrapée).
 
 ### 4.2 Elastic
@@ -121,7 +123,11 @@ et hauteur non nulles (caméras et lumières ignorées). Cible dans l'espace du 
 `[left + width · fx, top + height · fy]`, `fx, fy ∈ {0, ½, 1}` selon la case (1 = bas
 gauche … 9 = haut droite, comme le pavé). Compensation : `position += R(rotation Z) ·
 S(échelle / 100) · (cible − ancrage)` ; 3D : X et Y seulement, Z inchangé. Propriété
-animée : `setValueAtTime(temps)` ; dimensions séparées : X et Y posés séparément.
+animée (`offsetProperty`) : chaque keyframe existante est décalée (`setValueAtKey`),
+aucune n'est créée ; l'ancrage reçoit le même delta à toutes ses keyframes, chaque
+keyframe de position est compensée avec l'échelle et la rotation **de son instant** ;
+tangentes spatiales manuelles relues puis reposées (`keySpatialAutoBezier` faux) ;
+dimensions séparées : X et Y décalés séparément. Sans keyframe : `setValue`.
 
 ### 4.4 Aligner et répartir
 
@@ -171,14 +177,15 @@ développement ; Release 1.1.0 « Ajout : Quick Tools » après retours.
 ## 8. Hors périmètre
 
 Rotation X/Y des calques 3D et caméras dans l'alignement ; réglages Elastic dans le
-panneau ; répartition par rapport à la composition ; keyframes de l'ancrage sur toute
-la durée (seul l'instant courant est posé).
+panneau ; répartition par rapport à la composition ; échelle ou rotation animées
+**entre** deux keyframes de position (seules les keyframes sont compensées exactement).
 
 ## 9. Questions ouvertes (à vérifier dans AE)
 
 - `applyPreset` vise-t-il bien le calque visé une fois la sélection réduite à lui ?
 - `setTemporalEaseAtKey` sur une propriété spatiale : un seul `KeyframeEase` suffit-il ?
 - `sourceRectAtTime` sur une précomposition et un solide : boîte attendue ?
+- `setValueAtKey` sur une keyframe spatiale : conserve-t-il les tangentes manuelles ? (relues et reposées par précaution)
 
 ## 10. Révision de l'interface (2026-10-06, avant la Release 1.1.0)
 
@@ -187,8 +194,9 @@ les points correspondants des § 2 et 3 ; le cœur hôte ne change pas.
 
 - **Lissage** : trois curseurs distincts conservés (Entrée, Sortie, Les deux), chacun
   précédé d'un picto de keyframe sobre (`ui.easeKey(mode)`, bouton icône 32 × 30) :
-  moitié gauche remplie = Entrée, moitié droite = Sortie, losange plein = Les deux.
-  Clic sur le picto ou relâchement du curseur = appliquer, comme avant.
+  moitié droite remplie = Entrée (le mouvement part de la keyframe), moitié gauche =
+  Sortie (il y arrive), losange plein = Les deux : l'icône de la keyframe obtenue dans
+  AE (échangé au § 11). Clic sur le picto ou relâchement du curseur = appliquer, comme avant.
 - **Pas de bouton principal** : « Appliquer Elastic » devient un bouton secondaire de
   40 px avec l'icône `ressort`, « Retirer » une croix carrée de 40 px. Le dernier geste
   est cerclé `--accent-text` (classe `is-last`) et **Entrée le rejoue** ; aucun geste
@@ -198,3 +206,22 @@ les points correspondants des § 2 et 3 ; le cœur hôte ne change pas.
   sur une ligne. Cases pleines de 36 px (`s-tool`), on vise une case, pas une icône.
 - Sections : « Lissage de vitesse », « Elastic », « Ancrage », « Aligner », « Répartir »,
   avec une aide courte à droite du titre quand elle sert.
+
+## 11. Corrections après test dans After Effects (2026-10-06)
+
+Trois retours de l'auteur, appliqués sans validation intermédiaire.
+
+- **Ancrage et keyframes** : l'ancrage posait une keyframe de position à l'instant
+  courant et laissait les autres (le calque bougeait partout ailleurs). Désormais
+  les keyframes existantes d'ancrage et de position sont **décalées, jamais créées**
+  (§ 4.3), et le calque ne bouge à aucune image. Aligner et répartir gardent la
+  keyframe à l'instant courant, comme la fenêtre Aligner d'AE.
+- **Entrée / Sortie** : l'hôte suivait le vocabulaire d'AE (keyframe) ; l'auteur parle
+  du mouvement. « Entrée » lisse le départ du mouvement, donc le côté sortant de la
+  keyframe ; « Sortie » son arrivée, côté entrant (§ 4.1). Pictos échangés en
+  conséquence (§ 10) ; les libellés et le statut (« entrée 75 % ») ne changent pas.
+- **Raccourcis réglables** : chaque geste est enregistré dans `SIMING.keys`
+  (`ctx.keys`, groupe « Quick Tools », disponible quand la vue est visible) :
+  « Rejouer le dernier geste » (Entrée), « Ancrage : <case> » (pavé 1–9), lissages,
+  Elastic, alignements et répartitions (sans touche). La vue n'écoute plus le clavier
+  elle-même ; Réglages du hub permet de tout changer (spec CEP, « Raccourcis clavier »).

@@ -85,6 +85,15 @@ Décisions de Simon : garder les trois curseurs de lissage distincts (pas d'infl
 Fait : `ui.easeKey`, icône `ressort` (36 icônes), styles `s-ease-row`, `s-tool-grid`, `s-tool`, `s-gesture-row`, `s-place-row`, `is-last` (anciens `s-bar-row`, `s-icon-row`, `s-row-inline`, `s-btn-ghost`, `s-point9-row` retirés), vue réécrite, tests de vue mis à jour (165, 0 échec), charte, README, CLAUDE.md (« au plus un » bouton principal), tests manuels.
 État : à tester dans AE avec le reste de Quick Tools (redémarrer AE ou recharger le panneau), puis Release 1.1.0.
 
+### 2026-10-06 : retours de Simon dans AE : ancrage animé, sens Entrée / Sortie, Réglages (ordre, raccourcis)
+
+Trois retours après test de Quick Tools dans After Effects, corrigés et complétés sans validation intermédiaire (spec Quick Tools § 11, spec CEP « Raccourcis clavier »).
+- **Point d'ancrage sur un calque animé** : cause = `setValueAtTime` posait une keyframe de position à l'instant courant et laissait les autres, le calque bougeait partout ailleurs. Désormais `offsetProperty` décale chaque keyframe existante d'ancrage et de position (chaque keyframe de position compensée avec l'échelle et la rotation **de son instant**, dimensions séparées gérées), n'en crée aucune, et relit puis repose les tangentes spatiales manuelles. Aligner / répartir gardent la keyframe à l'instant courant, comme la fenêtre Aligner d'AE.
+- **Entrée / Sortie** : cause = l'hôte suivait le vocabulaire d'AE (Easy Ease In = côté entrant de la keyframe) alors que Simon parle du mouvement (« entrée » = son départ = côté sortant de la première keyframe). `applyEase` inversé (mode `in` → `keyOut…`), pictos échangés (Entrée = moitié droite, l'icône de la keyframe obtenue), commentaire explicite dans l'hôte et `docs/NOTES-EXTENDSCRIPT.md` pour ne pas « recorriger ».
+- **Réglages** : nouveau module `js/keys.js` (registre d'actions, liaisons par défaut ou choisies dans `siming.keys`, un seul écouteur `keydown` par page sur `e.code`, Maj ignorée sur la rangée de chiffres pour l'AZERTY, capture d'une frappe, conflits : une touche par groupe, le hub toujours actif, deux outils peuvent partager). Le hub enregistre « Afficher <outil> » (chiffre de la place dans le rail), Quick Tools ses 27 gestes (Entrée = rejouer, pavé 1–9 = ancrage, le reste sans touche) et n'écoute plus le clavier lui-même. Vue Réglages : Outil au lancement, **Ordre des outils** (Monter / Descendre, `siming.toolOrder`, le rail et les touches suivent), **Raccourcis clavier** (par groupe, clic = capture, Retour arrière = aucun, Échap = annuler, Rétablir), À propos. Icônes `monter` / `descendre` (38). Unparent garde son Entrée propre (bouton principal), pas encore dans le registre.
+- Faux AE : `setValueAtKey`, tangentes spatiales, Bézier automatique. `node tests/run.js` : 176 tests, 0 échec. Version inchangée (1.1.0 non publiée).
+État : à retester dans AE (sections Hub et Quick Tools de `docs/TESTS-MANUELS.md`, recharger le panneau), puis Release 1.1.0.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -106,6 +115,7 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Sélectionner dans la timeline les enfants listés (double-clic sur une ligne).
 - Nettoyage des balises orphelines (calques re-liés à la main avec une balise restante).
 - Enfants animés : poser des keyframes compensées plutôt que la compensation à l'instant courant.
+- Entrée (bouton principal) dans le registre de raccourcis `SIMING.keys`, comme les gestes de Quick Tools.
 - Rafraîchissement automatique à la sélection (pas d'événement AE : à étudier côté CEP).
 - Couleur d'étiquette du parent aussi sur les boutons « En attente dans le projet » (présente sur la maquette, pas encore codée).
 
@@ -134,4 +144,6 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Quick Tools, `setTemporalEaseAtKey` : la longueur lue sur `keyInTemporalEase` suffit-elle partout (Position spatiale, Échelle, couleur) ?
 - Quick Tools, `sourceRectAtTime` : boîte attendue sur un solide, une précomposition, un calque texte ? Calque 3D : rotation X/Y ignorée, à documenter si gênant.
 - Quick Tools, `$.fileName` dans un outil chargé par `$.evalFile` : donne-t-il le chemin de `quicktools.jsx` (d'où celui du préréglage) ?
+- Quick Tools, `setValueAtKey` sur une keyframe spatiale : conserve-t-il les tangentes manuelles ? (relues et reposées par précaution)
+- Hub et panneau isolé : partagent-ils le même `localStorage` (ordre des outils, raccourcis choisis) ?
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).

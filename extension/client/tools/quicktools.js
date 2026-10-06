@@ -4,6 +4,8 @@
  * geste appelle l'API, qui renvoie un compte rendu et un statut. La sélection n'est
  * connue qu'au clic : les boutons portent le verbe seul, le statut donne la quantité.
  * Pas de bouton principal : le dernier geste est cerclé d'accent et Entrée le rejoue.
+ * Chaque geste est aussi une action du registre de raccourcis (SIMING.keys) : par
+ * défaut Entrée = rejouer, pavé numérique 1–9 = ancrage ; tout se règle dans Réglages.
  */
 (function (global) {
     'use strict';
@@ -14,21 +16,24 @@
 
     const HELP = [
         'Lissage de vitesse : sélectionne des keyframes, règle l\'influence de la ligne voulue, puis',
-        '   clique son picto de keyframe (ou relâche le curseur) : Bézier, vitesse 0 et influence sur ce côté.',
+        '   clique son picto de keyframe (ou relâche le curseur) : Bézier, vitesse 0 et influence.',
+        '   Entrée = le départ du mouvement (côté sortant de la keyframe), Sortie = son arrivée.',
         'Elastic : sélectionne des propriétés animées, puis « Appliquer Elastic » : l\'expression',
         '   et l\'effet « Elastic Controller » (Amplitude, Frequency, Decay) sont posés. La croix les retire.',
         'Ancrage : sélectionne des calques, clique une case (ou tape 1 à 9 au pavé numérique) :',
-        '   l\'ancrage se place sur leur boîte, la position est compensée (rien ne bouge à l\'écran).',
+        '   l\'ancrage se place sur leur boîte, rien ne bouge à l\'écran ; les keyframes d\'ancrage',
+        '   et de position existantes sont décalées, aucune n\'est créée.',
         'Aligner et répartir : sélectionne des calques, choisis Sélection ou Comp, clique une case.',
         '',
         'Le dernier geste est cerclé de bleu : Entrée le rejoue sur la nouvelle sélection.',
         'Chaque geste s\'annule d\'un seul Ctrl+Z. Curseurs : glisser (Maj = précision), molette,',
         'flèches, double-clic pour saisir, Alt + clic pour la valeur par défaut.',
+        'Raccourcis clavier de chaque geste : Réglages du panneau SIMING.',
     ].join('\n');
 
     const EASE = [
-        { key: 'easeIn',   mode: 'in',   label: 'Entrée',   title: 'Lisser l\'entrée des keyframes sélectionnées' },
-        { key: 'easeOut',  mode: 'out',  label: 'Sortie',   title: 'Lisser la sortie des keyframes sélectionnées' },
+        { key: 'easeIn',   mode: 'in',   label: 'Entrée',   title: 'Lisser l\'entrée (départ du mouvement) des keyframes sélectionnées' },
+        { key: 'easeOut',  mode: 'out',  label: 'Sortie',   title: 'Lisser la sortie (arrivée du mouvement) des keyframes sélectionnées' },
         { key: 'easeBoth', mode: 'both', label: 'Les deux', title: 'Lisser l\'entrée et la sortie des keyframes sélectionnées' },
     ];
     const EDGES = [
@@ -39,7 +44,8 @@
         { edge: 'centerY', icon: 'alignCenterY', align: 'Centrer verticalement', dist: 'Répartir les centres verticaux', distIcon: 'distCenterY' },
         { edge: 'bottom',  icon: 'alignBottom',  align: 'Aligner en bas',    dist: 'Répartir les bords bas',          distIcon: 'distBottom' },
     ];
-    const NUMPAD = { Numpad1: 1, Numpad2: 2, Numpad3: 3, Numpad4: 4, Numpad5: 5, Numpad6: 6, Numpad7: 7, Numpad8: 8, Numpad9: 9 };
+    const ANCHOR_NAMES = { 7: 'haut gauche', 8: 'haut centre', 9: 'haut droite', 4: 'milieu gauche', 5: 'centre',
+        6: 'milieu droite', 1: 'bas gauche', 2: 'bas centre', 3: 'bas droite' };
     const EASE_DEFAULT = 33;
 
     function mount(view, ctx) {
@@ -47,12 +53,21 @@
         let busy = null;
         let last = null;   // { el, replay } : dernier geste, rejoué par Entrée
         const settings = ctx.settings;
+        const keys = ctx.keys || SIMING.keys;
         const pref = (key, fallback) => {
             const v = parseFloat(settings.get('quicktools.' + key, fallback));
             return isNaN(v) ? fallback : v;
         };
         const labelRow = (label, hint) => h('div', { class: 's-label-row' }, ui.sectionTitle(label),
             hint ? h('span', { class: 's-label-hint', text: hint }) : null);
+
+        // Raccourcis : actions du registre, disponibles quand la vue est visible (le hub garde
+        // les vues cachées montées). Le groupe porte le nom de l'outil (Réglages les regroupe).
+        const focusRoot = view.closest('.s-view') || view;
+        const group = (ctx.meta && ctx.meta.name) || 'Quick Tools';
+        const action = (id, label, run, defaultKey) => keys.register({
+            id: 'quicktools.' + id, label, group, defaultKey: defaultKey || null, run, when: () => !focusRoot.hidden,
+        });
 
         /** Lance un geste et s'en souvient : el est cerclé, replay le relance (Entrée). */
         function gesture(el, replay) {
@@ -62,6 +77,7 @@
             el.classList.add('is-last');
             return replay();
         }
+        action('replay', 'Rejouer le dernier geste', () => { if (last && !busy) last.replay(); }, 'Enter');
 
         // --- Lissage de vitesse -----------------------------------------------------
         const easeRows = EASE.map((d) => {
@@ -76,6 +92,7 @@
                 class: 's-icon-btn', type: 'button', 'data-role': 'ease-apply-' + d.mode, title: d.title, 'aria-label': d.title,
                 onclick: () => gesture(picto, apply),
             }, ui.easeKey(d.mode, 16));
+            action('ease.' + d.mode, 'Lisser : ' + d.label.toLowerCase(), () => gesture(picto, apply));
             return h('div', { class: 's-ease-row' }, picto, bar);
         });
 
@@ -90,6 +107,8 @@
             title: 'Retirer l\'expression Elastic des propriétés sélectionnées', 'aria-label': 'Retirer Elastic',
             onclick: () => gesture(remove, () => run('elasticRemove', {})),
         }, ui.icon('fermer', 16));
+        action('elastic', 'Appliquer Elastic', () => gesture(elastic, () => run('elastic', {})));
+        action('elasticRemove', 'Retirer Elastic', () => gesture(remove, () => run('elasticRemove', {})));
 
         // --- Ancrage ------------------------------------------------------------------
         const p9 = ui.point9({ value: pref('anchorCell', 5), onPick: (n) => anchor(n) });
@@ -98,6 +117,7 @@
             settings.set('quicktools.anchorCell', cell);
             return gesture(p9, () => run('anchor', { cell: p9.value }));
         }
+        for (const n of [7, 8, 9, 4, 5, 6, 1, 2, 3]) action('anchor.' + n, 'Ancrage : ' + ANCHOR_NAMES[n], () => anchor(n), 'Numpad' + n);
 
         // --- Aligner et répartir --------------------------------------------------------
         const seg = ui.segmented({
@@ -112,6 +132,7 @@
                 class: 's-tool', type: 'button', 'data-role': role, title, 'aria-label': title,
                 onclick: () => gesture(b, replay),
             }, ui.icon(icon, 16));
+            action(role, title, () => gesture(b, replay));
             return b;
         };
         // L'alignement lit Sélection / Comp au moment du geste (et de chaque rejeu).
@@ -129,31 +150,6 @@
                 h('div', { class: 's-place-col is-wide' }, labelRow('Aligner'), seg, alignGrid)),
             h('div', { class: 's-stack' }, labelRow('Répartir', '3 calques ou plus'), distGrid));
 
-        // --- Clavier --------------------------------------------------------------------
-        // Entrée = rejouer le dernier geste quand la vue a le focus ; pavé numérique = ancrage
-        // quand la vue est visible (le hub garde les vues cachées montées).
-        const focusRoot = view.closest('.s-view') || view;
-        const doc = focusRoot.ownerDocument;
-        const inField = (e) => { const tag = e.target && e.target.tagName; return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'; };
-        focusRoot.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter' || e.defaultPrevented || inField(e)) return;
-            if (e.target && e.target.tagName === 'BUTTON') return;
-            if (doc.querySelector('[data-role=dialog]')) return;
-            if (last && !busy) { e.preventDefault(); last.replay(); }
-        });
-        doc.addEventListener('keydown', (e) => {
-            const cell = NUMPAD[e.code];
-            if (!cell || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || inField(e)) return;
-            if (focusRoot.hidden || doc.querySelector('[data-role=dialog]')) return;
-            e.preventDefault();
-            anchor(cell);
-        });
-
-        function restoreFocus() {
-            const a = doc.activeElement;
-            if (!a || a === doc.body || (a.tagName === 'BUTTON' && a.disabled)) focusRoot.focus();
-        }
-
         // --- Appels à l'hôte -------------------------------------------------------------
         function setBusy(on) {
             view.classList.toggle('is-busy', on);
@@ -166,7 +162,7 @@
             busy = ctx.bridge.call('quicktools', fn, args || {})
                 .then(render)
                 .catch((e) => { ctx.status.set(e.message, 'error'); })
-                .finally(() => { busy = null; setBusy(false); restoreFocus(); });
+                .finally(() => { busy = null; setBusy(false); });
             return busy;
         }
 

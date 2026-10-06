@@ -33,6 +33,29 @@ module.exports = function (test) {
         assert.strictEqual(sc.keyOutInterpolationType(1), KeyframeInterpolationType.HOLD);
     });
 
+    test('faux AE : setValueAtKey ne crée rien, tangentes spatiales, Bézier automatique', () => {
+        const s = scene();
+        const pos = s.comp.layer(2).position;
+        pos.setValueAtTime(0, [0, 0]);
+        pos.setValueAtTime(1, [100, 50]);
+        pos.setValueAtKey(2, [200, 50]);
+        assert.strictEqual(pos.numKeys, 2, 'aucune keyframe ajoutée');
+        assert.deepEqual(pos.keyValue(2), [200, 50]);
+        assert.strictEqual(pos.keySpatialAutoBezier(1), true, 'spatiale : automatique au départ');
+        assert.deepEqual(pos.keyInSpatialTangent(1), [0, 0]);
+        pos.setSpatialTangentsAtKey(1, [10, 0], [12, 0]);
+        assert.strictEqual(pos.keySpatialAutoBezier(1), false, 'tangentes à la main : plus automatique');
+        assert.deepEqual([pos.keyInSpatialTangent(1), pos.keyOutSpatialTangent(1)], [[10, 0], [12, 0]]);
+        pos.setValueAtKey(1, [5, 5]);
+        assert.deepEqual(pos.keyInSpatialTangent(1), [10, 0], 'la valeur change, pas les tangentes');
+        const sc = s.comp.layer(2).scale;
+        sc.setValueAtTime(0, [100, 100]);
+        assert.throws(() => sc.keySpatialAutoBezier(1), /not spatial/);
+        assert.throws(() => pos.setValueAtKey(1, [1, 2, 3]), /dimensions/);
+        s.comp.layer(2).locked = true;
+        assert.throws(() => pos.setValueAtKey(1, [1, 1]), /locked/);
+    });
+
     test('faux AE : dimensions séparées, expression, verrou', () => {
         const s = scene();
         const L = s.comp.layer(2);

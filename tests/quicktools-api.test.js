@@ -41,12 +41,12 @@ module.exports = function (test) {
         assert.strictEqual(call('anchor', { cell: 5 }).status.level, 'error');
     });
 
-    test('API ease : entrée seule, Bézier + influence, sortie conservée ; échelle 2D = deux ease', () => {
+    test('API ease : « entrée » = départ du mouvement (côté sortant de la keyframe), arrivée conservée ; échelle 2D = deux ease', () => {
         const r = rig();
         const pos = r.L(1).position;
         pos.setValueAtTime(0, [0, 0]);
         pos.setValueAtTime(1, [100, 100]);
-        pos.setSelectedAtKey(2, true);
+        pos.setSelectedAtKey(1, true);
         pos.selected = true;
         const { call } = host();
         const st = call('ease', { mode: 'in', influence: 75 });
@@ -54,11 +54,18 @@ module.exports = function (test) {
         assert.strictEqual(st.status.level, 'ok');
         assert.deepEqual(st.report, { done: 1, skipped: [] });
         const p = r.L(1).position;
-        assert.strictEqual(p.keyInInterpolationType(2), KeyframeInterpolationType.BEZIER);
-        assert.strictEqual(p.keyOutInterpolationType(2), KeyframeInterpolationType.LINEAR, 'sortie non touchée');
-        assert.deepEqual([p.keyInTemporalEase(2)[0].speed, p.keyInTemporalEase(2)[0].influence], [0, 75]);
-        near(p.keyOutTemporalEase(2)[0].influence, 16.666666667, 'ease de sortie conservé');
+        assert.strictEqual(p.keyOutInterpolationType(1), KeyframeInterpolationType.BEZIER, 'le mouvement part de la keyframe : côté sortant');
+        assert.strictEqual(p.keyInInterpolationType(1), KeyframeInterpolationType.LINEAR, 'côté entrant non touché');
+        assert.deepEqual([p.keyOutTemporalEase(1)[0].speed, p.keyOutTemporalEase(1)[0].influence], [0, 75]);
+        near(p.keyInTemporalEase(1)[0].influence, 16.666666667, 'ease entrant conservé');
         assert.deepEqual(app.undoGroups, ['Quick Tools : lisser']);
+        pos.setSelectedAtKey(1, false);
+        pos.setSelectedAtKey(2, true);
+        call('ease', { mode: 'out', influence: 60 });
+        assert.strictEqual(p.keyInInterpolationType(2), KeyframeInterpolationType.BEZIER, '« sortie » = arrivée sur la keyframe : côté entrant');
+        assert.strictEqual(p.keyOutInterpolationType(2), KeyframeInterpolationType.LINEAR);
+        assert.strictEqual(p.keyInTemporalEase(2)[0].influence, 60);
+        pos.setSelectedAtKey(2, false);
 
         const sc = r.L(2).scale;
         sc.setValueAtTime(0, [100, 100]);
@@ -207,7 +214,54 @@ module.exports = function (test) {
         call('anchor', { cell: 3 });
         near(r.L(2).property('ADBE Position_0').value, 600);
         near(r.L(2).property('ADBE Position_1').valueAtTime(2), 400);
-        assert.strictEqual(r.L(2).property('ADBE Position_1').numKeys, 2, 'keyframe posée à l\'instant courant');
+        assert.strictEqual(r.L(2).property('ADBE Position_1').numKeys, 1, 'aucune keyframe ajoutée : la keyframe existante est décalée');
+        near(r.L(2).property('ADBE Position_1').keyValue(1), 400);
+    });
+
+    test('API anchor : calque animé, keyframes décalées sans en créer, tangentes conservées, échelle et ancrage animés', () => {
+        const r = rig();
+        const pos = r.L(1).position;                        // A 100 × 50, ancrage [0, 0]
+        pos.setValueAtTime(0, [100, 100]);
+        pos.setValueAtTime(1, [300, 100]);
+        pos.setSpatialTangentsAtKey(1, [10, 0], [12, 0]);  // tangentes à la main sur la 1re keyframe
+        r.comp.time = 0.5;
+        r.comp.select(r.A);
+        const { call } = host();
+        let st = call('anchor', { cell: 5 });               // cible [50, 25]
+        assert.strictEqual(st.status.text, 'Point d\'ancrage placé sur 1 calque · Ctrl+Z pour annuler');
+        nearVec(r.L(1).anchorPoint.value, [50, 25]);
+        assert.strictEqual(r.L(1).position.numKeys, 2, 'aucune keyframe ajoutée');
+        nearVec(r.L(1).position.keyValue(1), [150, 125], 'keyframe 1 décalée');
+        nearVec(r.L(1).position.keyValue(2), [350, 125], 'keyframe 2 décalée');
+        assert.deepEqual([r.L(1).position.keyInSpatialTangent(1), r.L(1).position.keyOutSpatialTangent(1)], [[10, 0], [12, 0]], 'tangentes conservées');
+        assert.strictEqual(r.L(1).position.keySpatialAutoBezier(1), false);
+        assert.strictEqual(r.L(1).position.keySpatialAutoBezier(2), true, 'keyframe automatique laissée automatique');
+        nearVec(r.L(1).position.valueAtTime(0.5), [250, 125], 'rien ne bouge à l\'écran à l\'instant courant');
+
+        // Échelle animée : chaque keyframe de position est compensée avec l'échelle à son instant
+        const sc = r.L(2).scale, posB = r.L(2).position;    // B 100 × 100 en [500, 300]
+        sc.setValueAtTime(0, [100, 100]);
+        sc.setValueAtTime(1, [200, 200]);
+        posB.setValueAtTime(0, [500, 300]);
+        posB.setValueAtTime(1, [500, 300]);
+        r.comp.time = 0;
+        r.comp.select(r.B);
+        call('anchor', { cell: 5 });                        // delta [50, 50]
+        nearVec(r.L(2).position.keyValue(1), [550, 350], 'à 100 %');
+        nearVec(r.L(2).position.keyValue(2), [600, 400], 'à 200 %');
+        assert.strictEqual(r.L(2).position.numKeys, 2);
+
+        // Ancrage animé : toutes ses keyframes reçoivent le même décalage, la position statique bouge d'autant
+        const apC = r.L(3).anchorPoint;                     // C 10 × 10 en [900, 900]
+        apC.setValueAtTime(0, [0, 0]);
+        apC.setValueAtTime(1, [5, 5]);
+        r.comp.select(r.C);
+        st = call('anchor', { cell: 9 });                   // cible [10, 0] depuis [0, 0] : delta [10, 0]
+        assert.strictEqual(r.L(3).anchorPoint.numKeys, 2);
+        nearVec(r.L(3).anchorPoint.keyValue(1), [10, 0]);
+        nearVec(r.L(3).anchorPoint.keyValue(2), [15, 5]);
+        nearVec(r.L(3).position.value, [910, 900]);
+        assert.strictEqual(r.L(3).position.numKeys, 0, 'position statique : pas de keyframe');
     });
 
     test('API anchor : caméra, calque verrouillé, case inconnue, rien de sélectionné', () => {

@@ -299,14 +299,17 @@
     };
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
+    // Les modes parlent du mouvement : « entrée » (in) = il part de la keyframe, donc son
+    // côté droit (sortant) est lissé ; « sortie » (out) = il arrive sur la keyframe, côté gauche.
     const EASE_FILLS = {
-        in:   'M8 2.5L2.5 8 8 13.5z',            // moitié gauche : côté qui arrive
-        out:  'M8 2.5l5.5 5.5L8 13.5z',           // moitié droite : côté qui repart
+        in:   'M8 2.5l5.5 5.5L8 13.5z',           // moitié droite : le mouvement part d'ici
+        out:  'M8 2.5L2.5 8 8 13.5z',            // moitié gauche : le mouvement arrive ici
         both: 'M8 2.5l5.5 5.5L8 13.5 2.5 8z',
     };
 
     /** Picto de keyframe (16) pour le lissage : contour du losange, moitié lissée remplie
-     *  (in = gauche, out = droite, both = entier). Couleur = currentColor. */
+     *  (in = droite, out = gauche, both = entier), comme l'icône de la keyframe obtenue
+     *  dans After Effects. Couleur = currentColor. */
     ui.easeKey = function (mode, size) {
         const doc = global.document;
         const px = String(size || 16);

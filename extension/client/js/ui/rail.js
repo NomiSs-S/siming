@@ -13,8 +13,10 @@
     ui.rail = function ({ tools, onSelect, onSettings }) {
         const el = h('nav', { class: 's-rail', 'data-role': 'rail', 'aria-label': 'Outils' });
         const buttons = new Map();
+        const all = tools.slice();
+        let order = tools.slice();   // ordre d'affichage (Réglages › Ordre des outils)
 
-        tools.forEach((tool, i) => {
+        all.forEach((tool, i) => {
             const b = h('button', {
                 class: 's-rail-btn', type: 'button', 'data-tool': tool.id,
                 title: tool.name + ' (' + (i + 1) + ')', 'aria-label': tool.name,
@@ -23,6 +25,7 @@
             buttons.set(tool.id, b);
             el.append(b);
         });
+        const spacer = h('span', { class: 's-rail-spacer' });
 
         const menu = h('div', { class: 's-menu', 'data-role': 'rail-menu', hidden: true });
         const more = h('button', {
@@ -41,7 +44,7 @@
             'aria-label': 'Réglages', onclick: onSettings,
         }, ui.icon('reglages', 18));
         buttons.set('__settings', settings);
-        el.append(h('span', { class: 's-rail-spacer' }), more, settings, menu);
+        el.append(spacer, more, settings, menu);
 
         el.overflow = [];
 
@@ -49,17 +52,33 @@
             buttons.forEach((b, key) => b.classList.toggle('is-active', key === id));
         };
 
+        /** Nouvel ordre d'affichage (ids) : ids inconnus ignorés, outils oubliés à la fin. */
+        el.setOrder = function (ids) {
+            const next = ids.map((id) => all.find((t) => t.id === id)).filter(Boolean);
+            for (const t of all) if (!next.includes(t)) next.push(t);
+            order = next;
+            for (const t of order) el.insertBefore(buttons.get(t.id), spacer);
+        };
+
+        /** Infobulle « Nom (raccourci) » de chaque outil : hints = { id: 'libellé' | '' }. */
+        el.setHints = function (hints) {
+            for (const t of all) {
+                const hint = hints[t.id];
+                buttons.get(t.id).title = t.name + (hint ? ' (' + hint + ')' : '');
+            }
+        };
+
         /** Range les outils qui ne tiennent pas dans « … » (sans mise en page : tout visible). */
         el.layout = function () {
             const width = el.clientWidth;
             el.overflow = [];
             if (!width) {
-                tools.forEach((tool) => { buttons.get(tool.id).hidden = false; });
+                order.forEach((tool) => { buttons.get(tool.id).hidden = false; });
                 more.hidden = true;
                 return;
             }
             const fit = Math.max(1, Math.floor((width - 2 * SLOT - 8) / SLOT));
-            tools.forEach((tool, i) => {
+            order.forEach((tool, i) => {
                 const hide = i >= fit;
                 buttons.get(tool.id).hidden = hide;
                 if (hide) el.overflow.push(tool);

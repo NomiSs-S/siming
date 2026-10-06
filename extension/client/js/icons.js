@@ -179,6 +179,16 @@
                 "path": "M4 6l4 4 4-4"
             }
         ],
+        "monter": [
+            {
+                "path": "M4 10l4-4 4 4"
+            }
+        ],
+        "descendre": [
+            {
+                "path": "M4 6l4 4 4-4"
+            }
+        ],
         "menu": [
             {
                 "path": "M3 5h10M3 8h10M3 11h10"

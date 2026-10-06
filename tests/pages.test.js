@@ -6,7 +6,7 @@ const path = require('path');
 const { CLIENT, EXT, scene, loadHost, makeDom, hostEvalScript } = require('./helpers');
 
 const BASE = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/ui/rail.js',
-    'js/bridge.js', 'js/hub.js', 'js/standalone.js'];
+    'js/bridge.js', 'js/keys.js', 'js/hub.js', 'js/standalone.js'];
 const LIST = JSON.parse(fs.readFileSync(path.join(CLIENT, 'tools.json'), 'utf8'));
 
 /** Branche le démarrage sur le disque et le faux AE. */

@@ -5,10 +5,12 @@
  *
  *  Quatre gestes rapides sur la sélection de la timeline :
  *  - lissage de vitesse des keyframes sélectionnées (Bézier, vitesse 0, influence) ;
+ *    « entrée » = départ du mouvement (côté sortant de la keyframe), « sortie » = arrivée ;
  *  - expression Elastic sur les propriétés animées sélectionnées, pilotée par le
  *    pseudo-effet « Elastic Controller » (préréglage host/presets/ElasticController.ffx) ;
  *  - point d'ancrage des calques sélectionnés sur une des 9 positions de leur boîte,
- *    position compensée (rien ne bouge à l'écran) ;
+ *    position compensée (rien ne bouge à l'écran) ; les keyframes existantes d'ancrage
+ *    et de position sont décalées, jamais créées ;
  *  - alignement et répartition des calques sélectionnés sur leurs bords visibles.
  *
  *  Chaque fonction d'API renvoie { report: { done, skipped[] } | null, status: { text, level } }.
@@ -137,6 +139,13 @@
         return matLinear(layerMatrix({ position: [0, 0], anchor: [0, 0], scale: scale, rotation: rotation }), delta);
     }
 
+    /** v + d : nombre, [x, y] ou [x, y, z] (Z conservé) ; d = nombre ou [dx, dy]. */
+    function addDelta(v, d) {
+        if (typeof v === 'number') return v + d;
+        if (v.length > 2) return [v[0] + d[0], v[1] + d[1], v[2]];
+        return [v[0] + d[0], v[1] + d[1]];
+    }
+
     /** Rectangle englobant { left, top, right, bottom } d'une boîte transformée par M. */
     function bounds(rect, M) {
         var pts = [
@@ -215,6 +224,25 @@
     function setProp(prop, value, time) {
         if (prop.numKeys > 0) prop.setValueAtTime(time, value);
         else prop.setValue(value);
+    }
+
+    /** Décale une propriété sans créer de keyframe : chaque keyframe existante reçoit
+     *  deltaAt(son instant) ; sans keyframe, la valeur reçoit deltaAt(time). Les tangentes
+     *  spatiales posées à la main sont relues puis reposées (setValueAtKey peut les
+     *  recalculer) ; les automatiques se recalculent d'elles-mêmes, tout se décalant d'autant. */
+    function offsetProperty(prop, deltaAt, time) {
+        var n = prop.numKeys;
+        if (n === 0) {
+            prop.setValue(addDelta(prop.value, deltaAt(time)));
+            return;
+        }
+        var spatial = prop.isSpatial;
+        for (var k = 1; k <= n; k++) {
+            var keep = (spatial && !prop.keySpatialAutoBezier(k))
+                ? [prop.keyInSpatialTangent(k), prop.keyOutSpatialTangent(k)] : null;
+            prop.setValueAtKey(k, addDelta(prop.keyValue(k), deltaAt(prop.keyTime(k))));
+            if (keep) prop.setSpatialTangentsAtKey(k, keep[0], keep[1]);
+        }
     }
 
     /** Transformation 2D d'un calque à l'instant t (Z et rotations X/Y ignorées). */
@@ -313,10 +341,14 @@
     //  Lissage
     // ------------------------------------------------------------------------
 
-    /** Bézier et KeyframeEase(0, influence) sur le côté visé, l'autre côté conservé. */
+    /** Bézier et KeyframeEase(0, influence) sur le côté visé, l'autre côté conservé.
+     *  Les modes parlent du mouvement, pas de la keyframe : « entrée » (in) = le mouvement
+     *  part de la keyframe, donc son côté SORTANT (keyOut…) ; « sortie » (out) = le
+     *  mouvement arrive sur la keyframe, donc son côté ENTRANT (keyIn…). After Effects
+     *  nomme à l'envers (Easy Ease In = côté entrant) : ne pas « corriger » ceci. */
     function applyEase(prop, k, mode, influence) {
         var HOLD = KeyframeInterpolationType.HOLD, BEZ = KeyframeInterpolationType.BEZIER;
-        var doIn = (mode === 'in' || mode === 'both'), doOut = (mode === 'out' || mode === 'both');
+        var doOut = (mode === 'in' || mode === 'both'), doIn = (mode === 'out' || mode === 'both');
         var inType = prop.keyInInterpolationType(k), outType = prop.keyOutInterpolationType(k);
         if ((doIn && inType === HOLD) || (doOut && outType === HOLD)) throw new Error('keyframe en maintien');
         prop.setInterpolationTypeAtKey(k, doIn ? BEZ : inType, doOut ? BEZ : outType);
@@ -509,7 +541,10 @@
             return result('Elastic retiré de ' + S.plural(rep.done, 'propriété', 'propriétés'), rep);
         },
 
-        /** Place le point d'ancrage des calques sélectionnés. args : { cell: 1..9 }. */
+        /** Place le point d'ancrage des calques sélectionnés. args : { cell: 1..9 }.
+         *  Rien ne bouge à l'écran, à aucun instant : les keyframes existantes d'ancrage
+         *  et de position sont décalées (chaque keyframe de position compensée avec
+         *  l'échelle et la rotation de son instant), aucune keyframe n'est créée. */
         anchor: function (args) {
             var comp = ae.getActiveComp();
             if (!comp) return error(MSG_NO_COMP);
@@ -524,13 +559,24 @@
                     try {
                         if (layer.locked) throw new Error('calque verrouillé');
                         var rect = sourceRect(layer, time);
-                        var ap = layer.property('ADBE Transform Group').property('ADBE Anchor Point');
+                        var tr = layer.property('ADBE Transform Group');
+                        var ap = tr.property('ADBE Anchor Point');
                         var cur = ap.valueAtTime(time, false);
                         var target = anchorTarget(rect, cell);
-                        var t = readTransform(layer, time);
-                        var shift = compensate([target[0] - cur[0], target[1] - cur[1]], t.scale, t.rotation);
-                        setProp(ap, (cur.length > 2) ? [target[0], target[1], cur[2]] : [target[0], target[1]], time);
-                        shiftPosition(layer, shift, time);
+                        var delta = [target[0] - cur[0], target[1] - cur[1]];
+                        // Compensation à l'instant t, avec l'échelle et la rotation d'alors.
+                        var shiftAt = function (t) {
+                            var tt = readTransform(layer, t);
+                            return compensate(delta, tt.scale, tt.rotation);
+                        };
+                        offsetProperty(ap, function () { return delta; }, time);
+                        var posProp = tr.property('ADBE Position');
+                        if (posProp.dimensionsSeparated) {
+                            offsetProperty(tr.property('ADBE Position_0'), function (t) { return shiftAt(t)[0]; }, time);
+                            offsetProperty(tr.property('ADBE Position_1'), function (t) { return shiftAt(t)[1]; }, time);
+                        } else {
+                            offsetProperty(posProp, shiftAt, time);
+                        }
                         rep.done++;
                     } catch (e) {
                         rep.skipped.push(layer.name + ' : ' + e.message);
@@ -589,6 +635,8 @@
         matLinearInverse:   matLinearInverse,
         layerMatrix:        layerMatrix,
         compensate:         compensate,
+        addDelta:           addDelta,
+        offsetProperty:     offsetProperty,
         bounds:             bounds,
         union:              union,
         alignDeltas:        alignDeltas,

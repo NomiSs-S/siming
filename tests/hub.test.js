@@ -4,7 +4,7 @@ const assert = require('assert');
 const { loadHost, makeDom, hostEvalScript } = require('./helpers');
 
 const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/ui/rail.js',
-    'js/bridge.js', 'js/hub.js', 'tools/unparent.js'];
+    'js/bridge.js', 'js/keys.js', 'js/hub.js', 'tools/unparent.js'];
 
 const LIST = {
     version: '1.0.0', repository: 'OWNER/siming',
@@ -76,6 +76,86 @@ module.exports = function (test) {
         assert.strictEqual(t.hub.current, 'demo');
         t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Numpad1', bubbles: true }));
         assert.strictEqual(t.hub.current, 'demo', 'le pavé numérique est réservé aux outils');
+    });
+
+    test('hub : orderTools, ids inconnus ignorés, oubliés à la fin', () => {
+        const t = setup();
+        const ids = (order) => t.win.SIMING.orderTools(LIST.tools, order).map((x) => x.id);
+        assert.deepEqual(ids(''), ['unparent', 'demo', 'casse', 'absent']);
+        assert.deepEqual(ids('casse, demo,inconnu,demo'), ['casse', 'demo', 'unparent', 'absent']);
+    });
+
+    test('hub : Réglages › ordre des outils : rail, touches et infobulles suivent, mémorisé', () => {
+        const t = setup();
+        const doc = t.win.document;
+        t.$('.s-rail-btn[data-tool=__settings]').click();
+        const rows = () => Array.from(doc.querySelectorAll('[data-role=tool-order] .s-order-row')).map((r) => r.getAttribute('data-tool'));
+        const railIds = () => Array.from(doc.querySelectorAll('.s-rail-btn[data-tool]')).map((b) => b.getAttribute('data-tool'));
+        assert.deepEqual(rows(), ['unparent', 'demo', 'casse', 'absent']);
+        const ups = () => doc.querySelectorAll('[data-role=tool-order] [data-role=order-up]');
+        const downs = () => doc.querySelectorAll('[data-role=tool-order] [data-role=order-down]');
+        assert.strictEqual(ups()[0].disabled, true, 'premier : pas de Monter');
+        assert.strictEqual(downs()[3].disabled, true, 'dernier : pas de Descendre');
+        ups()[1].click();                                   // Démo monte
+        assert.deepEqual(rows(), ['demo', 'unparent', 'casse', 'absent']);
+        assert.deepEqual(railIds(), ['demo', 'unparent', 'casse', 'absent', '__settings']);
+        assert.strictEqual(t.win.localStorage.getItem('siming.toolOrder'), 'demo,unparent,casse,absent');
+        doc.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true, cancelable: true }));
+        assert.strictEqual(t.hub.current, 'demo', 'la touche 1 suit le rail');
+        assert.strictEqual(t.$('.s-rail-btn[data-tool=demo]').title, 'Démo (1)');
+        assert.strictEqual(t.$('.s-rail-btn[data-tool=unparent]').title, 'Unparent (2)');
+        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=shortcuts] [data-action^="hub.show."]')).map((b) => b.textContent), ['1', '2', '3', '4']);
+        downs()[3].click();
+        assert.deepEqual(rows(), ['demo', 'unparent', 'casse', 'absent'], 'dernier : Descendre inerte');
+        const again = setup({ win: t.win });
+        assert.deepEqual(Array.from(again.win.document.querySelectorAll('.s-rail-btn[data-tool]')).map((b) => b.getAttribute('data-tool')).slice(0, 2), ['demo', 'unparent']);
+        assert.deepEqual(again.hub.tools().map((x) => x.id), ['demo', 'unparent', 'casse', 'absent']);
+    });
+
+    test('hub : Réglages › raccourcis : capture, conflit signalé, infobulle du rail, Retour, Échap, rétablir', () => {
+        const t = setup();
+        const doc = t.win.document;
+        const press = (init) => doc.dispatchEvent(new t.win.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init)));
+        const keyBtn = (id) => t.$('[data-role=shortcuts] [data-action="' + id + '"]');
+        t.$('.s-rail-btn[data-tool=__settings]').click();
+        assert.deepEqual(Array.from(doc.querySelectorAll('[data-role=shortcuts] .s-keys-group')).map((g) => g.textContent), ['Panneau']);
+        assert.strictEqual(keyBtn('hub.show.demo').textContent, '2');
+        assert.strictEqual(keyBtn('hub.settings').textContent, '—');
+        keyBtn('hub.show.demo').click();
+        assert.strictEqual(keyBtn('hub.show.demo').textContent, 'Appuie sur une touche…');
+        press({ key: 'q', code: 'KeyQ', ctrlKey: true });
+        assert.strictEqual(keyBtn('hub.show.demo').textContent, 'Ctrl + Q');
+        assert.strictEqual(t.$('.s-rail-btn[data-tool=demo]').title, 'Démo (Ctrl + Q)');
+        assert.strictEqual(t.hub.current, '__settings', 'la frappe capturée n\'a pas changé d\'outil');
+        press({ key: 'q', code: 'KeyQ', ctrlKey: true });
+        assert.strictEqual(t.hub.current, 'demo');
+        t.$('.s-rail-btn[data-tool=__settings]').click();
+        press({ key: '2', code: 'Digit2' });
+        assert.strictEqual(t.hub.current, '__settings', 'l\'ancienne touche ne fait plus rien');
+        // Conflit : « Afficher Cassé » prend la touche 1 d'Unparent, qui perd la sienne
+        keyBtn('hub.show.casse').click();
+        press({ key: '1', code: 'Digit1' });
+        assert.strictEqual(t.hub.status.level, 'warn');
+        assert.ok(/Raccourci repris à : Afficher Unparent/.test(t.hub.status.text), t.hub.status.text);
+        assert.strictEqual(keyBtn('hub.show.unparent').textContent, '—');
+        assert.strictEqual(t.$('.s-rail-btn[data-tool=unparent]').title, 'Unparent');
+        assert.strictEqual(keyBtn('hub.show.casse').textContent, '1');
+        // Retour arrière = aucun ; Échap = annuler
+        keyBtn('hub.show.casse').click();
+        press({ key: 'Backspace', code: 'Backspace' });
+        assert.strictEqual(keyBtn('hub.show.casse').textContent, '—');
+        assert.strictEqual(t.hub.status.level, 'ok');
+        keyBtn('hub.show.absent').click();
+        press({ key: 'Escape', code: 'Escape' });
+        assert.strictEqual(keyBtn('hub.show.absent').textContent, '4', 'annulé : inchangé');
+        // Mémoire sur une autre page, puis rétablir
+        const again = setup({ win: t.win });
+        assert.strictEqual(again.$('.s-rail-btn[data-tool=demo]').title, 'Démo (Ctrl + Q)');
+        again.$('[data-role=keys-reset]').click();
+        assert.strictEqual(again.$('[data-role=shortcuts] [data-action="hub.show.demo"]').textContent, '2');
+        assert.strictEqual(again.$('[data-role=shortcuts] [data-action="hub.show.unparent"]').textContent, '1');
+        assert.strictEqual(again.$('.s-rail-btn[data-tool=demo]').title, 'Démo (2)');
+        assert.strictEqual(t.win.localStorage.getItem('siming.keys'), '{}');
     });
 
     test('hub : outil cassé ou sans script isolé, les autres fonctionnent', async () => {
