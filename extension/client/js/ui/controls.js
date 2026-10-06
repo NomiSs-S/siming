@@ -181,4 +181,143 @@
             ok.focus();
         });
     };
+
+    /** Barre de valeur (30 px) : libellé et valeur dedans ; glisser n'importe où (clic =
+     *  saut, Maj = précision), molette ±step (Maj ×10), flèches ±step (Maj ×10),
+     *  double-clic = saisie au clavier, Alt + clic = valeur par défaut.
+     *  onInput pendant le geste, onChange au relâchement, à la molette, au clavier et à la saisie. */
+    ui.valueBar = function ({ label, min, max, step, unit, value, defaultValue, onInput, onChange, role }) {
+        const lo = (min === undefined) ? 0 : min;
+        const hi = (max === undefined) ? 100 : max;
+        const inc = step || 1;
+        const base = (defaultValue === undefined) ? lo : defaultValue;
+        const fill = h('span', { class: 's-bar-fill' });
+        const mark = h('span', { class: 's-bar-mark' });
+        const lab = h('span', { class: 's-bar-label', text: label || '' });
+        const val = h('span', { class: 's-bar-value' });
+        const input = h('input', { class: 's-bar-input', type: 'text', inputmode: 'decimal', hidden: true, 'aria-label': label || '' });
+        const el = h('div', {
+            class: 's-bar', role: 'slider', tabindex: '0', 'data-role': role || 'value-bar',
+            'aria-label': label || '', 'aria-valuemin': String(lo), 'aria-valuemax': String(hi),
+        }, fill, mark, lab, val, input);
+        let current = clamp(value === undefined ? base : value);
+
+        function clamp(v) {
+            v = Math.round(Number(v) * 10) / 10;
+            if (isNaN(v)) v = base;
+            return Math.min(hi, Math.max(lo, v));
+        }
+        function render() {
+            const pct = hi > lo ? (current - lo) / (hi - lo) * 100 : 0;
+            fill.style.width = pct + '%';
+            mark.style.left = pct + '%';
+            val.textContent = current + (unit || '');
+            el.setAttribute('aria-valuenow', String(current));
+        }
+        /** fire : 'input' (geste en cours), 'change' (valeur finale), 'changed' (seulement si différente), null. */
+        function set(v, fire) {
+            const next = clamp(v);
+            const changed = next !== current;
+            current = next;
+            render();
+            if (fire === 'input' && onInput) onInput(current);
+            if ((fire === 'change' || (fire === 'changed' && changed)) && onChange) onChange(current);
+        }
+        function valueAt(clientX) {
+            const r = el.getBoundingClientRect();
+            const t = r.width ? (clientX - r.left) / r.width : 0;
+            return lo + Math.min(1, Math.max(0, t)) * (hi - lo);
+        }
+
+        let drag = null;
+        el.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || !input.hidden) return;
+            if (e.altKey) { set(base, 'change'); return; }
+            const raw = valueAt(e.clientX);
+            drag = { lastRaw: raw };
+            if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) { /* hors navigateur */ } }
+            el.classList.add('is-dragging');
+            set(raw, 'input');
+        });
+        el.addEventListener('pointermove', (e) => {
+            if (!drag) return;
+            const raw = valueAt(e.clientX);
+            const next = e.shiftKey ? current + (raw - drag.lastRaw) * 0.1 : raw;
+            drag.lastRaw = raw;
+            set(next, 'input');
+        });
+        const endDrag = (e) => {
+            if (!drag) return;
+            drag = null;
+            el.classList.remove('is-dragging');
+            if (el.releasePointerCapture) { try { el.releasePointerCapture(e.pointerId); } catch (err) { /* idem */ } }
+            set(current, 'change');
+        };
+        el.addEventListener('pointerup', endDrag);
+        el.addEventListener('pointercancel', endDrag);
+        el.addEventListener('wheel', (e) => {
+            if (!input.hidden) return;
+            e.preventDefault();
+            set(current + (e.deltaY < 0 ? inc : -inc) * (e.shiftKey ? 10 : 1), 'changed');
+        }, { passive: false });
+        el.addEventListener('keydown', (e) => {
+            if (!input.hidden) return;
+            const k = inc * (e.shiftKey ? 10 : 1);
+            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); set(current + k, 'changed'); }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); set(current - k, 'changed'); }
+        });
+        el.addEventListener('dblclick', () => {
+            input.value = String(current);
+            input.hidden = false;
+            lab.hidden = true;
+            val.hidden = true;
+            input.focus();
+            input.select();
+        });
+        function closeEdit(commit) {
+            if (input.hidden) return;
+            input.hidden = true;
+            lab.hidden = false;
+            val.hidden = false;
+            if (commit) {
+                const n = parseFloat(String(input.value).replace(',', '.'));
+                if (!isNaN(n)) set(n, 'change');
+            }
+            el.focus();
+        }
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();   // Entrée et Échap restent dans le champ (pas de bouton principal, pas de dialogue)
+            if (e.key === 'Enter') { e.preventDefault(); closeEdit(true); }
+            else if (e.key === 'Escape') { e.preventDefault(); closeEdit(false); }
+        });
+        input.addEventListener('blur', () => closeEdit(true));
+
+        el.set = (v) => set(v, null);
+        Object.defineProperty(el, 'value', { get: () => current });
+        render();
+        return el;
+    };
+
+    const POINT9_TITLES = { 7: 'Haut gauche', 8: 'Haut centre', 9: 'Haut droite', 4: 'Milieu gauche', 5: 'Centre',
+        6: 'Milieu droite', 1: 'Bas gauche', 2: 'Bas centre', 3: 'Bas droite' };
+
+    /** Carré 3 × 3 de positions (108 × 108) : neuf cases cliquables numérotées comme le
+     *  pavé numérique (7 8 9 en haut). onPick(cell) au clic ; el.set(cell) ; el.value. */
+    ui.point9 = function ({ value, onPick, role }) {
+        const el = h('div', { class: 's-point9', role: 'group', 'data-role': role || 'point9', 'aria-label': 'Point d\'ancrage' });
+        const cells = {};
+        for (const n of [7, 8, 9, 4, 5, 6, 1, 2, 3]) {
+            cells[n] = h('button', {
+                class: 's-point9-cell', type: 'button', 'data-cell': String(n), title: POINT9_TITLES[n],
+                onclick: () => { el.set(n); if (onPick) onPick(n); },
+            }, h('span', { class: 's-point9-dot' }));
+            el.append(cells[n]);
+        }
+        el.set = function (n) {
+            el.value = Number(n);
+            for (const k of Object.keys(cells)) cells[k].classList.toggle('is-on', Number(k) === el.value);
+        };
+        el.set(value || 5);
+        return el;
+    };
 })(window);

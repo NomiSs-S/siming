@@ -9,6 +9,7 @@ dans son propre panneau.
 | Outil | Version | Rôle |
 |---|---|---|
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
+| Quick Tools | 1.0.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir |
 
 ## Installation
 
@@ -35,6 +36,25 @@ Effects et disparaît au rattachement. Ne pas la modifier à la main.
 Limites : la compensation se fait à l'instant courant (un enfant animé peut sauter
 sur d'autres images, comme dans AE) ; calques verrouillés ignorés et signalés ;
 seuls les enfants directs sont traités.
+
+## Quick Tools : principe
+
+Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun :
+
+1. **Lissage de vitesse** : règle l'influence (Entrée, Sortie, Les deux), puis clique le
+   picto de keyframe ou relâche la barre : les keyframes sélectionnées passent en Bézier,
+   vitesse 0, influence voulue sur ce côté.
+2. **Elastic** : « Appliquer Elastic » pose l'expression de rebond et l'effet « Elastic
+   Controller » (Amplitude 20, Frequency 40, Decay 60, à régler dans le panneau Effets)
+   sur les propriétés animées sélectionnées ; « Retirer » les enlève.
+3. **Point d'ancrage** : une case du carré 3 × 3 (ou 1 à 9 au pavé numérique) place
+   l'ancrage des calques sélectionnés sur leur boîte visible, position compensée.
+4. **Aligner et répartir** : comme la fenêtre Aligner d'After Effects, par rapport à la
+   sélection ou à la composition, sur les bords visibles (rotation, échelle et parents
+   pris en compte).
+
+Les boutons portent le verbe seul : la sélection n'est connue qu'au clic, la ligne de
+statut dit ensuite combien d'éléments ont été traités.
 
 ## Développement
 

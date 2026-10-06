@@ -16,6 +16,7 @@ const FILES = [
     './unparent-api.test.js',
     './quicktools-core.test.js',
     './quicktools-api.test.js',
+    './quicktools-view.test.js',
     './bridge.test.js',
     './ui-dom.test.js',
     './ui-controls.test.js',

@@ -1,7 +1,8 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "repository": "NomiSs-S/siming",
   "tools": [
-    { "id": "unparent", "name": "Unparent", "icon": "delier", "version": "2.0.0", "script": "tools/unparent.js" }
+    { "id": "unparent", "name": "Unparent", "icon": "delier", "version": "2.0.0", "script": "tools/unparent.js" },
+    { "id": "quicktools", "name": "Quick Tools", "icon": "eclair", "version": "1.0.0", "script": "tools/quicktools.js" }
   ]
 }

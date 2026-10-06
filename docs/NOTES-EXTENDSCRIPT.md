@@ -27,6 +27,12 @@ d'After Effects où elle a été observée. Les notes propres à ScriptUI (aband
 - `layer.comment` : chaîne libre visible dans la timeline, bon support d'une mémoire persistante discrète.
 - `comp.selectedLayers` : tableau d'objets calque, dans l'ordre de sélection.
 - `layer.label` : index d'étiquette, 0 (aucune) à 16. Les couleurs sont dans les préférences : `app.preferences.getPrefAsString('Label Preference Color Section 5', 'Label Color ID 2 # n')` renvoie **4 octets ARGB sous forme de caractères**, pas un texte hexadécimal (`getPrefAsLong` échoue). Les lire avec `$.appEncoding = 'BINARY'` (un caractère par octet), puis rendre l'encodage ; repli sur les couleurs par défaut si la forme est inconnue. Dans le fichier de préférences, les octets imprimables apparaissent entre guillemets (`FFB5"88"` = B53838).
+- **Lissage temporel** : `setTemporalEaseAtKey(k, inEase, outEase)` veut des tableaux de `KeyframeEase` dont la longueur dépend de la propriété : 1 pour une propriété spatiale ou 1D, 2 ou 3 pour une propriété 2D/3D non spatiale (échelle). Lire `keyInTemporalEase(k).length` pour connaître la bonne longueur. Passer d'abord `setInterpolationTypeAtKey(k, BEZIER, …)` : changer l'interpolation remet l'ease par défaut. `KeyframeEase` refuse une influence hors 0,1–100.
+- **`setValue` sur une propriété animée** échoue : tester `numKeys > 0` et utiliser `setValueAtTime(temps, valeur)` (keyframe posée à l'instant courant).
+- **Dimensions séparées** (`position.dimensionsSeparated`) : `ADBE Position` ne se pose plus, il faut écrire `ADBE Position_0` et `ADBE Position_1`, qui n'existent dans `property()` qu'en mode séparé.
+- **Pseudo-effet à plusieurs curseurs** (ex. « Elastic Controller ») : impossible à créer par script, mais un préréglage `.ffx` qui le contient s'applique partout avec `layer.applyPreset(File)`, la définition étant embarquée dans le fichier. `applyPreset` vise les calques **sélectionnés** : isoler la sélection sur le calque voulu, puis la rétablir (`layer.selected`).
+- **`sourceRectAtTime(t, false)`** donne la boîte visible dans l'espace du calque (`top`, `left`, `width`, `height`) ; absente sur les caméras et lumières (`typeof layer.sourceRectAtTime !== 'function'`). Pas de `toComp` en ExtendScript : composer soi-même ancrage, échelle, rotation, position et la chaîne des parents (matrices 2D dans `quicktools.jsx`).
+- Le `Layer` est un `PropertyGroup` : `numProperties` et `property(i)` permettent de parcourir toutes ses propriétés (utile pour chercher une expression).
 
 ## CEP (à compléter pendant l'implémentation)
 

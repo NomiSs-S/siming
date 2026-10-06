@@ -136,6 +136,6 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
 ## 8. Textes
 
 - Verbes courts à l'infinitif : « Détacher », « Rattacher », « Créer le null ».
-- Le bouton principal dit combien d'éléments il touche.
+- Le bouton principal dit combien d'éléments il touche, sauf quand la sélection n'est connue qu'au clic (Quick Tools) : verbe seul, la quantité vient dans la ligne de statut.
 - Le statut dit ce qui s'est passé et rappelle `Ctrl+Z` après une action.
 - Tutoiement dans les aides et états vides.

@@ -71,6 +71,13 @@ Revue finale : corrections (mot de passe masqué, installeurs robustes, Entrée,
 - Release v1.0.0 : https://github.com/NomiSs-S/siming/releases/tag/v1.0.0 (zxp, deux installeurs, `INSTALLATION.md`). L'API `releases` répond 200 et expose le `.zxp` avec la note « Ajout : Unparent » : l'installeur verra la version.
 - Reste à faire : tester l'installeur téléchargé sur une machine sans lien de développement (ou après suppression de `%APPDATA%\Adobe\CEP\extensions\com.siming`), valider sous macOS, noter les chemins UPIA ; `MIN_AE` laissé à 24.0.
 
+### 2026-10-06 : Quick Tools implémenté (1.1.0, à valider dans AE)
+
+Spec : `docs/superpowers/specs/2026-10-06-quicktools-design.md` ; plan : `docs/superpowers/plans/2026-10-06-quicktools.md`.
+Décisions de Simon : un seul outil à quatre sections empilées (Lissage, Elastic, Point d'ancrage, Aligner + Répartir), livré complet ; lissage = Bézier, vitesse 0 et influence, appliqué au relâchement de la barre comme au picto ; Elastic = pseudo-effet « Elastic Controller » (20 / 40 / 60) de son préréglage (`host/presets/ElasticController.ffx`), expression reprise telle quelle, réglages dans le panneau Effets seulement, bouton « Retirer » ; point d'ancrage par le carré 3 × 3 et le pavé numérique, position compensée ; aligner et répartir comme la fenêtre d'AE, sur les bords visibles, Sélection ou Composition. Ni maquette ni validation intermédiaire : retours sur l'outil réel.
+Fait : faux AE étendu (`tests/fake-ae-props.js` : propriétés, keyframes, ease, expressions, effets, `applyPreset`, transformations), cœur hôte ES3 avec matrices 2D (parents, rotation, échelle, dimensions séparées, 3D en X/Y), composants `valueBar` et `point9`, vue, hub limité à la rangée de chiffres (le pavé numérique revient aux outils), 14 icônes, docs. `node tests/run.js` : 165 tests, 0 échec. `tools.json` 1.1.0, outil 1.0.0.
+État : à tester dans AE (section « Quick Tools » de `docs/TESTS-MANUELS.md`, lien de développement en place, redémarrer AE), puis corrections et Release 1.1.0 « Ajout : Quick Tools ».
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -116,4 +123,8 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 
 - `Layer.id` est-il stable après enregistrement et réouverture du projet ? (sinon la résolution par nom prend le relais)
 - Couleur d'étiquette personnalisée : `getPrefAsString` lu en `BINARY` donne-t-il bien la couleur des Préférences › Étiquettes ? (sinon la carte montre la couleur par défaut d'AE)
+- Quick Tools, `applyPreset` : applique-t-il bien au seul calque visé une fois la sélection réduite à lui ? Sinon l'effet se poserait sur d'autres calques.
+- Quick Tools, `setTemporalEaseAtKey` : la longueur lue sur `keyInTemporalEase` suffit-elle partout (Position spatiale, Échelle, couleur) ?
+- Quick Tools, `sourceRectAtTime` : boîte attendue sur un solide, une précomposition, un calque texte ? Calque 3D : rotation X/Y ignorée, à documenter si gênant.
+- Quick Tools, `$.fileName` dans un outil chargé par `$.evalFile` : donne-t-il le chemin de `quicktools.jsx` (d'où celui du préréglage) ?
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).

@@ -137,4 +137,82 @@ module.exports = function (test) {
         await second;
         assert.strictEqual(doc.querySelector('.s-dialog-backdrop'), null);
     });
+
+    test('valueBar : rendu, bornes, set, molette, clavier', () => {
+        const { ui, win } = setup();
+        const changes = [];
+        const bar = ui.valueBar({ label: 'Entrée', min: 1, max: 100, unit: ' %', value: 33, defaultValue: 33, onChange: (v) => changes.push(v) });
+        assert.strictEqual(bar.querySelector('.s-bar-label').textContent, 'Entrée');
+        assert.strictEqual(bar.querySelector('.s-bar-value').textContent, '33 %');
+        assert.strictEqual(bar.value, 33);
+        bar.set(250);
+        assert.strictEqual(bar.value, 100, 'borné au maximum');
+        assert.strictEqual(bar.querySelector('.s-bar-fill').style.width, '100%');
+        assert.deepEqual(changes, [], 'set() ne déclenche pas onChange');
+        bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));                  // vers le bas : -1
+        assert.strictEqual(bar.value, 99);
+        bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY: -100, shiftKey: true, bubbles: true, cancelable: true })); // haut + Maj : +10, borné
+        assert.strictEqual(bar.value, 100);
+        bar.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        assert.strictEqual(bar.value, 99);
+        bar.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }));
+        assert.strictEqual(bar.value, 89);
+        bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+        bar.set(1);
+        bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));                  // déjà au minimum : rien
+        assert.deepEqual(changes, [99, 100, 99, 89, 88]);
+    });
+
+    test('valueBar : glissé (clic = saut, Maj = précision), Alt + clic = défaut, double-clic = saisie', () => {
+        const { ui, win, doc } = setup();
+        const inputs = [], changes = [];
+        const bar = ui.valueBar({ label: 'Sortie', min: 0, max: 100, value: 10, defaultValue: 33, onInput: (v) => inputs.push(v), onChange: (v) => changes.push(v) });
+        doc.body.append(bar);
+        bar.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 30, right: 200, bottom: 30 });
+        const pe = (type, x, extra) => bar.dispatchEvent(new win.PointerEvent(type, Object.assign({ clientX: x, button: 0, pointerId: 1, bubbles: true }, extra || {})));
+        pe('pointerdown', 100);
+        assert.strictEqual(bar.value, 50, 'clic = saut à la position');
+        assert.ok(bar.classList.contains('is-dragging'));
+        pe('pointermove', 150);
+        assert.strictEqual(bar.value, 75);
+        pe('pointermove', 170, { shiftKey: true });
+        assert.strictEqual(bar.value, 76, 'Maj : dixième du déplacement');
+        pe('pointerup', 170);
+        assert.ok(!bar.classList.contains('is-dragging'));
+        assert.deepEqual(inputs, [50, 75, 76]);
+        assert.deepEqual(changes, [76], 'onChange une fois, au relâchement');
+        pe('pointerdown', 20, { altKey: true });
+        assert.strictEqual(bar.value, 33, 'Alt + clic = valeur par défaut');
+        assert.deepEqual(changes, [76, 33]);
+        bar.dispatchEvent(new win.MouseEvent('dblclick', { bubbles: true }));
+        const input = bar.querySelector('.s-bar-input');
+        assert.strictEqual(input.hidden, false);
+        assert.strictEqual(input.value, '33');
+        input.value = '42,5';
+        input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        assert.strictEqual(input.hidden, true);
+        assert.strictEqual(bar.value, 42.5);
+        assert.deepEqual(changes, [76, 33, 42.5]);
+        bar.dispatchEvent(new win.MouseEvent('dblclick', { bubbles: true }));
+        input.value = '7';
+        input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        assert.strictEqual(bar.value, 42.5, 'Échap annule');
+        assert.strictEqual(input.hidden, true);
+    });
+
+    test('point9 : neuf cases dans l\'ordre du pavé, clic et set', () => {
+        const { ui } = setup();
+        const picks = [];
+        const p9 = ui.point9({ value: 5, onPick: (n) => picks.push(n) });
+        const cells = Array.from(p9.querySelectorAll('.s-point9-cell'));
+        assert.deepEqual(cells.map((c) => c.getAttribute('data-cell')), ['7', '8', '9', '4', '5', '6', '1', '2', '3']);
+        assert.ok(cells[4].classList.contains('is-on'), 'centre choisi au départ');
+        cells[8].click();
+        assert.deepEqual(picks, [3]);
+        assert.ok(cells[8].classList.contains('is-on') && !cells[4].classList.contains('is-on'));
+        assert.strictEqual(p9.value, 3);
+        p9.set(7);
+        assert.ok(cells[0].classList.contains('is-on'));
+        assert.strictEqual(cells[0].title, 'Haut gauche');
+    });
 };
