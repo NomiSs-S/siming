@@ -215,4 +215,87 @@ module.exports = function (test) {
         assert.ok(cells[0].classList.contains('is-on'));
         assert.strictEqual(cells[0].title, 'Haut gauche');
     });
+
+    test('labelSwatch et labelPicker : pastilles, ouvrir / refermer, flèches, clic dehors, un seul ouvert', () => {
+        const { win, ui, doc } = setup();
+        const palette = [{ index: 0, color: null, name: 'Aucune' }];
+        for (let i = 1; i <= 16; i++) palette.push({ index: i, color: '#0000' + (i < 10 ? '0' : '') + i, name: 'Couleur ' + i });
+        assert.ok(ui.swatch(palette, 0).classList.contains('is-none'));
+        assert.ok(ui.swatch(palette, -1).classList.contains('is-keep'));
+        assert.strictEqual(ui.swatch(palette, 3).style.backgroundColor, 'rgb(0, 0, 3)');
+        assert.strictEqual(ui.labelName(palette, -1), 'Ne pas changer');
+        const picked = [];
+        const sw = ui.labelSwatch({ palette, value: 2, withName: true, title: 'Texte', onChange: (v) => picked.push(v) });
+        doc.body.append(sw);
+        assert.strictEqual(sw.value, 2);
+        assert.strictEqual(sw.title, 'Texte : Couleur 2');
+        assert.strictEqual(sw.querySelector('.s-swatch-name').textContent, 'Couleur 2');
+        const picker = () => doc.querySelector('[data-role=label-picker]');
+        sw.click();
+        assert.ok(picker());
+        assert.strictEqual(picker().querySelector('[data-label="-1"]'), null, 'sans allowKeep : pas de « Ne pas changer »');
+        assert.strictEqual(doc.activeElement.getAttribute('data-label'), '2', 'focus sur la couleur courante');
+        const arrow = (k) => doc.activeElement.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+        arrow('ArrowDown');
+        assert.strictEqual(doc.activeElement.getAttribute('data-label'), '6');
+        arrow('ArrowLeft');
+        assert.strictEqual(picker().querySelector('.s-picker-name').textContent, 'Couleur 5', 'nom de la couleur visée');
+        sw.click();
+        assert.strictEqual(picker(), null, 'second clic : refermé');
+        sw.click();
+        doc.body.dispatchEvent(new win.MouseEvent('pointerdown', { bubbles: true }));
+        assert.strictEqual(picker(), null, 'clic dehors : refermé');
+        sw.click();
+        const other = ui.labelPicker({ palette, value: 0, allowKeep: true, anchor: null });
+        assert.strictEqual(doc.querySelectorAll('[data-role=label-picker]').length, 1, 'un seul à la fois');
+        assert.ok(picker().querySelector('[data-label="0"]').classList.contains('is-on'));
+        other();
+        sw.click();
+        picker().querySelector('[data-label="9"]').click();
+        assert.deepEqual(picked, [9]);
+        assert.strictEqual(sw.value, 9);
+        sw.setPalette(palette.map((p) => Object.assign({}, p, { name: p.name.toUpperCase() })));
+        assert.strictEqual(sw.querySelector('.s-swatch-name').textContent, 'COULEUR 9');
+    });
+
+    test('labelSwatch : geste en un clic (appuyer, glisser, relâcher sur une couleur), simple clic, relâcher ailleurs', () => {
+        const { win, ui, doc } = setup();
+        const palette = [{ index: 0, color: null, name: 'Aucune' }];
+        for (let i = 1; i <= 16; i++) palette.push({ index: i, color: '#101010', name: 'Couleur ' + i });
+        const picked = [];
+        const sw = ui.labelSwatch({ palette, value: 2, onChange: (v) => picked.push(v) });
+        doc.body.append(sw);
+        const ptr = (type, target) => {
+            const e = new win.MouseEvent(type, { bubbles: true, cancelable: true, button: 0 });
+            target.dispatchEvent(e);
+            return e;
+        };
+        const picker = () => doc.querySelector('[data-role=label-picker]');
+        const down = ptr('pointerdown', sw);
+        assert.ok(picker(), 'bouton enfoncé : couleurs ouvertes');
+        assert.strictEqual(down.defaultPrevented, true);
+        ptr('pointerup', picker().querySelector('[data-label="7"]'));
+        assert.deepEqual(picked, [7], 'relâché sur une couleur : choisie');
+        assert.strictEqual(picker(), null);
+        ptr('pointerdown', sw);
+        ptr('pointerup', sw);
+        sw.dispatchEvent(new win.MouseEvent('click', { bubbles: true, detail: 1 }));
+        assert.ok(picker(), 'simple clic : reste ouvert, le clic souris qui suit ne le referme pas');
+        picker().querySelector('[data-label="3"]').click();
+        assert.deepEqual(picked, [7, 3], 'puis clic sur une couleur');
+        ptr('pointerdown', sw);
+        ptr('pointerup', doc.body);
+        assert.strictEqual(picker(), null, 'relâché ailleurs : refermé sans choix');
+        assert.deepEqual(picked, [7, 3]);
+        sw.disabled = true;
+        ptr('pointerdown', sw);
+        assert.strictEqual(picker(), null, 'désactivé : rien');
+    });
+
+    test('toolHeader : aide puis « Ouvrir dans un panneau » au picto fenêtre', () => {
+        const { ui } = setup();
+        const head = ui.toolHeader({ title: 'X', onHelp() {}, onOpenStandalone() {} });
+        assert.deepEqual(Array.from(head.querySelectorAll('.s-icon-btn')).map((b) => b.getAttribute('data-role')), ['help', 'open-standalone']);
+        assert.strictEqual(head.querySelector('[data-role=open-standalone] rect').getAttribute('height'), '9', 'fenêtre et barre de titre');
+    });
 };

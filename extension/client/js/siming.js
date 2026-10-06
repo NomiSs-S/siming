@@ -67,6 +67,21 @@
         try { cs.addEventListener('com.adobe.csxs.events.ThemeColorChanged', apply); } catch (e) { /* idem */ }
     };
 
+    /** Réclame à After Effects les touches des raccourcis du panneau (sinon il garde pour lui
+     *  les combinaisons avec Ctrl, Alt ou Cmd), puis suit chaque changement de raccourci.
+     *  Renvoie false hors CEP ou sans registerKeyEventsInterest. */
+    SIMING.claimKeys = function (cs) {
+        if (!cs || typeof cs.registerKeyEventsInterest !== 'function' || !SIMING.keys) return false;
+        let os = 'win';
+        try { if (/mac/i.test(cs.getOSInformation())) os = 'mac'; } catch (e) { /* Windows par défaut */ }
+        const push = () => {
+            try { cs.registerKeyEventsInterest(JSON.stringify(SIMING.keys.interest(os))); } catch (e) { /* hôte sans cette fonction */ }
+        };
+        SIMING.keys.onChange(push);
+        push();
+        return true;
+    };
+
     // --- Démarrage des pages ----------------------------------------------------
 
     /** Lit un JSON local (XHR synchrone ; un fichier local répond avec le statut 0). */
@@ -145,6 +160,7 @@
             root.textContent = 'SIMING : démarrage impossible (' + e.message + ')';
             return null;
         }
+        SIMING.claimKeys(cs);
         if (errors.length) app.status.set(errors.join(' · '), 'warn');
         return app;
     };

@@ -37,6 +37,37 @@ function otherComp() {
     return { comp, T, E1, E2 };
 }
 
+/** Comp 400 « Pub » active, un calque de chaque nature, étiquettes à 0 (Aucune) :
+ *  title (texte au nom automatique), textLogo (texte renommé « Logo animé »), shape,
+ *  logo (LOGO_client.png), brand (marque.png rangé dans le dossier « Logos »), sky
+ *  (bg_ciel.jpg), video (Plan 01.mov), solid, nul, adjust, audio, precomp, camera. */
+function labelScene() {
+    const { FootageItem, FolderItem, FileSource, SolidSource, FakeFile } = require('./fake-ae');
+    const comp = new FakeComp(400, 'Pub');
+    app.project.activeItem = comp;
+    app.project.items.push(comp);
+    const logos = new FolderItem('Logos');
+    const footage = (name, still, opts) => new FootageItem(name, new FileSource(new FakeFile(path.join(ROOT, 'medias', name)), still), opts);
+    const solid = (name) => new FootageItem(name, new SolidSource());
+    const add = (name, opts) => comp.addLayer(name, Object.assign({ label: 0 }, opts));
+    const L = {
+        title:    add('Titre', { kind: 'text', text: 'Titre' }),
+        textLogo: add('Logo animé', { kind: 'text', text: 'ACME' }),
+        shape:    add('Forme 1', { kind: 'shape' }),
+        logo:     add('LOGO_client.png', { source: footage('LOGO_client.png', true) }),
+        brand:    add('marque.png', { source: footage('marque.png', true, { parentFolder: logos }) }),
+        sky:      add('bg_ciel.jpg', { source: footage('bg_ciel.jpg', true) }),
+        video:    add('Plan 01.mov', { source: footage('Plan 01.mov', false, { hasAudio: true }) }),
+        solid:    add('Solide gris', { source: solid('Solide gris') }),
+        nul:      add('Nul 1', { nullLayer: true, source: solid('Nul 1') }),
+        adjust:   add('Calque d\'effets', { adjustmentLayer: true, source: solid('Calque d\'effets') }),
+        audio:    add('Musique.wav', { source: footage('Musique.wav', false, { hasVideo: false, hasAudio: true }) }),
+        precomp:  add('Scène 1', { source: new FakeComp(401, 'Scène 1') }),
+        camera:   add('Caméra 1', { kind: 'camera' }),
+    };
+    return { comp, L, layer: (st) => comp.layer(comp.layers.indexOf(st) + 1) };
+}
+
 /** Bac à sable neuf avec le cœur hôte chargé (il charge aussi host/tools/*.jsx). */
 function loadHost() {
     const sandbox = createSandbox();
@@ -88,4 +119,4 @@ function makeDom(files, url) {
     return loadClientScripts(dom.window, files || []);
 }
 
-module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, loadHost, callHost, loadUnparent, loadClientScripts, hostEvalScript, makeDom, app };
+module.exports = { ROOT, EXT, HOST, CLIENT, scene, otherComp, labelScene, loadHost, callHost, loadUnparent, loadClientScripts, hostEvalScript, makeDom, app };

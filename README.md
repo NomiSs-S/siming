@@ -4,12 +4,13 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.0.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.2.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Quick Tools | 1.0.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir |
+| Libellés | 1.0.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
 
 ## Installation
 
@@ -60,6 +61,35 @@ Les boutons portent le verbe seul : la sélection n'est connue qu'au clic, la li
 statut dit ensuite combien d'éléments ont été traités. Le dernier geste est cerclé de bleu :
 **Entrée** le rejoue sur la nouvelle sélection.
 
+## Libellés : principe
+
+Rien n'est automatique : l'outil propose, tu corriges, il pose.
+
+1. **Sélection** ou **Composition**, puis clic sur la **carte** : chaque calque reçoit une
+   couleur proposée.
+2. Le **récapitulatif** groupe les calques par règle (À changer / Tous). **Appuie** sur une
+   ligne : les couleurs s'ouvrent, glisse sur l'une d'elles et **relâche** (un seul geste) ; ou
+   clique, puis clique la couleur. « Ne pas changer » écarte le calque. Clic sur la pastille d'un
+   groupe : change la règle elle-même (gardée pour la suite) et relance l'analyse.
+   **Plusieurs calques à la fois** : Ctrl + clic (ajouter / retirer), Maj + clic (plage), clic
+   sur le nom d'un groupe (tout le groupe) ; appuyer sur une ligne sélectionnée colore toute la
+   sélection. Échap désélectionne.
+3. Le **bouton bleu** (« Appliquer 12 libellés », ou Entrée) pose les étiquettes : un seul Ctrl+Z.
+
+Onglet **Règles** :
+- **Mots-clés**, prioritaires, le premier de la liste gagne : mots entiers séparés par des
+  virgules, cherchés dans le nom du calque, de sa source, de son fichier et des dossiers du
+  projet qui la contiennent (majuscules, accents et pluriel ignorés). « logo » trouve
+  `LOGO_client.png`, `logoClient` ou le dossier `Logos`, pas `logotype`. « .ai » vise
+  l'extension du fichier. Un calque texte ne compte que par un nom donné à la main.
+- **Par nature** : Texte, Forme, Vidéo, Image, Son, Solide, Nul, Réglage, Précompo, Caméra,
+  Lumière, Autre ; chacune une étiquette ou « Ne pas changer ».
+
+Par défaut : logo vert, fond / bg / background / arrière-plan rouge ; texte jaune, forme bleue,
+vidéo fuchsia, image orange, solide et nul rouges. Couleurs et noms sont ceux des
+Préférences › Étiquettes d'After Effects : les 16 étiquettes d'AE, pas de couleur libre.
+Raccourcis réglables : Appliquer (Entrée), Analyser, Analyser et appliquer.
+
 ## Réglages
 
 Le bouton Réglages du rail ouvre trois onglets, pensés pour beaucoup d'outils :
@@ -71,8 +101,10 @@ Le bouton Réglages du rail ouvre trois onglets, pensés pour beaucoup d'outils 
   apparaît à partir de 7 outils.
 - **Raccourcis** : recherche (action, outil ou touche), puis une touche par action
   (afficher un outil, rejouer le dernier geste, chaque geste de Quick Tools) ; clic sur
-  la touche, puis frappe du nouveau raccourci, Retour arrière = aucun, « Rétablir » pour
-  revenir aux défauts.
+  la touche, puis frappe du nouveau raccourci : une touche seule ou une combinaison avec
+  Ctrl, Alt, Maj (Cmd sur Mac), par exemple Ctrl + Alt + 5 ; Retour arrière = aucun,
+  « Rétablir » pour revenir aux défauts. Le panneau réclame ses raccourcis à After Effects,
+  qui sinon garderait les combinaisons pour lui.
 - **Général** : outil au lancement (menu déroulant : dernier utilisé ou un outil
   précis) et « À propos ».
 

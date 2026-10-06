@@ -58,6 +58,10 @@ function LayerRef(state, comp) {
     Object.defineProperty(this, 'locked', { get: () => state.locked, set: (v) => { state.locked = !!v; }, enumerable: true });
     // Étiquette de couleur : 0 = aucune, 1 à 16 = couleurs des Préférences › Étiquettes
     Object.defineProperty(this, 'label', { get: () => state.label, set: (v) => { state.label = Number(v); }, enumerable: true });
+    // Nature : calque nul / de réglage, source (FootageItem, FakeComp) ou null
+    Object.defineProperty(this, 'nullLayer', { get: () => !!state.nullLayer, enumerable: true });
+    Object.defineProperty(this, 'adjustmentLayer', { get: () => !!state.adjustmentLayer, enumerable: true });
+    Object.defineProperty(this, 'source', { get: () => state.source || null, enumerable: false });
     Object.defineProperty(this, 'parent', {
         get: () => (state.parent && comp.layers.indexOf(state.parent) >= 0) ? new LayerRef(state.parent, comp) : null,
         set: (v) => {
@@ -120,11 +124,59 @@ LightLayerRef.prototype = Object.create(LayerRef.prototype);
 LightLayerRef.prototype.constructor = LightLayerRef;
 LightLayerRef.prototype.sourceRectAtTime = undefined;
 
+/** Calque texte : texte affiché dans state.text (Source Text). */
+function TextLayerRef(state, comp) { LayerRef.call(this, state, comp); }
+TextLayerRef.prototype = Object.create(LayerRef.prototype);
+TextLayerRef.prototype.constructor = TextLayerRef;
+TextLayerRef.prototype.property = function (x) {
+    const st = this._state;
+    if (x === 'ADBE Text Properties') {
+        return { property: (y) => (y === 'ADBE Text Document' ? { value: { text: st.text || '' } } : null) };
+    }
+    return LayerRef.prototype.property.call(this, x);
+};
+function ShapeLayerRef(state, comp) { LayerRef.call(this, state, comp); }
+ShapeLayerRef.prototype = Object.create(LayerRef.prototype);
+ShapeLayerRef.prototype.constructor = ShapeLayerRef;
+
 /** Poignée de la bonne classe selon le genre du calque. */
 function refOf(state, comp) {
     if (state.kind === 'camera') return new CameraLayerRef(state, comp);
     if (state.kind === 'light') return new LightLayerRef(state, comp);
+    if (state.kind === 'text') return new TextLayerRef(state, comp);
+    if (state.kind === 'shape') return new ShapeLayerRef(state, comp);
     return new LayerRef(state, comp);
+}
+
+// ---------------------------------------------------------------------------
+//  Éléments du projet : sources des calques et dossiers
+// ---------------------------------------------------------------------------
+
+function SolidSource() {}
+function PlaceholderSource() {}
+/** Source fichier : file (FakeFile), isStill (image fixe). */
+function FileSource(file, isStill) { this.file = file; this.isStill = !!isStill; }
+
+class FolderItem {
+    constructor(name, parentFolder) {
+        this.id = nextId++;
+        this.name = name;
+        this.parentFolder = parentFolder || null;
+    }
+}
+
+/** Métrage : mainSource (SolidSource | FileSource | PlaceholderSource), hasVideo, hasAudio. */
+class FootageItem {
+    constructor(name, mainSource, opts) {
+        const o = opts || {};
+        this.id = nextId++;
+        this.name = name;
+        this.mainSource = mainSource;
+        this.hasVideo = o.hasVideo !== undefined ? !!o.hasVideo : true;
+        this.hasAudio = !!o.hasAudio;
+        this.parentFolder = o.parentFolder || null;
+        this.label = 0;
+    }
 }
 
 class FakeComp extends CompItem {
@@ -185,24 +237,34 @@ const DEFAULT_LABELS = [
     'FFB53838', 'FFE4D84C', 'FFA9CBC7', 'FFE5BCC9', 'FFA9A9CA', 'FFE7C19E', 'FFB3C7B3', 'FF677DE0',
     'FF4AA44C', 'FF8E2C9A', 'FFE8920D', 'FF7F452A', 'FFF46DD6', 'FF3DA2A5', 'FFA89677', 'FF1E401E',
 ];
+/** Noms d'origine des étiquettes, tels que les préférences les gardent (anglais). */
+const LABEL_TEXT_SECTION = 'Label Preference Text Section 7';
+const DEFAULT_LABEL_NAMES = [
+    'Red', 'Yellow', 'Aqua', 'Pink', 'Lavender', 'Peach', 'Sea Foam', 'Blue',
+    'Green', 'Purple', 'Orange', 'Brown', 'Fuchsia', 'Cyan', 'Sandstone', 'Dark Green',
+];
 
 /** Faux app.preferences : getPrefAsString renvoie les 4 octets ARGB sous forme de
  *  caractères, comme After Effects en encodage BINARY. `labels[i]` = étiquette n° i + 1. */
 function makePreferences() {
     return {
         labels: DEFAULT_LABELS.slice(),
+        names: DEFAULT_LABEL_NAMES.slice(),
         reads: [],
         havePref(section, key) { return this._index(section, key) !== null; },
         getPrefAsString(section, key) {
             const i = this._index(section, key);
             if (i === null) throw new Error('Pref not found: ' + section + ' / ' + key);
+            if (section === LABEL_TEXT_SECTION) return this.names[i];
             this.reads.push(key);
             let s = '';
             for (let b = 0; b < 8; b += 2) s += String.fromCharCode(parseInt(this.labels[i].substr(b, 2), 16));
             return s;
         },
         _index(section, key) {
-            const m = section === LABEL_SECTION ? /^Label Color ID 2 # (\d+)$/.exec(key) : null;
+            let m = null;
+            if (section === LABEL_SECTION) m = /^Label Color ID 2 # (\d+)$/.exec(key);
+            if (section === LABEL_TEXT_SECTION) m = /^Label Text ID 2 # (\d+)$/.exec(key);
             const n = m ? Number(m[1]) : 0;
             return (n >= 1 && n <= this.labels.length) ? n - 1 : null;
         },
@@ -216,6 +278,7 @@ const app = {
         items: [],
         get numItems() { return this.items.length; },
         item(i) { return this.items[i - 1]; },
+        rootFolder: new FolderItem('Racine'),
     },
     preferences: makePreferences(),
     presetsApplied: [],
@@ -242,6 +305,7 @@ function normalize(p) { return path.normalize(String(p)); }
 class FakeFile {
     constructor(p) { this.path = normalize(p); }
     get name() { return path.basename(this.path); }
+    get displayName() { return decodeURIComponent(this.name); }
     get fsName() { return this.path; }
     get absoluteURI() { return this.path.replace(/\\/g, '/'); }
     get exists() { return fs.existsSync(this.path) && fs.statSync(this.path).isFile(); }
@@ -291,6 +355,8 @@ function createSandbox() {
     const sandbox = {
         app, CompItem, File: FakeFile, Folder: FakeFolder, alerts: [],
         AVLayer: LayerRef, CameraLayer: CameraLayerRef, LightLayer: LightLayerRef,
+        TextLayer: TextLayerRef, ShapeLayer: ShapeLayerRef,
+        FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource,
         KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType,
         PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType,
     };
@@ -301,6 +367,7 @@ function createSandbox() {
 }
 
 module.exports = {
-    CompItem, FakeComp, LayerRef, CameraLayerRef, LightLayerRef, app, FakeFile, FakeFolder, createSandbox, runFile,
+    CompItem, FakeComp, LayerRef, CameraLayerRef, LightLayerRef, TextLayerRef, ShapeLayerRef, app, FakeFile, FakeFolder, createSandbox, runFile,
+    FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource,
     KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType, PropertyType: P.PropertyType,
 };

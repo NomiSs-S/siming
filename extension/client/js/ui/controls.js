@@ -17,18 +17,18 @@
         return el;
     };
 
-    /** En-tête d'outil : titre, « Ouvrir dans un panneau » (facultatif), aide. */
+    /** En-tête d'outil : titre, aide, « Ouvrir dans un panneau » (facultatif, picto fenêtre). */
     ui.toolHeader = function ({ title, onHelp, onOpenStandalone }) {
         const actions = h('div', { class: 's-header-actions' });
+        actions.append(h('button', {
+            class: 's-icon-btn', type: 'button', title: 'Aide', 'aria-label': 'Aide', 'data-role': 'help', onclick: onHelp,
+        }, ui.icon('aide')));
         if (onOpenStandalone) {
             actions.append(h('button', {
                 class: 's-icon-btn', type: 'button', title: 'Ouvrir dans un panneau',
                 'aria-label': 'Ouvrir dans un panneau', 'data-role': 'open-standalone', onclick: onOpenStandalone,
-            }, ui.icon('plus')));
+            }, ui.icon('panneau')));
         }
-        actions.append(h('button', {
-            class: 's-icon-btn', type: 'button', title: 'Aide', 'aria-label': 'Aide', 'data-role': 'help', onclick: onHelp,
-        }, ui.icon('aide')));
         return h('div', { class: 's-header' }, h('span', { class: 's-title', text: title }), actions);
     };
 
@@ -377,6 +377,173 @@
             for (const k of Object.keys(cells)) cells[k].classList.toggle('is-on', Number(k) === el.value);
         };
         el.set(value || 5);
+        return el;
+    };
+
+    // --- Étiquettes de couleur d'After Effects -------------------------------------
+    // palette : [{ index, color, name }] lue par l'hôte (0 = Aucune, 1 à 16) ; -1 = « Ne pas changer ».
+    const KEEP = -1;
+    const labelOf = (palette, value) => (palette || []).find((p) => p.index === value) || null;
+
+    /** Nom affiché d'une étiquette (ou « Ne pas changer »). */
+    ui.labelName = function (palette, value) {
+        if (value === KEEP) return 'Ne pas changer';
+        const p = labelOf(palette, value);
+        return p && p.name ? p.name : 'Étiquette ' + value;
+    };
+
+    function paintSwatch(el, palette, value) {
+        const p = labelOf(palette, value);
+        el.classList.toggle('is-none', value === 0);
+        el.classList.toggle('is-keep', value === KEEP);
+        el.style.backgroundColor = (value > 0 && p && p.color) ? p.color : '';
+    }
+
+    /** Carré de couleur d'une étiquette : Aucune = barré, Ne pas changer = pointillés. */
+    ui.swatch = function (palette, value) {
+        const el = h('span', { class: 's-swatch', 'data-label': String(value) });
+        paintSwatch(el, palette, value);
+        return el;
+    };
+
+    let closeOpenPicker = null;
+
+    /** Place la fenêtre flottante sous anchor (au-dessus s'il n'y a pas la place), dans la fenêtre. */
+    function placePopover(box, anchor) {
+        const r = anchor ? anchor.getBoundingClientRect() : { left: 4, top: 4, bottom: 4 };
+        const w = box.offsetWidth, ht = box.offsetHeight;
+        let top = r.bottom + 4;
+        if (top + ht > global.innerHeight - 4 && r.top - ht - 4 >= 4) top = r.top - ht - 4;
+        box.style.top = Math.max(4, top) + 'px';
+        box.style.left = Math.max(4, Math.min(r.left, global.innerWidth - w - 4)) + 'px';
+    }
+
+    /** Sélecteur d'étiquette flottant sous anchor : 16 couleurs en 4 × 4, puis Aucune et, si
+     *  allowKeep, « Ne pas changer » ; le nom de la couleur survolée s'affiche en haut.
+     *  onPick(index) ; Échap ou clic dehors ferme ; flèches pour se déplacer. Un seul ouvert
+     *  à la fois. press : ouvert au bouton enfoncé (geste en un clic) : relâcher sur une couleur
+     *  la choisit, relâcher sur anchor laisse le sélecteur ouvert, relâcher ailleurs le ferme.
+     *  value absente ou null : aucune couleur cochée (plusieurs calques de couleurs différentes).
+     *  Renvoie close() (close.isOpen() dit s'il est encore ouvert). */
+    ui.labelPicker = function ({ palette, value, allowKeep, anchor, onPick, press }) {
+        if (closeOpenPicker) closeOpenPicker();
+        const doc = global.document;
+        let open = true;
+        const name = h('div', { class: 's-picker-name' });
+        const show = (v) => { name.textContent = (v === null || v === undefined) ? 'Plusieurs couleurs' : ui.labelName(palette, v); };
+        const cells = [];
+        const cell = (v, wide) => {
+            const label = ui.labelName(palette, v);
+            const b = h('button', {
+                class: 's-picker-cell' + (v === value ? ' is-on' : '') + (wide ? ' is-wide' : ''), type: 'button',
+                'data-label': String(v), title: label, 'aria-label': label, 'aria-pressed': String(v === value),
+                onclick: () => { close(); if (onPick) onPick(v); },
+                onmouseenter: () => show(v), onfocus: () => show(v),
+            }, ui.swatch(palette, v), wide ? h('span', { text: label }) : null);
+            cells.push(b);
+            return b;
+        };
+        const grid = h('div', { class: 's-picker-grid' });
+        for (let v = 1; v <= 16; v++) grid.append(cell(v));
+        const extra = h('div', { class: 's-picker-extra' }, cell(0, true), allowKeep ? cell(KEEP, true) : null);
+        const box = h('div', { class: 's-popover', role: 'dialog', 'aria-label': 'Choisir une étiquette', 'data-role': 'label-picker' },
+            name, grid, extra);
+        box.addEventListener('mouseleave', () => show(value));
+        show(value);
+
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                close();
+                if (anchor && anchor.focus) anchor.focus();
+                return;
+            }
+            const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 4, ArrowUp: -4 }[e.key];
+            if (!step) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const i = cells.indexOf(doc.activeElement);
+            if (i < 0) { (box.querySelector('.is-on') || cells[0]).focus(); return; }   // ouvert à la souris
+            cells[Math.max(0, Math.min(cells.length - 1, i + step))].focus();
+        };
+        const onDown = (e) => {
+            if (!box.contains(e.target) && !(anchor && anchor.contains(e.target))) close();
+        };
+        /** Fin du geste en un clic : la couleur sous le pointeur au relâchement est choisie. */
+        const onUp = (e) => {
+            doc.removeEventListener('pointerup', onUp, true);
+            const t = e.target && e.target.closest ? e.target : null;
+            const c = t ? t.closest('.s-picker-cell') : null;
+            if (c && box.contains(c)) { e.preventDefault(); c.click(); return; }
+            if (t && (box.contains(t) || (anchor && anchor.contains(t)))) return;   // simple clic : reste ouvert
+            close();
+        };
+        function close() {
+            if (!open) return;
+            open = false;
+            box.remove();
+            doc.removeEventListener('keydown', onKey, true);
+            doc.removeEventListener('pointerdown', onDown, true);
+            doc.removeEventListener('pointerup', onUp, true);
+            if (closeOpenPicker === close) closeOpenPicker = null;
+        }
+        close.isOpen = () => open;
+        doc.body.append(box);
+        placePopover(box, anchor);
+        doc.addEventListener('keydown', onKey, true);
+        doc.addEventListener('pointerdown', onDown, true);
+        if (press) doc.addEventListener('pointerup', onUp, true);
+        closeOpenPicker = close;
+        if (!press) (box.querySelector('.is-on') || cells[0]).focus();   // clavier : flèches tout de suite
+        return close;
+    };
+
+    /** Ouvre un sélecteur au bouton enfoncé sur el (geste en un clic) et au clic clavier
+     *  (Entrée, Espace : detail 0). open(press) ouvre, ou referme s'il est déjà ouvert ;
+     *  skip(e) : ignorer ce pointeur (modificateurs pour la sélection, par exemple). */
+    ui.pressToOpen = function (el, open, skip) {
+        el.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || el.disabled || (skip && skip(e))) return;
+            e.preventDefault();   // garde le focus sur le sélecteur qui s'ouvre
+            open(true);
+        });
+        el.addEventListener('click', (e) => {
+            if (e.detail === 0 && !(skip && skip(e))) open(false);
+        });
+    };
+
+    /** Bouton pastille d'étiquette (30 px) : bouton enfoncé = sélecteur ouvert, relâché sur une
+     *  couleur = choisie (un seul geste) ; un simple clic l'ouvre, un second le ferme.
+     *  withName : nom de la couleur et chevron à côté du carré. onChange(index).
+     *  el.value, el.set(index), el.setPalette(palette). */
+    ui.labelSwatch = function ({ palette, value, allowKeep, withName, onChange, role, title }) {
+        let pal = palette || [];
+        let current = value;
+        let close = null;
+        const dot = h('span', { class: 's-swatch' });
+        const name = withName ? h('span', { class: 's-swatch-name' }) : null;
+        const el = h('button', { class: 's-swatch-btn' + (withName ? ' is-named' : ''), type: 'button', 'data-role': role || 'label-swatch' },
+            dot, name, withName ? ui.icon('deplier', 12) : null);
+        function render() {
+            paintSwatch(dot, pal, current);
+            const n = ui.labelName(pal, current);
+            if (name) name.textContent = n;
+            el.title = (title ? title + ' : ' : '') + n;
+            el.setAttribute('aria-label', el.title);
+            el.setAttribute('data-label', String(current));
+        }
+        ui.pressToOpen(el, (press) => {
+            if (close && close.isOpen()) { close(); return; }
+            close = ui.labelPicker({
+                palette: pal, value: current, allowKeep, anchor: el, press,
+                onPick: (v) => { el.set(v); if (onChange) onChange(v); },
+            });
+        });
+        el.set = (v) => { current = v; render(); };
+        el.setPalette = (p) => { pal = p || []; render(); };
+        Object.defineProperty(el, 'value', { get: () => current });
+        render();
         return el;
     };
 })(window);

@@ -276,6 +276,38 @@
         return color || ae.LABEL_DEFAULTS[n];
     };
 
+    /** Noms des étiquettes par défaut d'After Effects en français. Index 0 = « Aucune ». */
+    ae.LABEL_NAMES = ['Aucune',
+        'Rouge', 'Jaune', 'Bleu-vert', 'Rose', 'Lavande', 'Pêche', 'Vert d\'eau', 'Bleu',
+        'Vert', 'Violet', 'Orange', 'Marron', 'Fuchsia', 'Cyan', 'Grès', 'Vert foncé'];
+
+    // Noms d'origine tels que les préférences les gardent tant qu'on ne les renomme pas.
+    var LABEL_NAMES_EN = [null,
+        'Red', 'Yellow', 'Aqua', 'Pink', 'Lavender', 'Peach', 'Sea Foam', 'Blue',
+        'Green', 'Purple', 'Orange', 'Brown', 'Fuchsia', 'Cyan', 'Sandstone', 'Dark Green'];
+    var LABEL_TEXT_SECTION = 'Label Preference Text Section 7';
+
+    /** Nom de l'étiquette n° index (0 à 16) : celui des Préférences › Étiquettes s'il a
+     *  été changé, sinon le nom français par défaut. null hors plage. */
+    ae.labelName = function (index) {
+        var n = parseInt(index, 10);
+        if (!(n >= 0 && n <= 16)) return null;
+        if (n === 0) return ae.LABEL_NAMES[0];
+        var name = null;
+        try {
+            var prefs = app.preferences;
+            var key = 'Label Text ID 2 # ' + n;
+            if (prefs && (typeof prefs.havePref !== 'function' || prefs.havePref(LABEL_TEXT_SECTION, key))) {
+                name = prefs.getPrefAsString(LABEL_TEXT_SECTION, key);
+            }
+        } catch (e) {
+            name = null;
+        }
+        if (typeof name !== 'string') return ae.LABEL_NAMES[n];
+        name = name.replace(/^\s+|\s+$/g, '');
+        return (name === '' || name === LABEL_NAMES_EN[n]) ? ae.LABEL_NAMES[n] : name;
+    };
+
     SIMING.ae = ae;
 
     /** "1 enfant", "3 enfants". */

@@ -24,7 +24,10 @@ function bootable(win, sandbox, opts) {
         addEventListener() {}
         requestOpenExtension(id) { opened.push(id); }
         getExtensionID() { return opts.extensionId || 'com.siming.hub'; }
+        getOSInformation() { return opts.os || 'Windows 10'; }
+        registerKeyEventsInterest(json) { opened.interests.push(JSON.parse(json)); }
     };
+    Object.defineProperty(opened, 'interests', { value: [] });   // touches réclamées à AE (hors comparaisons)
     return opened;
 }
 
@@ -94,6 +97,11 @@ module.exports = function (test) {
         assert.strictEqual(app.status.level, 'info', app.status.text);
         app.views.get('unparent').querySelector('[data-role=open-standalone]').click();
         assert.deepEqual(opened, ['com.siming.tool.unparent']);
+        const last = () => opened.interests[opened.interests.length - 1];
+        assert.ok(last().some((k) => k.keyCode === 0x31 && !k.ctrlKey), 'touches du panneau réclamées à AE (1 = Afficher Unparent)');
+        win.SIMING.keys.setBinding('hub.settings', { code: 'Ctrl+Alt+Digit5', label: 'Ctrl + Alt + 5' });
+        await Promise.resolve();
+        assert.ok(last().some((k) => k.keyCode === 0x35 && k.ctrlKey && k.altKey), 'nouveau raccourci réclamé aussitôt');
     });
 
     test('démarrage hub sans After Effects : le panneau s\'affiche et signale le cœur hôte', async () => {

@@ -30,6 +30,9 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 - [ ] Raccourci choisi dans le hub, puis panneau isolé « SIMING – Quick Tools » : noter s'il s'applique aussi (mémoire `localStorage` partagée entre extensions du bundle ?) ; sinon les touches par défaut.
 - [ ] Changer la luminosité de l'interface d'AE (Préférences › Apparence) : le fond du panneau suit.
 
+- [ ] Pictos : réglages = deux curseurs (rail), « Ouvrir dans un panneau » = fenêtre à barre de titre, à droite de l'aide.
+- [ ] Raccourci combiné : Réglages › Raccourcis, clic sur une touche, tenir Ctrl + Alt (le bouton affiche « Ctrl + Alt + … »), frapper 5 : « Ctrl + Alt + 5 ». Revenir à l'outil, panneau focalisé, Ctrl + Alt + 5 : l'action part et After Effects ne réagit pas. Idem Ctrl + Maj + une lettre. Sur Mac : Cmd + une lettre.
+
 ## Panneau isolé
 
 - [ ] Bouton « Ouvrir dans un panneau » d'Unparent : le panneau « SIMING – Unparent » s'ouvre et s'ancre.
@@ -87,3 +90,21 @@ Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` a
 - [ ] Réglages › Raccourcis clavier, groupe « Quick Tools » : 27 gestes ; donner une touche à « Aligner à gauche », revenir à l'outil, la frapper : alignement fait et case cerclée ; donner Pavé 5 à « Appliquer Elastic » : « Ancrage : centre » affiche « — » et Pavé 5 applique Elastic.
 - [ ] Dernier geste cerclé de bleu (un seul à la fois). Changer de sélection, Entrée : le geste est rejoué (alignement : avec Sélection / Comp au moment du rejeu). Aucun geste encore : Entrée ne fait rien. Entrée dans un champ de saisie = valider la saisie seulement.
 - [ ] Panneau isolé « SIMING – Quick Tools » : identique, pavé numérique actif quand le panneau a le focus.
+
+## Libellés (1.2.0)
+
+Préparer dans « Pub » : un texte (nom automatique), un texte renommé « Logo animé », une forme, une image `LOGO_client.png`, une image rangée dans un dossier de projet « Logos », une image `bg_ciel.jpg`, une vidéo, un fichier son, un solide, un nul, un calque de réglage, une précomposition, une caméra. Touche 3 : l'outil s'affiche.
+
+- [ ] Rien ne bouge tant qu'on ne clique pas la carte : changer la sélection ne déclenche aucune analyse.
+- [ ] Sélection de 3 calques, clic sur la carte : récapitulatif « Mot-clé « logo » », « Texte »… ; bouton « Appliquer 3 libellés ». Composition : les 13 calques, groupes dans l'ordre mots-clés puis natures.
+- [ ] Couleurs des pastilles = celles des Préférences › Étiquettes (en changer une dans AE, relancer l'analyse : la pastille suit). Noms des couleurs : français par défaut, nom personnalisé s'il a été renommé (vérifier les accents d'un nom personnalisé).
+- [ ] Natures reconnues : texte jaune, forme bleue, vidéo fuchsia, image orange, son, solide et nul rouges, réglage violet, précompo grès, caméra rose. Noter toute erreur (séquence d'images, PSD, AI, fichier manquant, calque 3D de modèle).
+- [ ] « Logo animé » (texte renommé) en vert ; texte au nom automatique contenant « logo » dans son contenu : reste jaune. Image dans le dossier « Logos » : verte. `bg_ciel.jpg` : rouge.
+- [ ] Clic sur une ligne : sélecteur flottant (au-dessus si la place manque en bas), nom de la couleur survolée, flèches, Échap, clic dehors. Choisir une couleur : étiquette « à la main » ; « Ne pas changer » : « inchangé », bouton décompté.
+- [ ] Pastille d'un groupe : la règle change, l'analyse se relance, les choix à la main restent ; l'onglet Règles montre la nouvelle couleur.
+- [ ] « Appliquer » : étiquettes posées dans la timeline ; un seul Ctrl+Z (« Libellés : appliquer ») remet tout ; statut « N libellés posés ». Calque verrouillé : étiquette posée ou listée dans « Calques ignorés » (noter lequel).
+- [ ] Onglet Règles : ajouter un mot-clé (focus dans le champ, couleur libre proposée), le saisir, revenir à Calques : ré-analyse ; retirer ; changer une nature ; « Rétablir les règles par défaut ». Règles retrouvées après fermeture d'AE.
+- [ ] Entrée applique (focus dans le panneau, pas dans un champ) ; Réglages › Raccourcis, groupe « Libellés » : donner une touche à « Analyser et appliquer », sélectionner, la frapper.
+- [ ] Geste en un clic : appuyer sur une ligne (ou une pastille), glisser sur une couleur, relâcher : couleur choisie, sélecteur fermé. Simple clic : le sélecteur reste ouvert, clic sur une couleur. Relâcher hors du sélecteur : fermé sans choix.
+- [ ] Sélection multiple : Ctrl + clic sur 3 lignes (surlignées en bleu), appuyer sur l'une : « Plusieurs couleurs » si elles diffèrent, la couleur choisie va aux 3. Maj + clic : plage. Clic sur le nom d'un groupe : tout le groupe. Échap : désélectionné. Appuyer sur une ligne hors sélection : seule cette ligne change.
+- [ ] Panneau isolé « SIMING – Libellés » : identique ; à 260 px de large, rien ne déborde (pastilles nommées des natures, sélecteur).

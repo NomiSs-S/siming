@@ -101,6 +101,21 @@ Fait : trois onglets (Outils, Raccourcis, Général ; dernier onglet mémorisé 
 Choix faits sans demander (à corriger si besoin) : masquer plutôt que désinstaller (un outil masqué reste installé et disponible en panneau isolé) ; recherche des outils seulement à partir de 7 outils ; « Outil au lancement » déplacé dans Général.
 État : à vérifier dans AE (section Hub de `docs/TESTS-MANUELS.md`), surtout le glisser de la poignée dans CEP et le menu déroulant en thème sombre.
 
+### 2026-10-06 : Libellés implémenté (1.2.0, à valider dans AE)
+
+Demande de Simon : poser automatiquement l'étiquette de couleur des calques sélectionnés selon leur nature (jaune texte, bleu forme, fuchsia vidéo, orange image, vert logo, rouge fond et nul), avec reconnaissance par le nom (« LOGO_xxxx »). Précisions : couleurs d'AE seulement, analyse uniquement sur demande, un récapitulatif de tous les changements modifiable vite, réglage facile.
+Fait : outil `labels` (hôte `host/tools/labels.jsx`, vue `tools/labels.js`), icône `etiquette`, composants `ui.swatch`, `ui.labelSwatch`, `ui.labelPicker`, nom des étiquettes lu dans les préférences (`SIMING.ae.labelName`). Onglet Calques : Sélection / Composition, carte = analyser, bouton « Appliquer N libellés » (Entrée), récapitulatif groupé par règle (À changer / Tous) ; clic sur une ligne = couleur à la main pour ce calque, pastille d'un groupe = change la règle. Onglet Règles : mots-clés (prioritaires, dans l'ordre) et une étiquette par nature (12 natures), « Ne pas changer » possible partout, rétablir les défauts. Règles dans `siming.labels.rules`. Faux AE complété (calques texte et forme, sources, dossiers, noms d'étiquettes). Tests : 195, 0 échec. Rendu vérifié dans Chrome à 280 px (page de démonstration avec réponses du vrai cœur).
+Choix faits sans demander (à corriger si besoin) : pas d'OCR, des mots-clés en mots entiers (pluriel en s/x accepté, « fondu » ne déclenche pas « fond ») cherchés dans le nom du calque, de la source, du fichier et des dossiers du projet ; « .ai » = extension ; un calque texte au nom automatique n'est pas comparé par son contenu ; changer la pastille d'un groupe modifie la règle enregistrée (le choix d'une ligne ne vaut que pour l'analyse en cours) ; défauts pour les natures non citées : son vert d'eau, réglage violet, précompo grès, caméra rose, lumière pêche, autre inchangé ; solide rouge comme les fonds ; le panneau Projet n'est pas touché.
+
+### 2026-10-06 : Libellés en sélection multiple, geste en un clic, pictos du canevas, raccourcis combinés
+
+Demande de Simon (4 points).
+- **Sélection multiple dans le récapitulatif** : Ctrl + clic (ajouter / retirer), Maj + clic (plage dans l'ordre affiché), clic sur le nom d'un groupe (bouton : tout le groupe, Ctrl = ajouter) ; lignes sélectionnées en `--accent-soft` ; appuyer sur une ligne sélectionnée ouvre le sélecteur pour toute la sélection (aucune couleur cochée et « Plusieurs couleurs » si elles diffèrent) ; une ligne hors sélection repart seule ; Échap désélectionne ; sélection oubliée à une nouvelle analyse et après « Appliquer », gardée après un choix de couleur.
+- **Geste en un clic** : `ui.pressToOpen` ouvre le sélecteur au bouton enfoncé (pointerdown) ; relâcher sur une couleur la choisit, relâcher sur le bouton laisse ouvert (simple clic), relâcher ailleurs ferme. Clavier (Entrée / Espace) : ouverture classique, focus sur la couleur. Lignes du récapitulatif, pastilles de règle et des natures.
+- **Pictos du canevas** (maquette Quick Tools) : `reglages` = deux curseurs, nouvelle icône `panneau` (fenêtre à barre de titre) pour « Ouvrir dans un panneau », placé après l'aide comme sur le canevas (40 icônes).
+- **Raccourcis combinés** : le registre gérait déjà Ctrl / Alt / Maj / Cmd, mais un panneau CEP ne reçoit pas ces combinaisons tant qu'il ne les réclame pas à After Effects. `SIMING.keys.interest(os)` liste les frappes à réclamer (codes VK Windows, kVK macOS ; chiffres aussi avec Maj ; toutes les touches pendant la capture d'un raccourci), `SIMING.claimKeys(cs)` appelle `registerKeyEventsInterest` au démarrage et à chaque changement (`keys.onChange`). Capture : le bouton affiche « Ctrl + Alt + … » pendant qu'on tient les modificateurs ; libellé correct avec AltGr (« Ctrl + Alt + E », pas « € ») ; Ctrl + Retour arrière devient une touche, Retour arrière seul = aucun.
+Tests : 200, 0 échec. Rendu et geste vérifiés dans Chrome (page de démonstration). Version : toujours 1.2.0 (non publiée).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -125,6 +140,17 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Entrée (bouton principal) dans le registre de raccourcis `SIMING.keys`, comme les gestes de Quick Tools.
 - Rafraîchissement automatique à la sélection (pas d'événement AE : à étudier côté CEP).
 - Couleur d'étiquette du parent aussi sur les boutons « En attente dans le projet » (présente sur la maquette, pas encore codée).
+
+**Libellés**
+- Étiqueter aussi les éléments du panneau Projet (sources), en option.
+- Réordonner les mots-clés (priorité) par glisser, comme la liste des outils.
+- Restreindre un mot-clé à certaines natures (ex. « fond » seulement pour images, vidéos, solides).
+- Partager les règles avec les collègues (copier / coller un texte, ou fichier).
+- Sélectionner dans la timeline les calques d'un groupe du récapitulatif.
+
+**Idées de Simon notées le 2026-10-06 (étude faite, pas encore demandées)**
+- Copier la frame courante dans le presse-papier : `comp.saveFrameToPng` puis Node (`child_process` : PowerShell `Clipboard.SetImage` en STA, `osascript` sur Mac), plus une boîte d'outils rares (exporter la frame, copier timecode / infos de comp / noms de calques, révéler la source, médias manquants, polices, convertir expressions en keyframes, zone de travail).
+- Retours Frame.io : d'abord vérifier le panneau Frame.io intégré d'AE ; sinon API v4 (OAuth Adobe, serveur local Node pour le retour), recherche de la vidéo par nom normalisé, mémoire compo ↔ vidéo dans le commentaire de comp, saut à la frame, cocher un retour. Limites : décalage de timecode et de cadence, versions, annotations dessinées.
 
 **Hub et distribution**
 - Vérification automatique des mises à jour dans le panneau.
@@ -153,4 +179,9 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Quick Tools, `$.fileName` dans un outil chargé par `$.evalFile` : donne-t-il le chemin de `quicktools.jsx` (d'où celui du préréglage) ?
 - Quick Tools, `setValueAtKey` sur une keyframe spatiale : conserve-t-il les tangentes manuelles ? (relues et reposées par précaution)
 - Hub et panneau isolé : partagent-ils le même `localStorage` (ordre des outils, raccourcis choisis) ?
+- Libellés : `getPrefAsString('Label Preference Text Section 7', 'Label Text ID 2 # n')` donne-t-il le nom affiché dans AE (version française : « Rouge » ou « Red » ?), accents corrects ? Sinon les noms français par défaut s'affichent.
+- Raccourcis combinés : `registerKeyEventsInterest` remplace-t-il la liste précédente à chaque appel ? Ctrl + Alt + 5 arrive-t-il au panneau (Windows AZERTY = AltGr) ? Les touches seules continuent-elles de marcher ? Une liste de plus de 500 frappes pendant la capture est-elle acceptée ?
+- Geste en un clic : dans CEP, le relâchement au-dessus d'une couleur arrive-t-il bien à la case (pas de capture implicite du pointeur) ?
+- Libellés : `layer.label` se change-t-il sur un calque verrouillé ? (sinon il est listé dans « Calques ignorés »)
+- Libellés : natures des cas limites (séquence d'images, PSD / AI importés en métrage, fichier manquant, calque de modèle 3D, calque de données) ; `File.displayName` disponible sur la source ?
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).

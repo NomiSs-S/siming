@@ -90,7 +90,7 @@ De haut en bas :
 1. **Rail d'outils horizontal** (48) : un bouton icône par outil ; l'actif en
    `--bg-surface`, icône `--accent-text`, trait bas de 2 px. Réglages poussés à
    droite. Débordement : bouton « … » qui ouvre la liste des outils restants.
-2. **En-tête d'outil** : nom, aide, « Ouvrir dans un panneau ».
+2. **En-tête d'outil** : nom, puis à droite aide et « Ouvrir dans un panneau » (picto fenêtre).
 3. **Sections** : titre en petites majuscules, compteur aligné à droite, contenu.
 4. **Action principale** : verbe + quantité (« Détacher les 3 enfants »), actions
    secondaires dessous.
@@ -124,8 +124,10 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 | Onglets de Réglages | Segmenté pleine largeur sous le titre : Outils, Raccourcis, Général ; le dernier ouvert est mémorisé. Chaque onglet tient en une colonne qui défile, même avec beaucoup d'outils. |
 | Liste des outils (Réglages) | Lignes de 34 : poignée 28 × 32 (six points, curseur main ; glisser = déplacer, ↑ ↓ au clavier), icône, nom, pastille de touche en mono (`--bg-inset`, cachée si aucune), œil 32 × 32 (masquer du rail ; ligne masquée atténuée à 0,45, œil barré). Pendant le glissé : fond `--bg-surface` et contour `--accent-text`. Le dernier outil visible ne se masque pas. |
 | Champ de recherche | 30 px, fond `--bg-inset`, loupe à gauche, croix pour vider ; focus = bordure et halo `--accent` ; Échap vide ; filtre sans tenir compte des accents ni des majuscules ; « Aucun … ne correspond » si rien. Pour toute liste qui peut dépasser une dizaine d'éléments. |
-| Raccourci (Réglages) | Ligne de 30 : libellé de l'action, touche à droite en mono dans un cadre `--bg-inset` (96 px mini), « — » atténué si aucune ; clic = « Appuie sur une touche… » cerclé `--accent-text`, Retour arrière = aucun, Échap = annuler ; conflit signalé dans la ligne de statut (l'autre action perd sa touche) ; bouton « Rétablir les raccourcis par défaut ». |
-| Étiquette de couleur | Carrés de 18, couleurs des étiquettes AE, choisie = contour `--text-strong`. |
+| Raccourci (Réglages) | Ligne de 30 : libellé de l'action, touche à droite en mono dans un cadre `--bg-inset` (96 px mini), « — » atténué si aucune ; clic = « Appuie sur une touche… » cerclé `--accent-text`, modificateurs tenus affichés en direct (« Ctrl + Alt + … »), touche seule ou combinaison, Retour arrière = aucun, Échap = annuler ; conflit signalé dans la ligne de statut (l'autre action perd sa touche) ; bouton « Rétablir les raccourcis par défaut ». |
+| Étiquette de couleur | Carrés de 18 (14 dans une ligne), couleurs et noms des Préférences › Étiquettes d'AE ; Aucune = carré barré, Ne pas changer = carré pointillé. Bouton pastille : 30 de haut, cadre `--bg-inset`, carré seul (32 de large) ou carré + nom + chevron (136). |
+| Sélecteur d'étiquette | Fenêtre flottante `--bg-surface` sous le bouton (au-dessus si la place manque) : nom de la couleur survolée, 16 cases de 34 × 30 en 4 × 4, puis Aucune et Ne pas changer en lignes pleines ; choisie = contour `--text-strong` (aucune et « Plusieurs couleurs » si la sélection en mélange) ; geste en un clic : bouton enfoncé = ouvert, relâché sur une couleur = choisie, relâché sur le bouton = reste ouvert, ailleurs = fermé ; flèches, Échap et clic dehors ; un seul ouvert à la fois. |
+| Récapitulatif (Libellés) | Liste à lignes groupée par règle : en-tête 34 (bouton pastille de la règle, nom, compteur), lignes de 32 : couleur actuelle → couleur posée, nom, pastille d'état discrète (« à la main » en `--accent-soft`, « déjà bon », « inchangé ») ; toute la ligne ouvre le sélecteur. Sélection multiple : Ctrl + clic, Maj + clic (plage), nom du groupe (bouton, tout le groupe) ; ligne sélectionnée en `--accent-soft`, nom en `--text-strong` ; le sélecteur ouvert depuis une ligne sélectionnée colore toute la sélection ; Échap désélectionne. |
 | Ligne de statut | Pastille 6 px : gris info, `--ok`, `--warn`, `--error` ; s'efface à l'action suivante. |
 | Dialogue | Fond `--bg-surface`, titre en question, conséquence en une ligne, actions à droite. Remplace `alert`. |
 | Infobulle | Attribut `title` ou bulle de la charte, phrase courte à l'infinitif. |
@@ -139,9 +141,10 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
 
 - Grille 16 px, trait 1,5, extrémités rondes, sans remplissage, couleur `currentColor`.
 - Tracés : `docs/design/icons.json` (lier, délier, ancre, renommer, échelonner,
-  null, nettoyer, rafraîchir, cibler, chercher, réglages, aide, visible, verrou,
+  null, nettoyer, rafraîchir, cibler, chercher, réglages (deux curseurs), aide, visible, verrou,
+  panneau (fenêtre à barre de titre : « Ouvrir dans un panneau »),
   ajouter, fermer, valider, attention, déplier, menu, plus, éclair, keyframe, ressort,
-  aligner et répartir).
+  étiquette, aligner et répartir).
 - Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
 
 ## 8. Textes

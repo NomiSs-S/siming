@@ -281,7 +281,7 @@
         const keySearch = ui.searchField({ placeholder: 'Chercher une action ou un outil', role: 'keys-search', onInput: (q) => { keyQuery = q; renderKeys(); } });
         const keyList = h('div', { class: 's-keys', 'data-role': 'shortcuts' });
         panes.keys.append(keySearch,
-            h('div', { class: 's-hint', text: 'Clique la touche d\'une action, puis frappe le nouveau raccourci (Retour arrière : aucun, Échap : annuler). Les raccourcis agissent quand le panneau a le focus.' }),
+            h('div', { class: 's-hint', text: 'Clique la touche d\'une action, puis frappe le nouveau raccourci : une touche seule ou avec Ctrl, Alt, Maj (ex. Ctrl + Alt + 5). Retour arrière : aucun, Échap : annuler. Les raccourcis agissent quand le panneau a le focus.' }),
             keyList,
             h('div', { class: 's-settings-actions' }, ui.button({
                 label: 'Rétablir les raccourcis par défaut', role: 'keys-reset',
@@ -294,7 +294,8 @@
                 title: 'Changer le raccourci de « ' + action.label + ' »', text: b ? b.label : '—',
             });
             btn.addEventListener('click', () => {
-                btn.textContent = 'Appuie sur une touche…';
+                const waiting = 'Appuie sur une touche…';
+                btn.textContent = waiting;
                 btn.classList.add('is-recording');
                 keys.record(doc, (result) => {
                     if (result !== false) {
@@ -305,7 +306,7 @@
                         renderTools();
                     }
                     renderKeys();
-                });
+                }, (held) => { btn.textContent = held ? held + ' + …' : waiting; });
             });
             return h('div', { class: 's-key-row' }, h('span', { class: 's-key-label', text: action.label }), btn);
         }

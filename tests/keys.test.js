@@ -162,4 +162,66 @@ module.exports = function (test) {
         press({ code: 'Numpad5', key: '5' });
         assert.deepEqual(ran, ['a'], 'écouteur rendu après la capture');
     });
+
+    test('raccourcis : combinaison Ctrl + Alt + 5 capturée (modificateurs suivis, AltGr), puis déclenchée', () => {
+        const { keys, doc, press } = setup();
+        keys.attach(doc);
+        const ran = [];
+        keys.register({ id: 'a', label: 'A', group: 'Outil', run: () => ran.push('a') });
+        const got = [], held = [];
+        keys.record(doc, (r) => got.push(r), (t) => held.push(t));
+        press({ code: 'ControlLeft', key: 'Control', ctrlKey: true });
+        press({ code: 'AltLeft', key: 'Alt', ctrlKey: true, altKey: true });
+        doc.dispatchEvent(new doc.defaultView.KeyboardEvent('keyup', { code: 'AltLeft', key: 'Alt', ctrlKey: true, bubbles: true }));
+        press({ code: 'AltLeft', key: 'Alt', ctrlKey: true, altKey: true });
+        press({ code: 'Digit5', key: '[', ctrlKey: true, altKey: true });   // AZERTY : AltGr + 5 = [
+        assert.deepEqual(held, ['Ctrl', 'Ctrl + Alt', 'Ctrl', 'Ctrl + Alt']);
+        assert.deepEqual(got, [{ code: 'Ctrl+Alt+Digit5', label: 'Ctrl + Alt + 5' }]);
+        keys.setBinding('a', got[0]);
+        press({ code: 'Digit5', key: '5' });
+        assert.deepEqual(ran, [], '5 seul : rien');
+        press({ code: 'Digit5', key: '[', ctrlKey: true, altKey: true });
+        assert.deepEqual(ran, ['a']);
+        const e = new doc.defaultView.KeyboardEvent('keydown', { code: 'KeyE', key: '€', ctrlKey: true, altKey: true });
+        assert.strictEqual(keys.labelFor(e, 'Ctrl+Alt+KeyE'), 'Ctrl + Alt + E', 'AltGr + E = € : la touche, pas le caractère');
+        keys.record(doc, (r) => got.push(r));
+        press({ code: 'Backspace', key: 'Backspace', ctrlKey: true });
+        assert.deepEqual(got[1], { code: 'Ctrl+Backspace', label: 'Ctrl + Retour' }, 'avec un modificateur, Retour arrière est une touche');
+    });
+
+    test('raccourcis : touches réclamées à After Effects (Windows, macOS, capture), avis de changement', async () => {
+        const { keys, doc } = setup();
+        let notes = 0;
+        keys.onChange(() => notes++);
+        keys.register({ id: 'a', label: 'A', group: 'Outil', defaultKey: 'Ctrl+Alt+Digit5', run() {} });
+        keys.register({ id: 'b', label: 'B', group: 'Outil', defaultKey: 'Numpad7', run() {} });
+        keys.register({ id: 'c', label: 'C', group: 'Outil', defaultKey: 'Meta+KeyS', run() {} });
+        keys.register({ id: 'd', label: 'D', group: 'Outil', defaultKey: 'Enter', run() {} });
+        await Promise.resolve();
+        assert.strictEqual(notes, 1, 'un seul avis pour une série de changements');
+        assert.deepEqual(keys.interest('win'), [
+            { keyCode: 0x35, ctrlKey: true, altKey: true }, { keyCode: 0x35, ctrlKey: true, altKey: true, shiftKey: true },
+            { keyCode: 0x67 }, { keyCode: 0x53, metaKey: true }, { keyCode: 0x0D },
+        ]);
+        assert.deepEqual(keys.interest('mac'), [
+            { keyCode: 0x17, ctrlKey: true, altKey: true }, { keyCode: 0x17, ctrlKey: true, altKey: true, shiftKey: true },
+            { keyCode: 0x59 }, { keyCode: 0x01, metaKey: true }, { keyCode: 0x24 }, { keyCode: 0x4C },
+        ]);
+        assert.strictEqual(keys.keyCodeOf('F12', 'win'), 0x7B);
+        assert.strictEqual(keys.keyCodeOf('Semicolon', 'win'), null, 'touche inconnue : pas réclamée');
+        keys.setBinding('b', null);
+        await Promise.resolve();
+        assert.strictEqual(notes, 2);
+        assert.ok(!keys.interest('win').some((k) => k.keyCode === 0x67), 'raccourci retiré : touche rendue');
+        const cancel = keys.record(doc, () => {});
+        await Promise.resolve();
+        assert.strictEqual(notes, 3, 'début de capture');
+        const all = keys.interest('win');
+        assert.ok(all.length > 500, 'pendant la capture : toutes les touches, toutes les combinaisons');
+        assert.ok(all.some((k) => k.keyCode === 0x41 && k.ctrlKey && k.altKey && k.shiftKey));
+        cancel();
+        await Promise.resolve();
+        assert.strictEqual(notes, 4, 'fin de capture');
+        assert.strictEqual(keys.interest('win').length, 4);
+    });
 };
