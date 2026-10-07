@@ -8,7 +8,7 @@ dans son propre panneau.
 
 | Outil | Version | Rôle |
 |---|---|---|
-| Quick Tools | 1.0.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir |
+| Quick Tools | 1.0.1 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir (sur la partie visible, masques compris) |
 | Boîte à outils | 1.0.0 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.0.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |

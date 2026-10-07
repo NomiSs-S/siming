@@ -100,11 +100,42 @@ function LayerRef(state, comp) {
 /** property('ADBE Transform Group' | 'Transform' | 'ADBE Effect Parade' | 'Effects' | matchName ou nom d'une propriété de transformation). */
 LayerRef.prototype.property = function (x) {
     const st = this._state;
+    if (x === 'ADBE Mask Parade' || x === 'Masks') return masksOf(st);
     if (x === 1 || x === 'ADBE Transform Group' || x === 'Transform') return new P.GroupRef(st.transform, this._ctx);
     if (x === 2 || x === 'ADBE Effect Parade' || x === 'Effects') return new P.GroupRef(st.effects, this._ctx);
     if (typeof x === 'number') return null;
     return this.transform.property(x) || this.property('ADBE Effect Parade').property(x);
 };
+
+/** Modes de masque (énumération MaskMode d'ExtendScript). */
+const MaskMode = { NONE: 6812, ADD: 6813, SUBTRACT: 6814, INTERSECT: 6815, LIGHTEN: 6816, DARKEN: 6817, DIFFERENCE: 6818 };
+
+/** Groupe Masques d'un calque, d'après state.masks : [{ mode: 'ADD' | 'SUBTRACT'…, inverted,
+ *  vertices, inTangents?, outTangents?, closed?, expansion? }] (forme en espace du calque). */
+function masksOf(state) {
+    const list = state.masks || [];
+    const zeros = (m) => m.vertices.map(() => [0, 0]);
+    return {
+        name: 'Masks', matchName: 'ADBE Mask Parade',
+        get numProperties() { return list.length; },
+        property(i) {
+            const m = list[i - 1];
+            if (!m) return null;
+            return {
+                name: m.name || 'Mask ' + i, matchName: 'ADBE Mask Atom',
+                get maskMode() { return MaskMode[m.mode || 'ADD']; },
+                get inverted() { return !!m.inverted; },
+                property(x) {
+                    if (x === 'ADBE Mask Shape') {
+                        return { valueAtTime: () => ({ vertices: m.vertices, inTangents: m.inTangents || zeros(m), outTangents: m.outTangents || zeros(m), closed: m.closed !== false }) };
+                    }
+                    if (x === 'ADBE Mask Offset') return { valueAtTime: () => m.expansion || 0 };
+                    return null;
+                },
+            };
+        },
+    };
+}
 
 /** Calque 3D : ancrage, position et échelle gagnent (ou perdent) leur Z. */
 function setThreeD(state, on) {
@@ -548,7 +579,7 @@ function createSandbox() {
         TextLayer: TextLayerRef, ShapeLayer: ShapeLayerRef,
         FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource,
         KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType,
-        PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType,
+        PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType, MaskMode,
     };
     sandbox.alert = (msg) => sandbox.alerts.push(String(msg));
     // system.callSystem : commandes notées, rien n'est lancé

@@ -441,6 +441,17 @@ module.exports = function (test) {
         assert.ok(/Aucun calque sélectionné/.test(call('cropToLayers', {}).status.text));
     });
 
+    test('API cropToLayers et nullFor : un calque masqué compte pour sa partie visible', () => {
+        const r = rig();
+        r.A.masks = [{ mode: 'ADD', vertices: [[20, 30], [70, 30], [70, 60], [20, 60]] }];   // A : 100 × 100 en [100, 100]
+        r.comp.select(r.A);
+        const { call } = host();
+        call('nullFor', {});
+        assert.deepEqual(r.comp.layer(1).position.value, [145, 145], 'null au centre de la partie visible');
+        r.comp.select(r.A);
+        assert.strictEqual(call('cropToLayers', {}).status.text, 'Composition recadrée sur 1 calque : 50 × 30 · Ctrl+Z pour annuler');
+    });
+
     test('API keepFrame : frame enregistrée dans « Frames » à côté du projet, montrée par l\'hôte ; projet non enregistré', () => {
         const r = rig();
         r.comp.time = 2;

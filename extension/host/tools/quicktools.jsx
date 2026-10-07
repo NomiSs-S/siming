@@ -105,7 +105,8 @@
     var matMul = G.matMul, matApply = G.matApply, matLinear = G.matLinear, matLinearInverse = G.matLinearInverse;
     var layerMatrix = G.layerMatrix, compensate = G.compensate, addDelta = G.addDelta, bounds = G.bounds, union = G.union;
     var readTransform = ae.readTransform, layerToComp = ae.layerToComp, toParentSpace = ae.toParentSpace;
-    var sourceRect = ae.sourceRect, offsetProperty = ae.offsetProperty;
+    // Boîte d'un calque = ce qui en est visible : masques compris (ancrage, aligner, répartir).
+    var sourceRect = ae.visibleRect, offsetProperty = ae.offsetProperty;
 
     var EDGES = { left: 1, centerX: 1, right: 1, top: 1, centerY: 1, bottom: 1 };
 

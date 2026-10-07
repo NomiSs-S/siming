@@ -337,4 +337,36 @@ module.exports = function (test) {
         assert.ok(/au moins 3 calques/.test(st.status.text));
         assert.deepEqual(st.report, { done: 0, skipped: ['C : calque verrouillé'] }, 'raison transmise au dialogue');
     });
+
+    test('API anchor et align avec masques : seule la partie visible compte (ajouter, intersection, soustraire, inversé, étendue)', () => {
+        const r = rig();
+        const quad = (l, t, rr, b) => [[l, t], [rr, t], [rr, b], [l, b]];
+        const { call } = host();
+        const anchorWith = (masks, cell) => {
+            r.A.masks = masks;
+            r.L(1).anchorPoint.setValue([0, 0]);
+            r.L(1).position.setValue([100, 100]);
+            r.comp.select(r.A);
+            const st = call('anchor', { cell });
+            return { st, ap: r.L(1).anchorPoint.value };
+        };
+        assert.deepEqual(anchorWith([{ mode: 'ADD', vertices: quad(50, 0, 100, 50) }], 5).ap, [75, 25], 'centre de la partie visible (A fait 100 × 50)');
+        assert.deepEqual(anchorWith([{ mode: 'ADD', vertices: quad(50, 0, 100, 50) }], 1).ap, [50, 50], 'bas gauche de la partie visible');
+        assert.deepEqual(anchorWith([{ mode: 'ADD', vertices: quad(80, 20, 300, 300) }], 5).ap, [90, 35], 'masque qui dépasse : coupé au calque');
+        assert.deepEqual(anchorWith([{ mode: 'SUBTRACT', vertices: quad(0, 0, 50, 50) }], 5).ap, [50, 25], 'soustraire : tout le calque');
+        assert.deepEqual(anchorWith([{ mode: 'ADD', vertices: quad(0, 0, 60, 40) }, { mode: 'INTERSECT', vertices: quad(40, 10, 100, 50) }], 7).ap, [40, 10], 'ajouter puis intersection');
+        assert.deepEqual(anchorWith([{ mode: 'ADD', inverted: true, vertices: quad(0, 0, 10, 10) }], 7).ap, [0, 0], 'masque inversé : tout le calque');
+        assert.deepEqual(anchorWith([{ mode: 'ADD', vertices: quad(50, 10, 90, 40), expansion: 5 }], 9).ap, [95, 5], 'étendue du masque comprise');
+        assert.deepEqual(anchorWith([{ mode: 'NONE', vertices: quad(0, 0, 10, 10) }], 5).ap, [50, 25], 'masque sans mode : ignoré');
+        const out = anchorWith([{ mode: 'ADD', vertices: quad(500, 500, 600, 600) }], 5);
+        assert.deepEqual(out.st.report.skipped, ['A : rien de visible : ses masques sont hors du calque']);
+        // Aligner à gauche : le bord visible de A (masque de 50 à 100) sert de référence
+        r.A.masks = [{ mode: 'ADD', vertices: quad(50, 0, 100, 50) }];
+        r.L(1).anchorPoint.setValue([0, 0]);
+            r.L(1).position.setValue([100, 100]);
+        r.comp.select(r.A, r.B);
+        call('align', { edge: 'left', relative: 'selection' });
+        assert.deepEqual(r.L(2).position.value, [150, 300], 'B aligné sur le bord visible de A (100 + 50)');
+        assert.deepEqual(r.L(1).position.value, [100, 100]);
+    });
 };

@@ -153,6 +153,14 @@ Demande de Simon (3 points) ; une question posée : « recadrer » = l'image (la
 - Tests : 240, 0 échec ; rendu vérifié dans Chrome (Boîte à outils à 340 px, aides à 340 et 220 px).
 Choix faits sans demander : la boîte de recadrage peut agrandir la comp si les calques dépassent ; « Paquets » au lieu de « Par paquets de » ; « Recadrer l'image » seul sur sa ligne dans la grille.
 
+### 2026-10-07 : point d'ancrage sur la partie visible (masques)
+
+Retour de Simon : avec un masque, l'ancrage doit se baser sur ce qui est visible. Cause : la boîte venait de `sourceRectAtTime`, qui ignore les masques.
+- `SIMING.ae.visibleRect` : boîte de la source réduite par les masques actifs, dans leur ordre (Ajouter / Éclaircir / Différence = union, Intersection / Obscurcir = partie commune, le premier masque part de rien s'il ajoute, de tout le calque sinon ; Soustraire ne réduit pas la boîte ; masque inversé = tout le calque ; étendue du masque comprise, contour progressif non ; coupée au calque). `SIMING.geom.pathBounds` (boîte exacte d'un tracé de Bézier, extrema des courbes) et `geom.intersect`.
+- Utilisée partout où une boîte de calque compte : ancrage, aligner, répartir (Quick Tools), null relié et recadrer l'image (Boîte à outils, via `ae.layerBox`). Masques tous hors du calque : calque listé « rien de visible ».
+- Quick Tools 1.0.1 (correction ; SIMING reste 1.3.0, pas encore publiée). Faux AE : masques (`state.masks`, `MaskMode`). Tests : 243, 0 échec.
+Limites : la matte de piste et les effets qui rognent (Recadrer, Masque d'écrêtage) ne sont pas pris en compte ; un Soustraire qui couvre tout un côté ne réduit pas la boîte.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

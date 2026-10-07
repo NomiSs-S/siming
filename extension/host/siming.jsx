@@ -389,6 +389,60 @@
         return u;
     };
 
+    /** Partie commune de deux { left, top, right, bottom }, ou null si elles ne se touchent pas. */
+    geom.intersect = function (a, b) {
+        var r = { left: Math.max(a.left, b.left), top: Math.max(a.top, b.top),
+                  right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) };
+        return (r.right > r.left && r.bottom > r.top) ? r : null;
+    };
+
+    /** Rectangle englobant d'un tracé de Bézier comme une forme de masque d'AE : sommets
+     *  [[x, y]…], tangentes entrantes et sortantes relatives aux sommets, fermé ou non. Les
+     *  courbes comptent (extrema de chaque segment), pas seulement les sommets. null si vide. */
+    geom.pathBounds = function (vertices, inTangents, outTangents, closed) {
+        var n = vertices ? vertices.length : 0, i;
+        if (!n) return null;
+        var b = { left: vertices[0][0], top: vertices[0][1], right: vertices[0][0], bottom: vertices[0][1] };
+        function add(p) {
+            if (p[0] < b.left) b.left = p[0];
+            if (p[0] > b.right) b.right = p[0];
+            if (p[1] < b.top) b.top = p[1];
+            if (p[1] > b.bottom) b.bottom = p[1];
+        }
+        function at(p0, p1, p2, p3, t) {
+            var u = 1 - t, a = u * u * u, c1 = 3 * u * u * t, c2 = 3 * u * t * t, d = t * t * t;
+            return [a * p0[0] + c1 * p1[0] + c2 * p2[0] + d * p3[0], a * p0[1] + c1 * p1[1] + c2 * p2[1] + d * p3[1]];
+        }
+        /** Instants 0 < t < 1 où la courbe change de sens sur l'axe k (dérivée nulle). */
+        function turns(p0, p1, p2, p3, k) {
+            var d0 = p1[k] - p0[k], d1 = p2[k] - p1[k], d2 = p3[k] - p2[k];
+            var A = d0 - 2 * d1 + d2, B = 2 * (d1 - d0), C = d0, out = [];
+            if (Math.abs(A) < 1e-12) {
+                if (Math.abs(B) > 1e-12) out.push(-C / B);
+            } else {
+                var disc = B * B - 4 * A * C;
+                if (disc >= 0) {
+                    var r = Math.sqrt(disc);
+                    out.push((-B + r) / (2 * A), (-B - r) / (2 * A));
+                }
+            }
+            return out;
+        }
+        var segs = closed ? n : n - 1;
+        for (i = 0; i < segs; i++) {
+            var j = (i + 1) % n;
+            var inT = (inTangents && inTangents[j]) || [0, 0], outT = (outTangents && outTangents[i]) || [0, 0];
+            var p0 = vertices[i], p3 = vertices[j];
+            var p1 = [p0[0] + outT[0], p0[1] + outT[1]], p2 = [p3[0] + inT[0], p3[1] + inT[1]];
+            add(p3);
+            for (var k = 0; k < 2; k++) {
+                var ts = turns(p0, p1, p2, p3, k);
+                for (var m = 0; m < ts.length; m++) if (ts[m] > 0 && ts[m] < 1) add(at(p0, p1, p2, p3, ts[m]));
+            }
+        }
+        return b;
+    };
+
     SIMING.geom = geom;
 
     /** Transformation 2D d'un calque à l'instant t (Z et rotations X/Y ignorées). */
@@ -433,9 +487,46 @@
         return rect;
     };
 
-    /** Rectangle englobant de la boîte visible d'un calque, dans l'espace de la comp. */
+    /** Boîte de ce qui est visible d'un calque, dans son espace ({ left, top, width, height }) :
+     *  la boîte de sa source, réduite par ses masques actifs pris dans l'ordre, comme AE les
+     *  combine. Ajouter (et Éclaircir, Différence) = union, Intersection (et Obscurcir) = partie
+     *  commune ; le premier masque part de rien s'il ajoute, de tout le calque sinon. Soustraire
+     *  ne réduit pas la boîte ; un masque inversé couvre tout le calque. L'étendue du masque
+     *  compte, pas le contour progressif. Sans masque actif : la boîte de la source. */
+    ae.visibleRect = function (layer, time) {
+        var rect = ae.sourceRect(layer, time), masks = null, n = 0;
+        try { masks = layer.property('ADBE Mask Parade'); n = masks ? masks.numProperties : 0; } catch (e0) { n = 0; }
+        if (!n) return rect;
+        var full = { left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height };
+        var box = null, started = false;
+        for (var i = 1; i <= n; i++) {
+            var m = masks.property(i), mode;
+            try { mode = m.maskMode; } catch (e1) { continue; }
+            if (mode === MaskMode.NONE) continue;
+            var adds = (mode === MaskMode.ADD || mode === MaskMode.LIGHTEN || mode === MaskMode.DIFFERENCE);
+            var crops = (mode === MaskMode.INTERSECT || mode === MaskMode.DARKEN);
+            var mb = full;
+            if (!m.inverted) {
+                var s = m.property('ADBE Mask Shape').valueAtTime(time, false);
+                mb = geom.pathBounds(s.vertices, s.inTangents, s.outTangents, s.closed);
+                if (!mb) continue;   // masque sans point
+                var grow = 0;
+                try { grow = m.property('ADBE Mask Offset').valueAtTime(time, false) || 0; } catch (e2) { grow = 0; }
+                mb = { left: mb.left - grow, top: mb.top - grow, right: mb.right + grow, bottom: mb.bottom + grow };
+            }
+            if (!started) { box = adds ? null : full; started = true; }
+            if (adds) box = box ? geom.union([box, mb]) : mb;
+            else if (crops) box = box ? geom.intersect(box, mb) : null;
+        }
+        if (!started) return rect;
+        var v = box ? geom.intersect(box, full) : null;
+        if (!v) throw new Error('rien de visible : ses masques sont hors du calque');
+        return { left: v.left, top: v.top, width: v.right - v.left, height: v.bottom - v.top };
+    };
+
+    /** Rectangle englobant de ce qui est visible d'un calque (masques compris), dans l'espace de la comp. */
     ae.layerBox = function (layer, time) {
-        return geom.bounds(ae.sourceRect(layer, time), ae.layerToComp(layer, time));
+        return geom.bounds(ae.visibleRect(layer, time), ae.layerToComp(layer, time));
     };
 
     /** Décale une propriété sans créer de keyframe : chaque keyframe existante reçoit

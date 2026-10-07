@@ -93,4 +93,19 @@ module.exports = function (test) {
         assert.strictEqual(c.isElastic(c.ELASTIC_EXPRESSION), true);
         assert.ok(/presets[\\/]ElasticController\.ffx$/.test(c.presetPath()), c.presetPath());
     });
+
+    test('géométrie : boîte d\'un tracé de masque (courbes comprises), partie commune de deux boîtes', () => {
+        const G = loadHost().S.geom;
+        const box = (b) => [b.left, b.top, b.right, b.bottom];
+        const square = [[10, 20], [60, 20], [60, 70], [10, 70]];
+        assert.deepEqual(box(G.pathBounds(square, null, null, true)), [10, 20, 60, 70]);
+        // Segment courbe de (0, 0) à (100, 0), tangentes vers le haut : le sommet est à y = -45
+        const curve = G.pathBounds([[0, 0], [100, 0]], [[0, 0], [0, -60]], [[0, -60], [0, 0]], false);
+        box(curve).forEach((x, i) => near(x, [0, -45, 100, 0][i], 'courbe [' + i + ']'));
+        const open = G.pathBounds([[0, 0], [100, 0], [100, 100]], [[0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [-300, 0]], false);
+        assert.deepEqual(box(open), [0, 0, 100, 100], 'tracé ouvert : pas de segment de retour');
+        assert.strictEqual(G.pathBounds([], null, null, true), null);
+        assert.deepEqual(box(G.intersect({ left: 0, top: 0, right: 60, bottom: 60 }, { left: 40, top: 40, right: 100, bottom: 100 })), [40, 40, 60, 60]);
+        assert.strictEqual(G.intersect({ left: 0, top: 0, right: 10, bottom: 10 }, { left: 20, top: 20, right: 30, bottom: 30 }), null);
+    });
 };

@@ -27,8 +27,8 @@
                 { icon: 'ressort', name: 'Appliquer Elastic', text: 'Un rebond après la dernière keyframe des propriétés animées sélectionnées, réglable dans l\'effet « Elastic Controller ». La croix le retire.' },
             ] },
             { title: 'Placer', items: [
-                { icon: 'ancre', name: 'Ancrage', text: 'Le point d\'ancrage va sur la boîte des calques ; rien ne bouge à l\'écran.', keys: [{ k: ['Pavé 1–9'], t: 'les 9 positions' }] },
-                { icon: 'alignLeft', name: 'Aligner', text: 'Entre eux (Sélection) ou sur la composition (Comp), bords visibles.' },
+                { icon: 'ancre', name: 'Ancrage', text: 'Le point d\'ancrage va sur la partie visible des calques (masques compris) ; rien ne bouge à l\'écran.', keys: [{ k: ['Pavé 1–9'], t: 'les 9 positions' }] },
+                { icon: 'alignLeft', name: 'Aligner', text: 'Entre eux (Sélection) ou sur la composition (Comp), bords visibles, masques compris.' },
                 { icon: 'distCenterX', name: 'Répartir', text: '3 calques ou plus ; les deux extrêmes ne bougent pas.' },
             ] },
             { title: 'Rejouer', items: [
