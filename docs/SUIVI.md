@@ -161,6 +161,10 @@ Retour de Simon : avec un masque, l'ancrage doit se baser sur ce qui est visible
 - Quick Tools 1.0.1 (correction ; SIMING reste 1.3.0, pas encore publiée). Faux AE : masques (`state.masks`, `MaskMode`). Tests : 243, 0 échec.
 Limites : la matte de piste et les effets qui rognent (Recadrer, Masque d'écrêtage) ne sont pas pris en compte ; un Soustraire qui couvre tout un côté ne réduit pas la boîte.
 
+### 2026-10-07 : SIMING 1.3.0 publiée
+
+Demande de Simon : « publie-la pour mes collègues ». Publiée sans test dans After Effects, à sa demande (corrections éventuelles en 1.3.1). Release https://github.com/NomiSs-S/siming/releases/tag/v1.3.0 (« Latest ») : `SIMING-1.3.0.zxp` (signature vérifiée ; manifeste avec `--enable-nodejs` sur les 5 panneaux, panneau isolé de la Boîte à outils, 4 cœurs d'outils), installeurs Windows et macOS, `INSTALLATION.md` (nouvelle section : préférence d'écriture de fichiers pour Copier / Exporter la frame). Note affichée par l'installeur : « Ajout : Boîte à outils, Quick Tools par défaut, panneau étroit, aide en fiches ». Outils : Quick Tools 1.0.1, Boîte à outils 1.0.0, Unparent 2.0.0, Libellés 1.0.0.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
