@@ -14,42 +14,46 @@
     const ui = SIMING.ui;
     const h = ui.h;
 
-    const HELP = [
-        'Frame : l\'image de la tête de lecture est rendue puis copiée dans le presse-papier (Copier), ou',
-        '   enregistrée en PNG à côté du projet, dans le dossier « Frames » (Exporter ; Alt + clic : et la',
-        '   montrer dans l\'Explorateur / le Finder). After Effects doit autoriser l\'écriture de fichiers :',
-        '   Préférences › Scripts et expressions › « Autoriser les scripts à écrire des fichiers et à accéder au réseau ».',
-        'Séquencer : Cascade, Inverse, ou Aléatoire (ordre tiré au hasard à chaque clic). Calques : dans l\'ordre',
-        '   de la sélection que donne After Effects ; keyframes : de haut en bas dans la pile.',
-        '   Écart = images entre deux départs ; Par paquets de = combien partent ensemble.',
-        '   Le plus tôt reste en place, les autres s\'enchaînent derrière lui.',
-        '   Calques : décale les calques sélectionnés (leurs keyframes suivent).',
-        '   Keyframes : décale les keyframes sélectionnées calque par calque (propriété par propriété',
-        '   s\'il n\'y a qu\'un calque) ; elles restent sélectionnées, tu peux relancer.',
-        'Null relié : au centre des calques sélectionnés, au-dessus d\'eux, relié à eux (ceux dont le',
-        '   parent est aussi sélectionné gardent leur parent). Sans sélection : au centre de la compo.',
-        'Fond : calque de forme « Fond » tout en bas, toujours à la taille de la compo. La pastille',
-        '   règle sa couleur : clic = choisir, Alt + clic = couleur de fond de la composition.',
-        'Format : 16:9, 4:5, 1:1 ou 9:16. Le plus petit côté est gardé (1920 × 1080 -> 1080 × 1920),',
-        '   le contenu reste centré, keyframes comprises. Alt + clic sur un format : une copie de la compo',
-        '   dans ce format, l\'original ne change pas. « Décliner » : une copie dans chacun des autres formats.',
-        'Zone de travail : sur les calques sélectionnés (du premier début à la dernière fin), ou rogner la',
-        '   compo à la zone de travail (le timecode de départ suit, rien ne bouge par rapport à lui).',
-        'Afficher la source : sélectionne dans le panneau Projet la source des calques sélectionnés ;',
-        '   Alt + clic : montre son fichier dans l\'Explorateur / le Finder.',
-        'Convertir les textes PSD : les textes d\'un Photoshop importé deviennent modifiables',
-        '   (calques sélectionnés, sinon toute la compo).',
-        'Expressions en keyframes : propriétés sélectionnées (sinon toutes celles des calques sélectionnés) ;',
-        '   une keyframe par image du calque, puis l\'expression est désactivée (son texte reste).',
-        '',
-        'Le dernier geste est cerclé de bleu : Entrée le rejoue. Chaque geste s\'annule d\'un seul Ctrl+Z.',
-        'Raccourcis de chaque geste : Réglages du panneau SIMING.',
-    ].join('\n');
+    const HELP = {
+        intro: 'Des gestes moins fréquents, un clic et un Ctrl+Z chacun. Alt + clic donne leur variante.',
+        groups: [
+            { title: 'Frame', items: [
+                { icon: 'appareil', name: 'Copier', text: 'L\'image de la tête de lecture, dans le presse-papier.' },
+                { icon: 'exporter', name: 'Exporter en PNG', text: 'À côté du projet, dans le dossier « Frames ».', keys: [{ k: ['Alt', 'clic'], t: 'et la montrer' }] },
+                { icon: 'attention', name: 'Une fois pour toutes', text: 'Préférences › Scripts et expressions › « Autoriser les scripts à écrire des fichiers… ».' },
+            ] },
+            { title: 'Séquencer', items: [
+                { icon: 'seqCascade', name: 'Cascade', text: 'Dans l\'ordre de la sélection.' },
+                { icon: 'seqReverse', name: 'Inverse', text: 'Du dernier au premier.' },
+                { icon: 'seqRandom', name: 'Aléatoire', text: 'Un nouvel ordre à chaque clic.' },
+                { icon: 'echelonner', name: 'Séquencer', text: 'Les keyframes sélectionnées s\'il y en a, sinon les calques. Écart : images entre deux départs ; Paquets : combien partent ensemble.' },
+            ] },
+            { title: 'Créer', items: [
+                { icon: 'null', name: 'Null relié', text: 'Au centre des calques sélectionnés, relié à eux.' },
+                { icon: 'fond', name: 'Fond', text: 'Forme à la taille de la compo, tout en bas.', keys: [{ k: ['Alt', 'clic'], t: 'pastille : couleur de la compo' }] },
+            ] },
+            { title: 'Format', items: [
+                { icon: 'panneau', name: '16:9 · 4:5 · 1:1 · 9:16', text: 'Le plus petit côté est gardé, le contenu reste centré.', keys: [{ k: ['Alt', 'clic'], t: 'une copie dans ce format' }] },
+                { icon: 'decliner', name: 'Décliner', text: 'Une copie dans chacun des autres formats ; l\'original ne change pas.' },
+            ] },
+            { title: 'Zone de travail', items: [
+                { icon: 'zone', name: 'Sur la sélection', text: 'Du début du premier calque à la fin du dernier.' },
+                { icon: 'rognerDuree', name: 'Rogner la durée', text: 'La compo s\'arrête à la zone de travail.' },
+                { icon: 'rogner', name: 'Recadrer l\'image', text: 'Largeur et hauteur ajustées aux calques sélectionnés.' },
+            ] },
+            { title: 'Calques', items: [
+                { icon: 'source', name: 'Afficher la source', text: 'Dans le panneau Projet.', keys: [{ k: ['Alt', 'clic'], t: 'son fichier sur le disque' }] },
+                { icon: 'texte', name: 'Textes PSD', text: 'Ils deviennent modifiables (sélection, sinon toute la compo).' },
+                { icon: 'figer', name: 'Expressions en keyframes', text: 'Une keyframe par image, l\'expression est désactivée.' },
+            ] },
+        ],
+        footer: 'Le dernier geste est cerclé de bleu : Entrée le rejoue.',
+    };
 
     const MODES = [
-        { id: 'cascade', label: 'Cascade',   title: 'Dans l\'ordre de la sélection (keyframes : de haut en bas)' },
-        { id: 'reverse', label: 'Inverse',   title: 'Ordre inverse : du dernier au premier' },
-        { id: 'random',  label: 'Aléatoire', title: 'Ordre tiré au hasard à chaque clic, écart régulier' },
+        { id: 'cascade', label: 'Cascade',   icon: 'seqCascade', title: 'Cascade : dans l\'ordre de la sélection' },
+        { id: 'reverse', label: 'Inverse',   icon: 'seqReverse', title: 'Inverse : du dernier au premier' },
+        { id: 'random',  label: 'Aléatoire', icon: 'seqRandom',  title: 'Aléatoire : un nouvel ordre à chaque clic' },
     ];
     const FORMATS = [{ id: '16:9', w: 16, h: 9 }, { id: '4:5', w: 4, h: 5 }, { id: '1:1', w: 1, h: 1 }, { id: '9:16', w: 9, h: 16 }];
     const POLL_MS = 120;
@@ -114,25 +118,28 @@
         // --- Séquencer --------------------------------------------------------------------
         let mode = settings.get('toolbox.mode', 'cascade');
         if (!MODES.some((m) => m.id === mode)) mode = 'cascade';
+        const modeOf = () => MODES.find((m) => m.id === mode);
         const modeSeg = ui.segmented({
-            role: 'seq-mode', labels: MODES.map((m) => m.label),
-            onChange: (i) => { mode = MODES[i].id; settings.set('toolbox.mode', mode); },
+            role: 'seq-mode', labels: MODES.map((m) => ({ label: m.label, icon: m.icon, title: m.title })),
+            onChange: (i) => { mode = MODES[i].id; settings.set('toolbox.mode', mode); renderSeqIcon(); },
         });
         modeSeg.select(MODES.findIndex((m) => m.id === mode));
-        modeSeg.querySelectorAll('.s-seg-btn').forEach((b, i) => { b.title = MODES[i].title; });
         const gapBar = ui.valueBar({
             label: 'Écart', min: 0, max: 30, unit: ' im', integer: true, value: pref('gap', 2), defaultValue: 2, role: 'seq-gap',
             onChange: (v) => settings.set('toolbox.gap', v),
         });
         gapBar.title = 'Images entre deux départs';
         const groupBar = ui.valueBar({
-            label: 'Par paquets de', min: 1, max: 10, integer: true, value: pref('group', 1), defaultValue: 1, role: 'seq-group',
+            label: 'Paquets', min: 1, max: 10, integer: true, value: pref('group', 1), defaultValue: 1, role: 'seq-group',
             onChange: (v) => settings.set('toolbox.group', v),
         });
-        groupBar.title = 'Combien de calques (ou de groupes de keyframes) partent ensemble';
-        const sequence = (target) => () => run('sequence', { target, mode, gap: gapBar.value, group: groupBar.value });
-        const seqLayers = actionButton('seq-layers', 'echelonner', 'Calques', 'Séquencer les calques sélectionnés', sequence('layers'));
-        const seqKeys = actionButton('seq-keys', 'keyframe', 'Keyframes', 'Séquencer les keyframes sélectionnées', sequence('keys'));
+        groupBar.title = 'Combien partent ensemble';
+        // Un seul geste : l'hôte prend les keyframes sélectionnées s'il y en a, sinon les calques.
+        const seqBtn = actionButton('sequence', modeOf().icon, 'Séquencer', 'Séquencer les keyframes sélectionnées, sinon les calques',
+            () => run('sequence', { mode, gap: gapBar.value, group: groupBar.value }));
+        function renderSeqIcon() {
+            seqBtn.replaceChild(ui.icon(modeOf().icon, 16), seqBtn.querySelector('.s-icon'));
+        }
 
         // --- Créer ------------------------------------------------------------------------
         let bgColor = settings.get('toolbox.bgColor', '');   // '' = couleur de fond de la comp
@@ -180,7 +187,8 @@
 
         // --- Zone de travail --------------------------------------------------------------
         const workSel = actionButton('work-selection', 'zone', 'Sur la sélection', 'Caler la zone de travail sur les calques sélectionnés', () => run('workArea', { mode: 'selection' }));
-        const workTrim = actionButton('work-trim', 'rogner', 'Rogner la compo', 'Rogner la composition à la zone de travail', () => run('workArea', { mode: 'trim' }));
+        const workTrim = actionButton('work-trim', 'rognerDuree', 'Rogner la durée', 'Rogner la durée de la composition à la zone de travail', () => run('workArea', { mode: 'trim' }));
+        const cropBtn = actionButton('crop', 'rogner', 'Recadrer l\'image', 'Recadrer la composition sur les calques sélectionnés (largeur et hauteur)', () => run('cropToLayers', {}));
 
         // --- Calques ----------------------------------------------------------------------
         const revealBtn = actionButton('reveal', 'source', 'Afficher la source dans le Projet', 'Sélectionner la source des calques sélectionnés dans le panneau Projet',
@@ -192,15 +200,16 @@
         view.append(
             h('div', { class: 's-stack', 'data-role': 'frame-section' }, labelRow('Frame', 'de la tête de lecture'),
                 h('div', { class: 's-actions' }, frameBtn, exportBtn)),
-            h('div', { class: 's-stack', 'data-role': 'seq-section' }, labelRow('Séquencer', 'calques ou keyframes'), modeSeg, gapBar, groupBar,
-                h('div', { class: 's-actions' }, seqLayers, seqKeys)),
+            h('div', { class: 's-stack', 'data-role': 'seq-section' }, labelRow('Séquencer'), modeSeg,
+                h('div', { class: 's-bar-pair' }, gapBar, groupBar),
+                h('div', { class: 's-actions is-list' }, seqBtn)),
             h('div', { class: 's-stack', 'data-role': 'create-section' }, labelRow('Créer'),
                 h('div', { class: 's-actions' }, nullBtn, h('div', { class: 's-action-pair' }, bgBtn, chip))),
             h('div', { class: 's-stack', 'data-role': 'format-section' }, formatTitle,
                 h('div', { class: 's-tool-grid is-4', 'data-role': 'formats' }, formatTiles),
                 h('div', { class: 's-actions is-list' }, variantsBtn)),
             h('div', { class: 's-stack', 'data-role': 'work-section' }, labelRow('Zone de travail'),
-                h('div', { class: 's-actions' }, workSel, workTrim)),
+                h('div', { class: 's-actions' }, workSel, workTrim, cropBtn)),
             h('div', { class: 's-stack', 'data-role': 'layers-section' }, labelRow('Calques'),
                 h('div', { class: 's-actions is-list' }, revealBtn, psdBtn, bakeBtn)));
 

@@ -55,6 +55,24 @@ module.exports = function (test) {
         }
     });
 
+    test('aide des outils : en fiches (intro, groupes, fiches nommées), pictos existants', () => {
+        const win = makeDom(BASE.concat(LIST.tools.map((t) => t.script)));
+        const ease = ['in', 'out', 'both'];
+        for (const t of LIST.tools) {
+            const help = win.SIMING.toolDefs[t.id].help;
+            assert.ok(help && typeof help === 'object' && help.intro && help.groups.length, t.id + ' : aide en fiches');
+            for (const g of help.groups) {
+                assert.ok(g.title && g.items.length, t.id + ' : groupe titré et non vide');
+                for (const it of g.items) {
+                    assert.ok(it.name, t.id + ' : fiche sans nom');
+                    if (it.icon) assert.ok(win.SIMING.ICONS[it.icon], t.id + ' : picto inconnu ' + it.icon);
+                    else assert.ok(ease.includes(it.ease) || Number.isInteger(it.step), t.id + ' : fiche sans picto ni numéro : ' + it.name);
+                    assert.ok(!it.text || it.text.length <= 170, t.id + ' : texte trop long pour une fiche : ' + it.name);
+                }
+            }
+        }
+    });
+
     test('CSInterface.js : bibliothèque Adobe présente', () => {
         const src = fs.readFileSync(path.join(CLIENT, 'lib', 'CSInterface.js'), 'utf8');
         assert.ok(/function CSInterface\(/.test(src));

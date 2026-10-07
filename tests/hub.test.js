@@ -267,6 +267,23 @@ module.exports = function (test) {
         const dlg = t.$('[data-role=dialog]');
         assert.ok(/Démo 0\.1\.0/.test(dlg.querySelector('.s-dialog-title').textContent));
         assert.strictEqual(dlg.querySelector('.s-dialog-msg').textContent, 'aide démo');
+        t.win.document.querySelector('[data-role=dialog-ok]').click();
+        // Aide en fiches : en-tête de l'outil, groupes, fiches (picto, numéro, touches), Échap ferme
+        t.win.SIMING.toolDefs.demo.help = { intro: 'Pour essayer.', groups: [
+            { title: 'Gestes', items: [{ icon: 'ancre', name: 'Ancrer', text: 'Place l\'ancrage.', keys: [{ k: ['Alt', 'clic'], t: 'au centre' }] }, { step: 2, name: 'Ensuite' }] },
+        ], footer: 'Un Ctrl+Z par geste.' };
+        t.hub.views.get('demo').querySelector('[data-role=help]').click();
+        const help = t.$('[data-role=help-dialog]');
+        assert.ok(help, 'aide en fiches');
+        assert.strictEqual(help.querySelector('.s-help-title').textContent, 'Démo');
+        assert.strictEqual(help.querySelector('.s-help-version').textContent, 'v0.1.0');
+        assert.strictEqual(help.querySelector('.s-help-intro').textContent, 'Pour essayer.');
+        assert.deepEqual(Array.from(help.querySelectorAll('.s-help-name')).map((n) => n.textContent), ['Ancrer', 'Ensuite']);
+        assert.deepEqual(Array.from(help.querySelectorAll('.s-help-key kbd')).map((k) => k.textContent), ['Alt', 'clic']);
+        assert.strictEqual(help.querySelector('.s-help-icon.is-step').textContent, '2');
+        assert.strictEqual(help.querySelector('.s-help-foot-text').textContent, 'Un Ctrl+Z par geste.');
+        t.win.document.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        assert.strictEqual(t.$('[data-role=help-dialog]'), null, 'Échap ferme');
         const sansPanneau = setup({ noOpen: true });
         assert.strictEqual(sansPanneau.hub.views.get('unparent').querySelector('[data-role=open-standalone]'), null);
     });

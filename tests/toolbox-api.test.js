@@ -396,6 +396,51 @@ module.exports = function (test) {
         assert.deepEqual(call('frameState', { path: next.frame.path }), { ready: false });
     });
 
+    test('API sequence sans cible : keyframes s\'il y en a sur 2 calques, sinon calques ; rien d\'utilisable : message', () => {
+        const r = rig();
+        const comp = r.comp;
+        const { call } = host();
+        assert.strictEqual(call('sequence', { mode: 'cascade', gap: 2, group: 1 }).status.text,
+            'Sélectionne au moins 2 calques, ou des keyframes sur 2 calques (ou 2 propriétés)');
+        comp.select(r.A, r.B, r.C);
+        let st = call('sequence', { mode: 'cascade', gap: 2, group: 1 });
+        assert.ok(/^3 calques séquencés/.test(st.status.text), st.status.text);
+        for (const s of [r.A, r.B]) {
+            const p = r.L(s).position;
+            p.setValueAtTime(5, [0, 0]);
+            p.setSelectedAtKey(p.numKeys, true);
+            p.selected = true;
+        }
+        const before = [r.A, r.B, r.C].map((s) => s.startTime);
+        st = call('sequence', { mode: 'cascade', gap: 5, group: 1 });
+        assert.ok(/^2 keyframes séquencées sur 2 calques/.test(st.status.text), 'keyframes sélectionnées : elles passent avant les calques');
+        assert.deepEqual([r.A, r.B, r.C].map((s) => s.startTime), before, 'calques laissés en place');
+    });
+
+    test('API cropToLayers : image recadrée sur la boîte des calques sélectionnés, rien ne bouge à l\'image', () => {
+        const r = rig();
+        const comp = r.comp;
+        r.L(r.A).position.setValue([100.4, 100.6]);   // boîte [100,4 … 200,4] : arrondie vers l'extérieur
+        comp.select(r.A, r.B);
+        const { call } = host();
+        const st = call('cropToLayers', {});
+        assert.strictEqual(st.status.text, 'Composition recadrée sur 2 calques : 500 × 300 · Ctrl+Z pour annuler');
+        assert.deepEqual([comp.width, comp.height], [500, 300], 'gauche et haut arrondis vers l\'extérieur (100,4 -> 100)');
+        const near2 = (v, w) => v.forEach((x, i) => near(x, w[i]));
+        near2(r.L(r.A).position.value, [0.4, 0.6]);
+        assert.deepEqual(r.L(r.B).position.value, [400, 200]);
+        assert.deepEqual(r.L(r.C).position.value, [800, 800], 'hors sélection : décalé aussi, rien ne bouge à l\'image');
+        assert.deepEqual(app.undoGroups, ['Boîte à outils : recadrer']);
+        assert.strictEqual(call('cropToLayers', {}).status.level, 'info', 'déjà cadrée');
+        const cam = comp.addLayer('Caméra', { kind: 'camera' });
+        comp.select(cam);
+        const none = call('cropToLayers', {});
+        assert.strictEqual(none.status.level, 'warn');
+        assert.deepEqual(none.report.skipped, ['Caméra : pas de boîte visible (caméra ou lumière)']);
+        comp.select();
+        assert.ok(/Aucun calque sélectionné/.test(call('cropToLayers', {}).status.text));
+    });
+
     test('API keepFrame : frame enregistrée dans « Frames » à côté du projet, montrée par l\'hôte ; projet non enregistré', () => {
         const r = rig();
         r.comp.time = 2;

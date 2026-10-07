@@ -136,6 +136,8 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 | Tuile de format | Case de 50 de haut dans une grille de 4 : cadre au trait 1,5 aux proportions du format (même surface pour tous), nom en mono 10 dessous ; format en cours en `--accent-soft` / `--accent-text`. |
 | Barre de défilement | 10 de large, piste transparente, sans flèches ; curseur `--line` de 4 (arrondi), 6 et `#5A5A5A` au survol, `--icon-rest` tenu. Jamais la barre claire du système. |
 | Panneau étroit | Aucune largeur minimale imposée : ce qui est côte à côte passe à la ligne (`flex-wrap`, grilles `auto-fit`), jamais rogné. Aide de section sous son titre ; Ancrage au-dessus d'Aligner ; nom d'une nature au-dessus de sa couleur ; libellé d'un raccourci au-dessus de sa touche ; segmenté coupé par « … » avec infobulle. Sous 260 : marges 8, grilles de 6 en 3, version masquée du statut, libellés longs sur deux lignes. Rail : « … » allumé quand l'outil affiché y est rangé. Pas de requêtes de conteneur (Chromium 88 dans CEP 11) : `@media (max-width)`. |
+| Segmenté à pictos | Même cadre que le segmenté ; chaque segment montre un picto 16 seul, son nom en infobulle et pour les lecteurs d'écran. Pour des modes qu'un dessin dit mieux qu'un mot (Séquencer : calques en escalier qui descend, qui monte, en désordre). Le bouton qui agit montre le picto du mode choisi. |
+| Aide (en fiches) | Remplace le texte de l'aide. Fenêtre `--bg-surface` de 440 au plus, toute la hauteur au besoin (le corps défile) : en-tête (pastille `--accent-soft` du picto de l'outil, nom 14 / 600, version mono), une phrase d'introduction, puis des groupes titrés en petites majuscules. Une fiche : case 32 `--bg-inset` avec le picto du geste en `--accent-text` (ou son numéro d'étape en mono sur `--accent-soft`), nom en gras, une phrase de 11 px atténuée, touches en pastilles `.s-kbd` (« Alt + clic : … »). Pied : une ligne d'astuce et « Compris ». Échap, Entrée, clic dehors ferment. Une fiche = une phrase : pas de paragraphe. |
 | Ligne de statut | Pastille 6 px : gris info, `--ok`, `--warn`, `--error` ; s'efface à l'action suivante. |
 | Dialogue | Fond `--bg-surface`, titre en question, conséquence en une ligne, actions à droite. Remplace `alert`. |
 | Infobulle | Attribut `title` ou bulle de la charte, phrase courte à l'infinitif. |
@@ -154,7 +156,8 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
   ajouter, fermer, valider, attention, déplier, menu, plus, éclair, keyframe, ressort,
   étiquette, aligner et répartir, boîte à outils, appareil photo (frame), fond, source
   (dossier et flèche), texte (T et curseur), exporter (flèche vers un bac), décliner (deux cadres
-  de formats), zone (crochets de la zone de travail), rogner, figer (trois keyframes) : 50 icônes).
+  de formats), zone (crochets de la zone de travail), rogner (recadrer l'image), figer (trois keyframes),
+  modes de séquence (seqCascade, seqReverse, seqRandom : calques en escalier), rognerDuree : 54 icônes).
 - Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
 
 ## 8. Textes

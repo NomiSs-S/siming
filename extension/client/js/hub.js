@@ -47,7 +47,10 @@
         }
         view.append(ui.toolHeader({
             title: meta.name,
-            onHelp: () => ui.dialog({ title: meta.name + ' ' + meta.version, message: def.help || '' }),
+            // Aide en fiches ({ intro, groups, footer }) ; un texte simple garde l'ancien dialogue.
+            onHelp: () => ((def.help && typeof def.help === 'object')
+                ? ui.helpDialog(Object.assign({ title: meta.name, version: meta.version, icon: meta.icon }, def.help))
+                : ui.dialog({ title: meta.name + ' ' + meta.version, message: def.help || '' })),
             onOpenStandalone: opts && opts.onOpenStandalone,
         }));
         const body = h('div', { class: 's-view-body' });

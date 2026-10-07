@@ -13,23 +13,25 @@
     const h = ui.h;
     const KEEP = -1;
 
-    const HELP = [
-        '1. Choisis Sélection ou Composition, puis clique la carte : chaque calque reçoit une couleur proposée.',
-        '2. Le récapitulatif groupe les calques par règle. Appuie sur une ligne : les couleurs s\'ouvrent,',
-        '   glisse sur l\'une d\'elles et relâche (ou clique, puis clique la couleur). « Ne pas changer » écarte',
-        '   le calque. La pastille d\'un groupe change la règle elle-même.',
-        '   Plusieurs calques : Ctrl + clic (ajouter / retirer), Maj + clic (plage), clic sur le nom d\'un groupe',
-        '   (tout le groupe) ; une ligne sélectionnée colore alors toute la sélection. Échap désélectionne.',
-        '3. Le bouton bleu pose les libellés (Entrée aussi). Un seul Ctrl+Z annule tout.',
-        '',
-        'Règles : les mots-clés passent avant la nature du calque, le premier de la liste gagne.',
-        'Un mot-clé se cherche en mot entier dans le nom du calque, celui de sa source, de son fichier et de',
-        'ses dossiers du projet (majuscules, accents et pluriel ignorés) : « logo » trouve LOGO_client.png,',
-        'logoClient ou le dossier Logos, pas « logotype ». Un mot qui commence par un point vise l\'extension : .ai, .svg.',
-        'Un calque texte n\'est reconnu que par un nom donné à la main, pas par le texte qu\'il affiche.',
-        '',
-        'Couleurs et noms : ceux de tes Préférences › Étiquettes d\'After Effects.',
-    ].join('\n');
+    const HELP = {
+        intro: 'Une couleur d\'étiquette par nature de calque : proposée, corrigée si besoin, posée en un clic.',
+        groups: [
+            { title: 'En trois gestes', items: [
+                { step: 1, name: 'Analyser', text: 'Sélection ou Composition, puis clic sur la carte.' },
+                { step: 2, name: 'Corriger', text: 'Appuie sur une ligne, glisse sur une couleur, relâche. La pastille d\'un groupe change sa règle.' },
+                { step: 3, name: 'Appliquer', text: 'Le bouton bleu pose les étiquettes ; un seul Ctrl+Z annule tout.', keys: [{ k: ['Entrée'], t: 'appliquer' }] },
+            ] },
+            { title: 'Plusieurs calques à la fois', items: [
+                { icon: 'plus', name: 'Sélectionner', text: 'Une ligne sélectionnée colore toute la sélection ; le nom d\'un groupe le sélectionne en entier.',
+                    keys: [{ k: ['Ctrl', 'clic'], t: 'ajouter' }, { k: ['Maj', 'clic'], t: 'plage' }, { k: ['Échap'], t: 'tout désélectionner' }] },
+            ] },
+            { title: 'Règles', items: [
+                { icon: 'chercher', name: 'Mots-clés', text: 'Avant la nature ; le premier de la liste gagne. Mot entier dans le nom du calque, de sa source ou de ses dossiers ; « .ai » vise l\'extension.' },
+                { icon: 'etiquette', name: 'Par nature', text: 'Texte, forme, vidéo, image, son… : une couleur, ou « Ne pas changer ».' },
+            ] },
+        ],
+        footer: 'Couleurs et noms : Préférences › Étiquettes d\'After Effects.',
+    };
 
     const clone = (o) => JSON.parse(JSON.stringify(o));
     const isLabel = (v) => Number.isInteger(v) && v >= KEEP && v <= 16;

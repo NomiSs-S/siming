@@ -80,7 +80,8 @@
         return el;
     };
 
-    /** Sélecteur segmenté (2 à 4 choix courts). */
+    /** Sélecteur segmenté (2 à 4 choix courts). Un choix : texte, ou { label, count?, icon?, title? } ;
+     *  avec icon, le segment montre le picto seul (label en infobulle et pour les lecteurs d'écran). */
     ui.segmented = function ({ labels, onChange, role }) {
         const el = h('div', { class: 's-seg', role: 'tablist', 'data-role': role || 'segmented' });
         const buttons = labels.map((label, i) => h('button', {
@@ -94,8 +95,14 @@
                 const b = buttons[i];
                 if (!b) return;
                 const label = typeof item === 'string' ? item : item.label;
+                b.title = (typeof item !== 'string' && item.title) || label;
+                if (typeof item !== 'string' && item.icon) {
+                    b.replaceChildren(ui.icon(item.icon, 16));
+                    b.setAttribute('aria-label', label);
+                    b.setAttribute('data-icon', item.icon);
+                    return;
+                }
                 b.replaceChildren(h('span', { class: 's-seg-label', text: label }));   // span : points de suspension si étroit
-                b.title = label;
                 if (typeof item !== 'string' && item.count !== undefined && item.count !== null) {
                     b.append(h('span', { class: 's-seg-count', text: String(item.count) }));
                 }
@@ -211,6 +218,56 @@
             backdrop = h('div', { class: 's-dialog-backdrop', onclick: (e) => { if (e.target === backdrop) close(); } }, box);
             doc.body.append(backdrop);
             doc.addEventListener('keydown', onKey);
+            ok.focus();
+        });
+    };
+
+    /** Aide d'un outil, en fiches lisibles d'un coup d'œil : en-tête (picto de l'outil, nom,
+     *  version), une phrase d'introduction, puis des groupes de fiches. Une fiche :
+     *    { icon | ease ('in' | 'out' | 'both') | step (numéro), name, text?, keys?: [{ k: [touches…], t }] }
+     *  footer : une ligne en bas. Échap, Entrée, clic dehors ou « Compris » ferment ;
+     *  la promesse est résolue à la fermeture. */
+    ui.helpDialog = function ({ title, version, icon, intro, groups, footer }) {
+        const doc = global.document;
+        return new Promise((resolve) => {
+            let backdrop = null;
+            const onKey = (e) => {
+                if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(); }
+            };
+            function close() {
+                if (!backdrop) return;
+                backdrop.remove();
+                backdrop = null;
+                doc.removeEventListener('keydown', onKey, true);
+                resolve();
+            }
+            const visual = (it) => {
+                if (it.step !== undefined) return h('span', { class: 's-help-icon is-step', text: String(it.step) });
+                return h('span', { class: 's-help-icon' }, it.ease ? ui.easeKey(it.ease, 16) : ui.icon(it.icon || 'aide', 16));
+            };
+            const combo = (keys) => keys.map((k, i) => [i ? h('span', { class: 's-help-plus', text: '+' }) : null, h('kbd', { class: 's-kbd', text: k })]);
+            const card = (it) => h('div', { class: 's-help-item', 'data-role': 'help-item' }, visual(it),
+                h('div', { class: 's-help-copy' },
+                    h('div', { class: 's-help-name', text: it.name }),
+                    it.text ? h('div', { class: 's-help-text', text: it.text }) : null,
+                    (it.keys && it.keys.length) ? h('div', { class: 's-help-keys' },
+                        it.keys.map((tip) => h('span', { class: 's-help-key' }, combo(tip.k), h('span', { class: 's-help-key-text', text: tip.t })))) : null));
+            const ok = h('button', { class: 's-btn s-btn-primary s-help-ok', type: 'button', 'data-role': 'help-ok', onclick: close, text: 'Compris' });
+            const box = h('div', { class: 's-dialog s-help', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Aide ' + (title || ''), 'data-role': 'help-dialog' },
+                h('div', { class: 's-help-head' },
+                    h('span', { class: 's-help-badge' }, ui.icon(icon || 'aide', 18)),
+                    h('span', { class: 's-help-title', text: title || '' }),
+                    version ? h('span', { class: 's-help-version', text: 'v' + version }) : null),
+                h('div', { class: 's-help-body' },
+                    intro ? h('p', { class: 's-help-intro', text: intro }) : null,
+                    (groups || []).map((g) => h('section', { class: 's-help-group' },
+                        g.title ? h('div', { class: 's-section s-help-group-title', text: g.title }) : null,
+                        (g.items || []).map(card)))),
+                h('div', { class: 's-help-foot' },
+                    footer ? h('span', { class: 's-help-foot-text', text: footer }) : h('span'), ok));
+            backdrop = h('div', { class: 's-dialog-backdrop s-help-backdrop', onclick: (e) => { if (e.target === backdrop) close(); } }, box);
+            doc.body.append(backdrop);
+            doc.addEventListener('keydown', onKey, true);
             ok.focus();
         });
     };

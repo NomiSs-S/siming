@@ -14,22 +14,29 @@
     const ui = SIMING.ui;
     const h = ui.h;
 
-    const HELP = [
-        'Lissage de vitesse : sélectionne des keyframes, règle l\'influence de la ligne voulue, puis',
-        '   clique son picto de keyframe (ou relâche le curseur) : Bézier, vitesse 0 et influence.',
-        '   Entrée = le départ du mouvement (côté sortant de la keyframe), Sortie = son arrivée.',
-        'Elastic : sélectionne des propriétés animées, puis « Appliquer Elastic » : l\'expression',
-        '   et l\'effet « Elastic Controller » (Amplitude, Frequency, Decay) sont posés. La croix les retire.',
-        'Ancrage : sélectionne des calques, clique une case (ou tape 1 à 9 au pavé numérique) :',
-        '   l\'ancrage se place sur leur boîte, rien ne bouge à l\'écran ; les keyframes d\'ancrage',
-        '   et de position existantes sont décalées, aucune n\'est créée.',
-        'Aligner et répartir : sélectionne des calques, choisis Sélection ou Comp, clique une case.',
-        '',
-        'Le dernier geste est cerclé de bleu : Entrée le rejoue sur la nouvelle sélection.',
-        'Chaque geste s\'annule d\'un seul Ctrl+Z. Curseurs : glisser (Maj = précision), molette,',
-        'flèches, double-clic pour saisir, Alt + clic pour la valeur par défaut.',
-        'Raccourcis clavier de chaque geste : Réglages du panneau SIMING.',
-    ].join('\n');
+    const HELP = {
+        intro: 'Des gestes sur la sélection de la timeline : un clic, un Ctrl+Z.',
+        groups: [
+            { title: 'Lissage de vitesse', items: [
+                { ease: 'in', name: 'Entrée', text: 'Lisse le départ du mouvement (côté droit de la keyframe).' },
+                { ease: 'out', name: 'Sortie', text: 'Lisse l\'arrivée du mouvement (côté gauche).' },
+                { ease: 'both', name: 'Les deux', text: 'Clic sur le picto, ou relâcher le curseur : applique l\'influence réglée.',
+                    keys: [{ k: ['Maj'], t: 'glisser finement' }, { k: ['Alt', 'clic'], t: 'revenir à 33 %' }, { k: ['double-clic'], t: 'saisir' }] },
+            ] },
+            { title: 'Elastic', items: [
+                { icon: 'ressort', name: 'Appliquer Elastic', text: 'Un rebond après la dernière keyframe des propriétés animées sélectionnées, réglable dans l\'effet « Elastic Controller ». La croix le retire.' },
+            ] },
+            { title: 'Placer', items: [
+                { icon: 'ancre', name: 'Ancrage', text: 'Le point d\'ancrage va sur la boîte des calques ; rien ne bouge à l\'écran.', keys: [{ k: ['Pavé 1–9'], t: 'les 9 positions' }] },
+                { icon: 'alignLeft', name: 'Aligner', text: 'Entre eux (Sélection) ou sur la composition (Comp), bords visibles.' },
+                { icon: 'distCenterX', name: 'Répartir', text: '3 calques ou plus ; les deux extrêmes ne bougent pas.' },
+            ] },
+            { title: 'Rejouer', items: [
+                { icon: 'eclair', name: 'Dernier geste', text: 'Cerclé de bleu : rejoué sur la nouvelle sélection.', keys: [{ k: ['Entrée'], t: 'rejouer' }] },
+            ] },
+        ],
+        footer: 'Raccourcis de chaque geste : Réglages › Raccourcis.',
+    };
 
     const EASE = [
         { key: 'easeIn',   mode: 'in',   label: 'Entrée',   title: 'Lisser l\'entrée (départ du mouvement) des keyframes sélectionnées' },

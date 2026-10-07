@@ -55,6 +55,15 @@ variante a sa propre action dans le registre (23 actions).
 Programmes lancés (montrer un fichier) : construits par l'hôte d'après la sélection ou la dernière
 frame enregistrée, jamais d'après un chemin venu du panneau ; Node du panneau d'abord, sinon l'hôte.
 
+## 2 ter. Retours de Simon (même jour)
+
+- **Séquencer** : pictos de mode (calques en escalier) au lieu des mots, « Écart » et « Paquets »
+  côte à côte, un seul bouton « Séquencer » (picto du mode) ; l'hôte choisit keyframes (sur au
+  moins 2 calques ou 2 propriétés) ou calques (au moins 2), sinon message.
+- **Recadrer l'image** (zone de travail) : la comp prend la taille de la boîte visible des calques
+  sélectionnés, contenu décalé. « Rogner la compo » devient « Rogner la durée ».
+- **Aide en fiches** pour tous les outils (`ui.helpDialog`, voir la charte).
+
 ## 3. Architecture
 
 - Hôte : `host/tools/toolbox.jsx`, fonctions pures exposées dans `_core` (formats, créneaux,

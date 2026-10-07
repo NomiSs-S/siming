@@ -10,16 +10,22 @@
     const ui = SIMING.ui;
     const h = ui.h;
 
-    const HELP = [
-        '1. Sélectionne un calque parent dans la timeline, puis clique sur la carte Parent.',
-        '   Sans sélection, un clic sur la carte remet simplement la liste à jour.',
-        '2. Le gros bouton détache tous les enfants ; il devient ensuite « Rattacher ».',
-        '3. Un clic sur une ligne détache ou rattache cet enfant seul, tout de suite.',
-        '4. « En attente dans le projet » liste les autres parents dont des enfants sont encore détachés.',
-        '',
-        'Les enfants ne bougent pas, et chaque action s\'annule d\'un seul Ctrl+Z.',
-        'Un enfant détaché garde une balise [UP|id|parent] en fin de commentaire : c\'est sa mémoire.',
-    ].join('\n');
+    const HELP = {
+        intro: 'Détacher les enfants d\'un calque le temps de l\'animer seul, puis les rattacher.',
+        groups: [
+            { title: 'En trois gestes', items: [
+                { step: 1, name: 'Choisir le parent', text: 'Sélectionne-le dans la timeline, puis clique la carte.' },
+                { step: 2, name: 'Tout détacher', text: 'Le gros bouton détache tous les enfants, puis devient « Rattacher ».', keys: [{ k: ['Entrée'], t: 'le gros bouton' }] },
+                { step: 3, name: 'Un seul enfant', text: 'Clic sur sa ligne : il se détache ou se rattache tout de suite.' },
+            ] },
+            { title: 'À savoir', items: [
+                { icon: 'lier', name: 'Rien ne bouge', text: 'Les enfants gardent leur place ; chaque action s\'annule d\'un seul Ctrl+Z.' },
+                { icon: 'attention', name: 'En attente dans le projet', text: 'Les autres parents dont des enfants sont encore détachés : un clic les rattache.' },
+                { icon: 'etiquette', name: 'Mémoire', text: 'Un enfant détaché porte [UP|…] à la fin de son commentaire : ne l\'efface pas.' },
+            ] },
+        ],
+        footer: 'Sans sélection, la carte remet simplement la liste à jour.',
+    };
 
     const FILTERS = ['all', 'linked', 'detached'];
     const MAX_PENDING = 3;

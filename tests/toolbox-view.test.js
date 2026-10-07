@@ -86,10 +86,14 @@ module.exports = function (test) {
         assert.strictEqual(t.win.localStorage.getItem('siming.toolbox.mode'), 'reverse');
         t.$('[data-role=seq-gap]').dispatchEvent(new t.win.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
         assert.strictEqual(t.win.localStorage.getItem('siming.toolbox.gap'), '3');
-        await t.click(t.$('[data-role=seq-layers]'));
+        assert.deepEqual(t.$$('[data-role=seq-mode] .s-seg-btn').map((b) => b.getAttribute('aria-label')), ['Cascade', 'Inverse', 'Aléatoire'], 'pictos seuls, nom pour les lecteurs d\'écran');
+        assert.deepEqual(t.$$('[data-role=seq-mode] .s-seg-btn').map((b) => b.getAttribute('data-icon')), ['seqCascade', 'seqReverse', 'seqRandom']);
+        assert.strictEqual(t.$('[data-role=sequence] svg path').getAttribute('d'), t.win.SIMING.ICONS.seqReverse[0].path, 'le bouton montre le mode choisi');
+        assert.strictEqual(t.$('[data-role=seq-layers]'), null, 'un seul bouton : plus de Calques / Keyframes');
+        await t.click(t.$('[data-role=sequence]'));
         assert.strictEqual(t.status.text, '3 calques séquencés en ordre inverse, écart 3 images · Ctrl+Z pour annuler');
         assert.deepEqual([t.s.A, t.s.B, t.s.C].map((l) => Math.round(l.startTime * 25)), [6, 3, 0]);
-        assert.ok(t.$('[data-role=seq-layers]').classList.contains('is-last'));
+        assert.ok(t.$('[data-role=sequence]').classList.contains('is-last'));
         await t.click(t.$$('[data-role=seq-mode] .s-seg-btn')[0]);   // Cascade, puis Entrée = même geste, nouveau mode
         t.section.focus();
         await t.key({ key: 'Enter', code: 'Enter' }, t.section);
@@ -228,6 +232,10 @@ module.exports = function (test) {
         assert.deepEqual([t.s.comp.workAreaStart, t.s.comp.workAreaDuration], [1, 2]);
         await t.click(t.$('[data-role=work-trim]'));
         assert.deepEqual([t.s.comp.duration, t.s.comp.displayStartTime], [2, 1]);
+        await t.click(t.$('[data-role=crop]'));
+        assert.strictEqual(t.status.text, 'Composition recadrée sur 1 calque : 100 × 100 · Ctrl+Z pour annuler');
+        assert.deepEqual([t.s.comp.width, t.s.comp.height], [100, 100]);
+        assert.strictEqual(t.$('[data-role=format-section] .s-label-hint').textContent, '100 × 100', 'taille relue');
         const pos = t.s.comp.layer(1).position;
         pos.expression = '[0, time]';
         pos._state.exprFn = (time) => [0, Math.round(time * 100)];

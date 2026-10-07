@@ -144,6 +144,15 @@ Demande de Simon : « implémente les idées 1, 2, 3, 4 et 6 » de la liste prop
 Convention retenue : Alt + clic = variante d'un geste, Entrée rejoue la variante, chaque variante dans le registre (23 actions). `SIMING.runProgram(…, { anyExit })` (explorer.exe sort en 1). Programmes construits par l'hôte seulement (jamais d'après un chemin du panneau). Recentrage partagé (`resizeComp`). 5 icônes (50). Faux AE : `comp.duplicate`, zone de travail, timecode de départ, marqueurs de comp, `File.copy`, fichier du projet, expressions simulées (`exprFn`, `expressionError`, `setValuesAtTimes`). Tests : 237, 0 échec ; rendu vérifié dans Chrome à 340 et 180 px.
 Choix faits sans demander : dossier `Frames` (pas le dossier du projet lui-même) ; numéro d'image sur 5 chiffres ; fichier remplacé s'il existe ; rogner = comportement d'AE (timecode qui suit) plutôt qu'un retour à 0 ; position et texte jamais allégés.
 
+### 2026-10-07 : séquences en pictos, recadrer l'image, aide en fiches (toujours 1.3.0, non publiée)
+
+Demande de Simon (3 points) ; une question posée : « recadrer » = l'image (largeur et hauteur), pas la durée.
+- **Séquencer** : moins de texte ; modes en pictos (calques en escalier : `seqCascade`, `seqReverse`, `seqRandom`, `ui.segmented` accepte `{ icon }`), « Écart » et « Paquets » côte à côte, **un seul bouton** qui montre le picto du mode. L'hôte choisit : keyframes sélectionnées sur au moins 2 calques (ou 2 propriétés) = keyframes, sinon au moins 2 calques = calques, sinon message.
+- **Recadrer l'image** (Zone de travail) : `cropToLayers`, comp à la taille de la boîte visible des calques sélectionnés (pixels entiers vers l'extérieur), calques sans parent décalés, rien ne bouge à l'image. « Rogner la compo » devient « Rogner la durée » (picto `rognerDuree`), le picto `rogner` va au recadrage.
+- **Aide** des quatre outils refaite en fiches (`ui.helpDialog`) : en-tête (picto, nom, version), phrase d'intro, groupes de fiches (picto ou numéro d'étape, nom, une phrase, touches en pastilles), pied et « Compris ». Un texte simple garde l'ancien dialogue. Test de garde : aide en fiches pour chaque outil, pictos existants, phrases courtes.
+- Tests : 240, 0 échec ; rendu vérifié dans Chrome (Boîte à outils à 340 px, aides à 340 et 220 px).
+Choix faits sans demander : la boîte de recadrage peut agrandir la comp si les calques dépassent ; « Paquets » au lieu de « Par paquets de » ; « Recadrer l'image » seul sur sa ligne dans la grille.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

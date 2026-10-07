@@ -75,10 +75,10 @@ est cerclé de bleu et **Entrée** le rejoue.
    `Frames` (`Pub_00125.png` ; Alt + clic : et la montrer dans l'Explorateur / le Finder). After
    Effects doit autoriser les scripts à écrire des fichiers (Préférences › Scripts et expressions) ;
    le panneau le rappelle si besoin.
-2. **Séquencer** les **calques** ou les **keyframes** sélectionnés : Cascade (ordre de sélection),
-   Inverse, ou Aléatoire (ordre tiré au hasard à chaque clic). **Écart** = images entre deux
-   départs ; **Par paquets de** = combien partent ensemble. Le plus tôt reste en place. Les
-   keyframes gardent leur ease, leurs tangentes et restent sélectionnées (on peut relancer).
+2. **Séquencer** : un picto par mode (Cascade, Inverse, Aléatoire), **Écart** (images entre deux
+   départs), **Paquets** (combien partent ensemble), puis un seul bouton : les keyframes
+   sélectionnées s'il y en a, sinon les calques. Le plus tôt reste en place. Les keyframes gardent
+   leur ease, leurs tangentes et restent sélectionnées (on peut relancer).
 3. **Null relié** : au centre des calques sélectionnés, juste au-dessus d'eux, relié à eux (la
    hiérarchie existante est gardée). **Fond** : calque de forme tout en bas, toujours à la taille de
    la compo ; sa couleur se choisit dans la pastille (Alt + clic : couleur de fond de la compo).
@@ -86,8 +86,9 @@ est cerclé de bleu et **Entrée** le rejoue.
    1080 × 1920), le contenu reste centré, keyframes comprises. Le format en cours est allumé.
    **Décliner** crée une copie de la compo dans chacun des autres formats (`Pub 9x16`…), l'original
    ne change pas ; Alt + clic sur un format : une seule copie, dans ce format.
-5. **Zone de travail** : la caler **sur la sélection**, ou **rogner la compo** à la zone de travail
-   (comme la commande d'AE : le timecode de départ suit).
+5. **Zone de travail** : la caler **sur la sélection**, **rogner la durée** de la compo à la zone de
+   travail (comme la commande d'AE : le timecode de départ suit), ou **recadrer l'image** de la
+   compo sur les calques sélectionnés (largeur et hauteur, rien ne bouge à l'image).
 6. **Afficher la source dans le Projet** (Alt + clic : son fichier dans l'Explorateur / le Finder),
    **Convertir les textes PSD** en texte modifiable (sélection, sinon toute la compo) et
    **Convertir les expressions en keyframes** (une par image, expression désactivée, son texte gardé).

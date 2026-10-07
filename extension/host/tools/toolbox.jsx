@@ -6,7 +6,7 @@
  *  Gestes rapides, un clic chacun, un Ctrl+Z chacun :
  *  - frame : rend l'image de la tête de lecture en PNG (dossier temporaire) ; le panneau
  *    la copie dans le presse-papier (Node de CEP, sinon copyImage par system.callSystem) ;
- *  - sequence : séquence les calques ou les keyframes sélectionnés en cascade, en ordre
+ *  - sequence : séquence les keyframes sélectionnées (sinon les calques) en cascade, en ordre
  *    inverse ou dans un ordre tiré au hasard ; « écart » = images entre deux départs,
  *    « par paquets de » = combien partent ensemble ; le plus tôt reste en place ;
  *    keepFrame l'enregistre à côté du projet (dossier « Frames ») ;
@@ -15,6 +15,7 @@
  *  - format : 16:9, 4:5, 1:1, 9:16, plus petit côté gardé, contenu recentré ;
  *    duplicateFormats : copies de la comp dans les autres formats ;
  *  - workArea : zone de travail sur les calques sélectionnés, ou comp rognée à la zone ;
+ *    cropToLayers : image de la comp recadrée sur les calques sélectionnés ;
  *  - revealSource : sources des calques sélectionnés dans le panneau Projet ;
  *    revealFile : leur fichier dans l'Explorateur / le Finder ;
  *  - convertPsdText : calques texte d'un Photoshop importé -> texte modifiable ;
@@ -371,7 +372,7 @@
         system.callSystem(shellCommand(program, isMac()));
     }
 
-    /** Décale de d = [dx, dy] la position des calques sans parent (et le point ciblé des caméras et
+    /** Décale de d = [dx, dy] (recentrage, recadrage) la position des calques sans parent (et le point ciblé des caméras et
      *  lumières), keyframes comprises sans en créer, calques verrouillés compris. */
     function recenterLayers(comp, d, rep) {
         var time = comp.time, at = function () { return d; };
@@ -719,10 +720,19 @@
             var frames = Math.round(clampNumber(a.gap, 0, 10000, 2) * 10) / 10;
             var group = Math.round(clampNumber(a.group, 1, 1000, 1));
             var gap = frames * comp.frameDuration;
-            var rep = { done: 0, skipped: [] }, i;
+            var rep = { done: 0, skipped: [] }, i, target = a.target, probe = null;
 
-            if (a.target === 'keys') {
-                var kg = keyGroups(comp), groups = kg.groups;
+            // Sans cible : les keyframes sélectionnées s'il y en a sur 2 calques (ou 2 propriétés),
+            // sinon les calques sélectionnés.
+            if (target !== 'layers' && target !== 'keys') {
+                probe = keyGroups(comp);
+                if (probe.groups.length >= 2) target = 'keys';
+                else if (comp.selectedLayers.length >= 2) target = 'layers';
+                else return warn(comp, 'Sélectionne au moins 2 calques, ou des keyframes sur 2 calques (ou 2 propriétés)');
+            }
+
+            if (target === 'keys') {
+                var kg = probe || keyGroups(comp), groups = kg.groups;
                 if (kg.keys === 0) return warn(comp, 'Aucune keyframe sélectionnée : sélectionne des keyframes dans la timeline');
                 if (groups.length < 2) return warn(comp, 'Sélectionne des keyframes sur au moins 2 calques (ou 2 propriétés d\'un même calque)');
                 var starts = [];
@@ -985,6 +995,38 @@
             });
             return reply(comp, { done: layers.length, skipped: [] }, 'Zone de travail de ' + seconds(origin + w.start) + ' à ' +
                 seconds(origin + w.start + w.duration) + ' (' + S.plural(layers.length, 'calque', 'calques') + ') · Ctrl+Z pour annuler', 'ok');
+        },
+
+        /** Recadre l'image de la comp sur les calques sélectionnés : largeur et hauteur = leur boîte
+         *  visible à l'instant courant (pixels entiers, arrondis vers l'extérieur), calques sans parent
+         *  décalés pour que rien ne bouge à l'image (comme Recadrer la composition sur la région
+         *  d'intérêt). La boîte peut dépasser la comp : elle s'agrandit alors. */
+        cropToLayers: function () {
+            var comp = ae.getActiveComp();
+            if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
+            var layers = comp.selectedLayers, boxes = [], skipped = [], i;
+            if (!layers.length) return warn(comp, 'Aucun calque sélectionné : sélectionne des calques dans la timeline');
+            for (i = 0; i < layers.length; i++) {
+                try { boxes.push(ae.layerBox(layers[i], comp.time)); } catch (e) { skipped.push(layers[i].name + ' : ' + e.message); }
+            }
+            if (!boxes.length) return warn(comp, 'Aucun calque sélectionné n\'a de boîte visible', skipped);
+            var u = G.union(boxes);
+            var left = Math.floor(u.left + 1e-6), top = Math.floor(u.top + 1e-6);
+            var w = Math.ceil(u.right - 1e-6) - left, hh = Math.ceil(u.bottom - 1e-6) - top;
+            if (w < 4 || hh < 4) return warn(comp, 'Boîte trop petite pour une composition (4 pixels au moins)', skipped);
+            if (w > 30000 || hh > 30000) return warn(comp, 'Boîte trop grande pour une composition (30 000 pixels au plus)', skipped);
+            if (left === 0 && top === 0 && w === comp.width && hh === comp.height) {
+                return reply(comp, null, 'La composition est déjà cadrée sur ces calques (' + w + ' × ' + hh + ')', 'info');
+            }
+            var rep = { done: 0, skipped: skipped };
+            ae.undo(TOOL_NAME + ' : recadrer', function () {
+                comp.width = w;
+                comp.height = hh;
+                recenterLayers(comp, [-left, -top], rep);
+            });
+            return reply(comp, rep, 'Composition recadrée sur ' + S.plural(boxes.length, 'calque', 'calques') + ' : ' + w + ' × ' + hh +
+                (rep.skipped.length ? ' · ' + rep.skipped.length + ' ignoré(s)' : '') + ' · Ctrl+Z pour annuler',
+                rep.skipped.length ? 'warn' : 'ok');
         },
 
         /** Convertit en keyframes les expressions actives (propriétés sélectionnées, sinon celles des
