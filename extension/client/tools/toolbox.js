@@ -3,8 +3,9 @@
  * Toute la logique After Effects est côté hôte (host/tools/toolbox.jsx). Comme Quick Tools :
  * pas de bouton principal, le dernier geste est cerclé d'accent et Entrée le rejoue ; chaque
  * geste est une action du registre de raccourcis (SIMING.keys), réglable dans Réglages.
- * La comp active (format, couleur de fond) est relue à chaque geste et quand le pointeur
- * entre dans la vue.
+ * Alt + clic donne la variante d'un geste (montrer le fichier, dupliquer au lieu de modifier) ;
+ * Entrée rejoue la variante choisie. La comp active (format, couleur de fond) est relue à
+ * chaque geste et quand le pointeur entre dans la vue.
  */
 (function (global) {
     'use strict';
@@ -14,8 +15,9 @@
     const h = ui.h;
 
     const HELP = [
-        'Copier la frame : l\'image de la tête de lecture est rendue puis copiée dans le presse-papier,',
-        '   prête à coller (Slack, mail, Photoshop…). After Effects doit autoriser l\'écriture de fichiers :',
+        'Frame : l\'image de la tête de lecture est rendue puis copiée dans le presse-papier (Copier), ou',
+        '   enregistrée en PNG à côté du projet, dans le dossier « Frames » (Exporter ; Alt + clic : et la',
+        '   montrer dans l\'Explorateur / le Finder). After Effects doit autoriser l\'écriture de fichiers :',
         '   Préférences › Scripts et expressions › « Autoriser les scripts à écrire des fichiers et à accéder au réseau ».',
         'Séquencer : Cascade, Inverse, ou Aléatoire (ordre tiré au hasard à chaque clic). Calques : dans l\'ordre',
         '   de la sélection que donne After Effects ; keyframes : de haut en bas dans la pile.',
@@ -29,10 +31,16 @@
         'Fond : calque de forme « Fond » tout en bas, toujours à la taille de la compo. La pastille',
         '   règle sa couleur : clic = choisir, Alt + clic = couleur de fond de la composition.',
         'Format : 16:9, 4:5, 1:1 ou 9:16. Le plus petit côté est gardé (1920 × 1080 -> 1080 × 1920),',
-        '   le contenu reste centré, keyframes comprises.',
-        'Afficher la source : sélectionne dans le panneau Projet la source des calques sélectionnés.',
+        '   le contenu reste centré, keyframes comprises. Alt + clic sur un format : une copie de la compo',
+        '   dans ce format, l\'original ne change pas. « Décliner » : une copie dans chacun des autres formats.',
+        'Zone de travail : sur les calques sélectionnés (du premier début à la dernière fin), ou rogner la',
+        '   compo à la zone de travail (le timecode de départ suit, rien ne bouge par rapport à lui).',
+        'Afficher la source : sélectionne dans le panneau Projet la source des calques sélectionnés ;',
+        '   Alt + clic : montre son fichier dans l\'Explorateur / le Finder.',
         'Convertir les textes PSD : les textes d\'un Photoshop importé deviennent modifiables',
         '   (calques sélectionnés, sinon toute la compo).',
+        'Expressions en keyframes : propriétés sélectionnées (sinon toutes celles des calques sélectionnés) ;',
+        '   une keyframe par image du calque, puis l\'expression est désactivée (son texte reste).',
         '',
         'Le dernier geste est cerclé de bleu : Entrée le rejoue. Chaque geste s\'annule d\'un seul Ctrl+Z.',
         'Raccourcis de chaque geste : Réglages du panneau SIMING.',
@@ -84,18 +92,24 @@
         }
         action('replay', 'Rejouer le dernier geste', () => { if (last && !busy) last.replay(); }, 'Enter');
 
-        /** Bouton de geste (36 px) : icône et verbe ; aussi une action du registre. */
-        function actionButton(role, icon, label, title, replay) {
+        /** Bouton de geste (36 px) : icône et verbe ; aussi une action du registre. alt : variante
+         *  { title, replay } jouée par Alt + clic (et sa propre action dans le registre). */
+        function actionButton(role, icon, label, title, replay, alt) {
             const b = h('button', {
-                class: 's-btn s-action', type: 'button', 'data-role': role, title, 'aria-label': title,
-                onclick: () => gesture(b, replay),
+                class: 's-btn s-action', type: 'button', 'data-role': role,
+                title: title + (alt ? ' · Alt + clic : ' + alt.hint : ''), 'aria-label': title,
+                onclick: (e) => gesture(b, e.altKey && alt ? alt.replay : replay),
             }, ui.icon(icon, 16), h('span', { class: 's-action-label', text: label }));
             action(role, title, () => gesture(b, replay));
+            if (alt) action(role + '-alt', alt.title, () => gesture(b, alt.replay));
             return b;
         }
 
         // --- Frame ----------------------------------------------------------------------
-        const frameBtn = actionButton('frame', 'appareil', 'Copier la frame', 'Copier l\'image de la tête de lecture dans le presse-papier', () => task(copyFrame));
+        const frameBtn = actionButton('frame', 'appareil', 'Copier', 'Copier l\'image de la tête de lecture dans le presse-papier', () => task(copyFrame));
+        const exportBtn = actionButton('frame-export', 'exporter', 'Exporter en PNG', 'Enregistrer l\'image de la tête de lecture à côté du projet (dossier « Frames »)',
+            () => task(() => exportFrame(false)),
+            { hint: 'et la montrer', title: 'Exporter la frame et la montrer dans l\'Explorateur / le Finder', replay: () => task(() => exportFrame(true)) });
 
         // --- Séquencer --------------------------------------------------------------------
         let mode = settings.get('toolbox.mode', 'cascade');
@@ -150,30 +164,45 @@
         const formatTiles = FORMATS.map((f) => {
             const area = 190;   // cadres de même surface : on compare des proportions
             const fw = Math.round(Math.sqrt(area * f.w / f.h) * 2) / 2, fh = Math.round(Math.sqrt(area * f.h / f.w) * 2) / 2;
-            const title = 'Passer la composition en ' + f.id;
+            const title = 'Passer la composition en ' + f.id + ' · Alt + clic : en faire une copie en ' + f.id;
             const replay = () => run('format', { ratio: f.id });
+            const copy = () => run('duplicateFormats', { ratio: f.id });
             const b = h('button', {
                 class: 's-tool s-format', type: 'button', 'data-role': roleOf(f.id), 'data-format': f.id, title, 'aria-label': title,
-                onclick: () => gesture(b, replay),
+                onclick: (e) => gesture(b, e.altKey ? copy : replay),
             }, h('span', { class: 's-format-frame', style: 'width:' + fw + 'px;height:' + fh + 'px' }), h('span', { class: 's-format-label', text: f.id }));
             action(roleOf(f.id), 'Format ' + f.id, () => gesture(b, replay));
+            action(roleOf(f.id) + '-copy', 'Copie de la compo en ' + f.id, () => gesture(b, copy));
             return b;
         });
+        const variantsBtn = actionButton('format-variants', 'decliner', 'Décliner dans les autres formats',
+            'Créer une copie de la composition dans chacun des autres formats (l\'original ne change pas)', () => run('duplicateFormats', {}));
 
-        // --- Projet -----------------------------------------------------------------------
-        const revealBtn = actionButton('reveal', 'source', 'Afficher la source dans le Projet', 'Sélectionner la source des calques sélectionnés dans le panneau Projet', () => run('revealSource', {}));
+        // --- Zone de travail --------------------------------------------------------------
+        const workSel = actionButton('work-selection', 'zone', 'Sur la sélection', 'Caler la zone de travail sur les calques sélectionnés', () => run('workArea', { mode: 'selection' }));
+        const workTrim = actionButton('work-trim', 'rogner', 'Rogner la compo', 'Rogner la composition à la zone de travail', () => run('workArea', { mode: 'trim' }));
+
+        // --- Calques ----------------------------------------------------------------------
+        const revealBtn = actionButton('reveal', 'source', 'Afficher la source dans le Projet', 'Sélectionner la source des calques sélectionnés dans le panneau Projet',
+            () => run('revealSource', {}),
+            { hint: 'son fichier dans l\'Explorateur / le Finder', title: 'Montrer le fichier source dans l\'Explorateur / le Finder', replay: () => task(revealFile) });
         const psdBtn = actionButton('psd-text', 'texte', 'Convertir les textes PSD en texte modifiable', 'Convertir en texte modifiable les textes d\'un Photoshop importé (sélection, sinon toute la composition)', () => run('convertPsdText', {}));
+        const bakeBtn = actionButton('bake', 'figer', 'Convertir les expressions en keyframes', 'Remplacer les expressions des propriétés sélectionnées (ou des calques sélectionnés) par une keyframe à chaque image', () => run('bakeExpressions', {}));
 
         view.append(
-            h('div', { class: 's-stack', 'data-role': 'frame-section' }, labelRow('Frame', 'presse-papier'), frameBtn),
+            h('div', { class: 's-stack', 'data-role': 'frame-section' }, labelRow('Frame', 'de la tête de lecture'),
+                h('div', { class: 's-actions' }, frameBtn, exportBtn)),
             h('div', { class: 's-stack', 'data-role': 'seq-section' }, labelRow('Séquencer', 'calques ou keyframes'), modeSeg, gapBar, groupBar,
                 h('div', { class: 's-actions' }, seqLayers, seqKeys)),
             h('div', { class: 's-stack', 'data-role': 'create-section' }, labelRow('Créer'),
                 h('div', { class: 's-actions' }, nullBtn, h('div', { class: 's-action-pair' }, bgBtn, chip))),
             h('div', { class: 's-stack', 'data-role': 'format-section' }, formatTitle,
-                h('div', { class: 's-tool-grid is-4', 'data-role': 'formats' }, formatTiles)),
+                h('div', { class: 's-tool-grid is-4', 'data-role': 'formats' }, formatTiles),
+                h('div', { class: 's-actions is-list' }, variantsBtn)),
+            h('div', { class: 's-stack', 'data-role': 'work-section' }, labelRow('Zone de travail'),
+                h('div', { class: 's-actions' }, workSel, workTrim)),
             h('div', { class: 's-stack', 'data-role': 'layers-section' }, labelRow('Calques'),
-                h('div', { class: 's-actions is-list' }, revealBtn, psdBtn)));
+                h('div', { class: 's-actions is-list' }, revealBtn, psdBtn, bakeBtn)));
 
         // --- Appels à l'hôte -------------------------------------------------------------
         const call = (fn, args) => ctx.bridge.call('toolbox', fn, args || {});
@@ -197,10 +226,23 @@
             return task(() => call(fn, args).then(render));
         }
 
-        /** Rend la frame (hôte), attend le fichier, le copie : Node du panneau, sinon l'hôte. */
-        async function copyFrame() {
+        /** Lance un programme du système par le Node du panneau ; sans Node, hostFallback() demande
+         *  à l'hôte de le faire. Renvoie true si c'est lancé. */
+        async function launch(program, hostFallback) {
+            try {
+                await SIMING.runProgram(program.file, program.args, { anyExit: !!program.anyExit });
+                return true;
+            } catch (e) {
+                if (e.code !== 'NO_NODE') { ctx.status.set('Lancement impossible : ' + e.message, 'error'); return false; }
+                const r = render(await hostFallback());
+                return r.status.level === 'ok';
+            }
+        }
+
+        /** Rend la frame (hôte) et attend le fichier écrit et stable. Renvoie { path, st } ou null. */
+        async function renderFrame() {
             const s = render(await call('frame'));
-            if (!s.frame) return;
+            if (!s.frame) return null;
             let st = null, prev = -1, done = false;
             for (let i = 0; i < POLL_MAX && !done; i++) {
                 if (i) await wait(POLL_MS);
@@ -211,16 +253,41 @@
             }
             if (!done) {
                 ctx.status.set('La frame n\'a pas été rendue à temps : réessaie (et vérifie Préférences › Scripts et expressions)', 'error');
-                return;
+                return null;
             }
+            return { path: s.frame.path, st };
+        }
+
+        /** Copie la frame : Node du panneau, sinon l'hôte. */
+        async function copyFrame() {
+            const f = await renderFrame();
+            if (!f) return;
             try {
-                await SIMING.runProgram(st.copy.file, st.copy.args);
+                await SIMING.runProgram(f.st.copy.file, f.st.copy.args);
             } catch (e) {
                 if (e.code !== 'NO_NODE') { ctx.status.set('Copie impossible : ' + e.message, 'error'); return; }
-                const r = await call('copyImage', { path: s.frame.path });
+                const r = await call('copyImage', { path: f.path });
                 if (r.status.level !== 'ok') { render(r); return; }
             }
-            ctx.status.set('Frame ' + st.width + ' × ' + st.height + ' copiée dans le presse-papier : colle-la où tu veux', 'ok');
+            ctx.status.set('Frame ' + f.st.width + ' × ' + f.st.height + ' copiée dans le presse-papier : colle-la où tu veux', 'ok');
+        }
+
+        /** Enregistre la frame à côté du projet ; reveal : la montrer ensuite. */
+        async function exportFrame(reveal) {
+            const f = await renderFrame();
+            if (!f) return;
+            const r = render(await call('keepFrame', { path: f.path }));
+            if (!reveal || !r.file) return;
+            const text = r.status.text;
+            if (await launch(r.file.reveal, () => call('revealKept'))) ctx.status.set(text + ' · montrée', 'ok');
+        }
+
+        /** Montre le fichier source du calque sélectionné dans l'Explorateur / le Finder. */
+        async function revealFile() {
+            const r = render(await call('revealFile'));
+            if (!r.program) return;
+            const text = r.status.text, level = r.status.level;
+            if (await launch(r.program, () => call('revealFile', { run: true }))) ctx.status.set(text, level);
         }
 
         function render(s) {
@@ -243,6 +310,7 @@
             comp = c || null;
             formatTitle.hint.textContent = comp ? comp.width + ' × ' + comp.height : 'aucune composition';
             formatTiles.forEach((b) => b.classList.toggle('is-on', !!comp && comp.format === b.getAttribute('data-format')));
+            variantsBtn.querySelector('.s-action-label').textContent = (comp && comp.format) ? 'Décliner dans les 3 autres formats' : 'Décliner dans les 4 formats';
             renderChip();
         }
 

@@ -89,6 +89,40 @@ module.exports = function (test) {
         assert.ok(sh.includes("/Users/l'\\''atelier/"), 'apostrophe fermée-échappée-rouverte pour sh : ' + sh);
     });
 
+    test('boîte à outils : montrer un fichier (Explorateur, Finder), noms de frame et de déclinaison', () => {
+        const { c } = core();
+        const win = c.revealProgram(false, 'C:\\Projets\\l\'atelier\\Frames\\Pub_00012.png');
+        assert.deepEqual(Object.assign({}, win, { args: list(win.args) }), { file: 'explorer.exe', args: ['/select,', 'C:\\Projets\\l\'atelier\\Frames\\Pub_00012.png'], anyExit: true });
+        assert.strictEqual(c.shellCommand(win, false), 'explorer.exe /select, "C:\\Projets\\l\'atelier\\Frames\\Pub_00012.png"');
+        const mac = c.revealProgram(true, '/Users/simon/Pub.png');
+        assert.deepEqual(list(mac.args), ['-R', '/Users/simon/Pub.png']);
+        assert.strictEqual(c.shellCommand(mac, true), "open -R '/Users/simon/Pub.png'");
+        assert.strictEqual(c.safeName('Pub: v2/final?'), 'Pub_ v2_final_');
+        assert.strictEqual(c.safeName('  .  '), 'Composition');
+        assert.strictEqual(c.frameFileName('Pub', 12.0000001), 'Pub_00012.png');
+        assert.strictEqual(c.frameFileName('Long', 123456), 'Long_123456.png');
+        assert.strictEqual(c.variantName('Pub', '9:16'), 'Pub 9x16');
+        assert.strictEqual(c.variantName('Pub 16x9', '1:1'), 'Pub 1x1', 'suffixe de format remplacé');
+        assert.strictEqual(c.variantName('Pub 2', '4:5'), 'Pub 2 4x5');
+        assert.deepEqual(list(c.otherFormats('16:9')), ['4:5', '1:1', '9:16']);
+        assert.deepEqual(list(c.otherFormats(null)), ['16:9', '4:5', '1:1', '9:16']);
+    });
+
+    test('boîte à outils : zone de travail bornée, échantillons allégés, secondes', () => {
+        const { c } = core();
+        assert.deepEqual(Object.assign({}, c.workAreaFor(1, 4, 10, 0.04)), { start: 1, duration: 3 });
+        assert.deepEqual(Object.assign({}, c.workAreaFor(-2, 12, 10, 0.04)), { start: 0, duration: 10 }, 'bornée à la comp');
+        assert.strictEqual(c.workAreaFor(11, 12, 10, 0.04), null, 'hors de la comp');
+        const thin = c.thinSamples([0, 1, 2, 3, 4, 5], [5, 5, 5, 7, 7, [1]]);
+        assert.deepEqual([list(thin.times), list(thin.values)], [[0, 2, 3, 4, 5], [5, 5, 7, 7, [1]]], 'valeur égale à ses deux voisines retirée');
+        const arr = c.thinSamples([0, 1, 2, 3], [[1, 2], [1, 2], [1, 2], [1, 3]]);
+        assert.deepEqual(list(arr.times), [0, 2, 3]);
+        const other = c.thinSamples([0, 1, 2], [{ text: 'a' }, { text: 'a' }, { text: 'a' }]);
+        assert.strictEqual(other.times.length, 3, 'objets (texte) : tout gardé');
+        assert.strictEqual(c.seconds(2.4), '2,40 s');
+        assert.strictEqual(c.seconds(0), '0,00 s');
+    });
+
     test('boîte à outils : préférence « écrire des fichiers » lue si elle existe', () => {
         const { c } = core();
         assert.strictEqual(c.writeAllowed(), null, 'absente : inconnue');

@@ -133,19 +133,26 @@ Spec : `docs/superpowers/specs/2026-10-07-boite-a-outils-design.md`.
 Choix faits sans demander (à corriger si besoin) : null nommé « Contrôle » (« Contrôle <calque> » pour un seul), placé juste au-dessus du plus haut calque sélectionné ; fond = couleur de fond de la comp tant qu'aucune couleur n'est choisie ; format qui modifie la comp (pas de duplication) ; textes PSD : comp active seulement (pas les précompos) ; écart 0–30 images et paquets 1–10 au curseur.
 État : à tester dans AE (sections Hub et Boîte à outils de `docs/TESTS-MANUELS.md`, recharger le panneau ou relancer `tools/dev-install` pour le nouveau manifeste), puis Release 1.3.0.
 
+### 2026-10-07 : Boîte à outils, cinq gestes de plus (toujours 1.3.0, non publiée)
+
+Demande de Simon : « implémente les idées 1, 2, 3, 4 et 6 » de la liste proposée.
+- **Exporter la frame** en PNG à côté du projet (`Frames/<comp>_<image>.png`) ; Alt + clic : et la montrer dans l'Explorateur / le Finder.
+- **Alt + clic sur Afficher la source** : fichier source dans l'Explorateur / le Finder (dossier s'il manque).
+- **Décliner dans les autres formats** (une copie par format, `Pub 9x16`, original intact) ; Alt + clic sur une case de format : une copie dans ce format.
+- **Zone de travail** : sur la sélection ; rogner la compo (timecode de départ qui suit, comme la commande d'AE).
+- **Convertir les expressions en keyframes** (une par image du calque, constantes allégées sauf position et texte, expression désactivée).
+Convention retenue : Alt + clic = variante d'un geste, Entrée rejoue la variante, chaque variante dans le registre (23 actions). `SIMING.runProgram(…, { anyExit })` (explorer.exe sort en 1). Programmes construits par l'hôte seulement (jamais d'après un chemin du panneau). Recentrage partagé (`resizeComp`). 5 icônes (50). Faux AE : `comp.duplicate`, zone de travail, timecode de départ, marqueurs de comp, `File.copy`, fichier du projet, expressions simulées (`exprFn`, `expressionError`, `setValuesAtTimes`). Tests : 237, 0 échec ; rendu vérifié dans Chrome à 340 et 180 px.
+Choix faits sans demander : dossier `Frames` (pas le dossier du projet lui-même) ; numéro d'image sur 5 chiffres ; fichier remplacé s'il existe ; rogner = comportement d'AE (timecode qui suit) plutôt qu'un retour à 0 ; position et texte jamais allégés.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
 
-**Boîte à outils : idées proposées à Simon le 2026-10-07 (pas encore demandées)**
-- Exporter la frame en PNG à côté du projet (même rendu que « Copier la frame »).
-- Révéler le fichier source dans l'Explorateur / le Finder (Alt + clic sur « Afficher la source »).
-- Dupliquer la compo dans un autre format au lieu de la modifier (déclinaisons 16:9 / 9:16 / 1:1 d'un coup).
-- Zone de travail : la caler sur les calques sélectionnés, ou rogner la comp à la zone de travail.
+**Boîte à outils : idées proposées à Simon le 2026-10-07, pas retenues pour l'instant**
 - Séquencer depuis la tête de lecture ; répartir la sélection sur une durée donnée.
 - Null : un null par calque sélectionné ; nom choisi.
-- Convertir les expressions en keyframes sur les propriétés sélectionnées.
 - Textes PSD : aussi dans les précompositions du PSD.
+- Décliner : ranger les copies dans un dossier du projet, ou les ouvrir ; dupliquer aussi les précompos imbriquées.
 - Copier des infos : timecode courant, nom et taille de la comp, noms des calques sélectionnés.
 
 **Outils à venir**
@@ -219,4 +226,5 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Boîte à outils, commandes de menu : noms exacts en français de « Reveal Layer Source in Project » et « Convert to Editable Text » (sinon : message « introuvable dans cette langue », et noter le libellé exact pour l'ajouter).
 - Boîte à outils, séquencer : `comp.selectedLayers` est-il dans l'ordre des clics ou de la pile ? Keyframes recréées identiques (ease, tangentes, déplacement libre, couleur) ? Keyframes de Source Text ?
 - Boîte à outils, null : un enfant à la position animée garde-t-il son animation quand on le relie (compensation d'AE) ? Fond et null commencent-ils bien à 0 ?
+- Boîte à outils, ajouts : `comp.duplicate()` range-t-il la copie dans le même dossier ? Rogner : la commande native d'AE fait-elle bien avancer le timecode de départ (sinon s'aligner sur elle) ? Marqueurs de comp hors zone ? `setValuesAtTimes` sur Source Text et sur un tracé de masque ? `explorer.exe /select,` avec un chemin accentué ?
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).

@@ -9,11 +9,16 @@
  *  - sequence : séquence les calques ou les keyframes sélectionnés en cascade, en ordre
  *    inverse ou dans un ordre tiré au hasard ; « écart » = images entre deux départs,
  *    « par paquets de » = combien partent ensemble ; le plus tôt reste en place ;
+ *    keepFrame l'enregistre à côté du projet (dossier « Frames ») ;
  *  - nullFor : null au centre des calques sélectionnés, relié à eux ;
  *  - background : calque de forme « Fond » en bas, toujours à la taille de la comp ;
  *  - format : 16:9, 4:5, 1:1, 9:16, plus petit côté gardé, contenu recentré ;
+ *    duplicateFormats : copies de la comp dans les autres formats ;
+ *  - workArea : zone de travail sur les calques sélectionnés, ou comp rognée à la zone ;
  *  - revealSource : sources des calques sélectionnés dans le panneau Projet ;
- *  - convertPsdText : calques texte d'un Photoshop importé -> texte modifiable.
+ *    revealFile : leur fichier dans l'Explorateur / le Finder ;
+ *  - convertPsdText : calques texte d'un Photoshop importé -> texte modifiable ;
+ *  - bakeExpressions : expressions actives -> une keyframe par image, expression désactivée.
  *
  *  Chaque fonction d'API renvoie { report: { done, skipped[] } | null, status: { text, level },
  *  comp: { id, name, width, height, format, bg } | null }.
@@ -159,6 +164,79 @@
         return head + ' "' + last + '"';
     }
 
+    /** Programme qui montre un fichier sélectionné dans l'Explorateur ou le Finder.
+     *  explorer.exe rend le code de sortie 1 même quand tout va bien : anyExit. */
+    function revealProgram(isMac, path) {
+        if (isMac) return { file: 'open', args: ['-R', String(path)] };
+        return { file: 'explorer.exe', args: ['/select,', String(path)], anyExit: true };
+    }
+
+    /** Programme qui ouvre un dossier dans l'Explorateur ou le Finder. */
+    function openFolderProgram(isMac, path) {
+        if (isMac) return { file: 'open', args: [String(path)] };
+        return { file: 'explorer.exe', args: [String(path)], anyExit: true };
+    }
+
+    /** Nom de fichier sans caractères interdits (Windows, macOS), 80 caractères au plus. */
+    function safeName(s) {
+        var n = String(s || '').replace(/[\\\/:*?"<>|\x00-\x1f]/g, '_').replace(/^[\s.]+|[\s.]+$/g, '');
+        if (n.length > 80) n = n.substr(0, 80);
+        return n || 'Composition';
+    }
+
+    /** « Pub_00125.png » : nom de la comp et numéro de l'image (5 chiffres au moins). */
+    function frameFileName(compName, frame) {
+        var f = String(Math.max(0, Math.round(frame)));
+        while (f.length < 5) f = '0' + f;
+        return safeName(compName) + '_' + f + '.png';
+    }
+
+    var FORMAT_SUFFIX = /\s+(16x9|4x5|1x1|9x16)$/;
+
+    /** Nom d'une déclinaison : « Pub » ou « Pub 16x9 » -> « Pub 9x16 ». */
+    function variantName(name, id) {
+        return String(name).replace(FORMAT_SUFFIX, '') + ' ' + String(id).replace(':', 'x');
+    }
+
+    /** Formats à décliner : tous sauf celui de la comp (tous si elle n'en a aucun). */
+    function otherFormats(current) {
+        var out = [];
+        for (var i = 0; i < FORMAT_IDS.length; i++) if (FORMAT_IDS[i] !== current) out.push(FORMAT_IDS[i]);
+        return out;
+    }
+
+    /** Zone de travail sur [début, fin], bornée à la comp ; null si moins d'une image y reste. */
+    function workAreaFor(start, end, compDuration, frameDuration) {
+        var s = Math.max(0, start), e = Math.min(compDuration, end);
+        if (e - s < frameDuration - 1e-9) return null;
+        return { start: s, duration: e - s };
+    }
+
+    function isArray(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+
+    /** Échantillons allégés : une valeur égale à ses deux voisines est retirée (résultat identique
+     *  en interpolation linéaire). Valeurs nombres ou tableaux ; tout le reste est gardé. */
+    function thinSamples(times, values) {
+        function same(a, b) {
+            if (typeof a === 'number' || typeof b === 'number') return a === b;
+            if (!isArray(a) || !isArray(b) || a.length !== b.length) return false;
+            for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+            return true;
+        }
+        var t = [], v = [];
+        for (var i = 0; i < times.length; i++) {
+            if (i > 0 && i < times.length - 1 && same(values[i], values[i - 1]) && same(values[i], values[i + 1])) continue;
+            t.push(times[i]);
+            v.push(values[i]);
+        }
+        return { times: t, values: v };
+    }
+
+    /** « 2,40 s ». */
+    function seconds(t) {
+        return (Math.round(t * 100) / 100).toFixed(2).replace('.', ',') + ' s';
+    }
+
     // ------------------------------------------------------------------------
     //  Accès After Effects
     // ------------------------------------------------------------------------
@@ -263,6 +341,145 @@
         var n = 0;
         for (var i = 1; i <= comp.numLayers; i++) if (comp.layer(i) instanceof TextLayer) n++;
         return n;
+    }
+
+    /** Fichier sur disque de la source d'un calque (métrage), ou null (texte, forme, solide, précompo). */
+    function sourceFile(layer) {
+        var src = layer.source;
+        return (src && src.mainSource && src.mainSource.file) ? src.mainSource.file : null;
+    }
+
+    function fileLabel(file) {
+        return file.displayName || File.decode(file.name);
+    }
+
+    /** Dossier « Frames » à côté du projet enregistré (créé au besoin), ou null si le projet ne l'est pas. */
+    function projectFramesFolder() {
+        var pf = app.project.file;
+        if (!pf) return null;
+        var f = new Folder(pf.parent.fsName + '/Frames');
+        if (!f.exists) f.create();
+        return f;
+    }
+
+    var lastKept = null;   // dernière frame enregistrée à côté du projet (montrée sur demande)
+
+    /** Lance un programme depuis l'hôte : repli quand le panneau n'a pas Node. Le programme est
+     *  toujours construit ici, d'après la sélection ou la dernière frame, jamais d'après le panneau. */
+    function runHost(program) {
+        if (typeof system === 'undefined' || typeof system.callSystem !== 'function') throw new Error('system.callSystem indisponible');
+        system.callSystem(shellCommand(program, isMac()));
+    }
+
+    /** Décale de d = [dx, dy] la position des calques sans parent (et le point ciblé des caméras et
+     *  lumières), keyframes comprises sans en créer, calques verrouillés compris. */
+    function recenterLayers(comp, d, rep) {
+        var time = comp.time, at = function () { return d; };
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (layer.parent !== null) continue;   // il suit son parent
+            var locked = layer.locked;
+            try {
+                if (locked) layer.locked = false;
+                var tr = layer.property('ADBE Transform Group'), pos = tr.property('ADBE Position');
+                if (pos.dimensionsSeparated) {
+                    ae.offsetProperty(tr.property('ADBE Position_0'), function () { return d[0]; }, time);
+                    ae.offsetProperty(tr.property('ADBE Position_1'), function () { return d[1]; }, time);
+                } else {
+                    ae.offsetProperty(pos, at, time);
+                }
+                if (layer instanceof CameraLayer || layer instanceof LightLayer) {
+                    var poi = tr.property('ADBE Anchor Point');   // point ciblé
+                    if (poi) ae.offsetProperty(poi, at, time);
+                }
+                rep.done++;
+            } catch (e) {
+                rep.skipped.push(layer.name + ' : ' + e.message);
+            } finally {
+                if (locked) layer.locked = true;
+            }
+        }
+    }
+
+    /** Passe une comp au format id, contenu recentré. Renvoie la nouvelle taille, ou null si
+     *  elle y était déjà (rien n'est changé). */
+    function resizeComp(comp, id, rep) {
+        var size = formatSize(comp.width, comp.height, id);
+        if (size[0] === comp.width && size[1] === comp.height) return null;
+        var d = [(size[0] - comp.width) / 2, (size[1] - comp.height) / 2];
+        comp.width = size[0];
+        comp.height = size[1];
+        recenterLayers(comp, d, rep);
+        return size;
+    }
+
+    /** Recule de `start` les marqueurs de la comp (ceux des calques suivent leur calque) ;
+     *  un marqueur qui tomberait avant le début est retiré et signalé. */
+    function shiftCompMarkers(comp, start, rep) {
+        var m = null, items = [], i;
+        try { m = comp.markerProperty; } catch (e) { m = null; }
+        if (!m || !m.numKeys) return;
+        for (i = 1; i <= m.numKeys; i++) items.push({ time: m.keyTime(i), value: m.keyValue(i) });
+        for (i = m.numKeys; i >= 1; i--) m.removeKey(i);
+        for (i = 0; i < items.length; i++) {
+            var t = items[i].time - start;
+            if (t < -1e-9) { rep.skipped.push('Marqueur de comp à ' + seconds(items[i].time) + ' : avant la zone de travail, retiré'); continue; }
+            try { m.setValueAtTime(Math.max(0, t), items[i].value); }
+            catch (e2) { rep.skipped.push('Marqueur de comp à ' + seconds(items[i].time) + ' : ' + e2.message); }
+        }
+    }
+
+    function hasExpression(p) {
+        try { return p.propertyType === PropertyType.PROPERTY && p.canSetExpression && p.expressionEnabled && p.expression !== ''; }
+        catch (e) { return false; }
+    }
+
+    /** Propriétés feuilles d'un groupe ou d'un calque qui portent une expression active. */
+    function expressionLeaves(group, out) {
+        var n = 0;
+        try { n = group.numProperties; } catch (e) { n = 0; }
+        for (var i = 1; i <= n; i++) {
+            var p = null;
+            try { p = group.property(i); } catch (e2) { p = null; }
+            if (!p) continue;
+            if (p.propertyType === PropertyType.PROPERTY) { if (hasExpression(p)) out.push(p); }
+            else expressionLeaves(p, out);
+        }
+        return out;
+    }
+
+    /** Expressions à convertir : propriétés sélectionnées qui en portent une, sinon toutes celles
+     *  des calques sélectionnés. */
+    function expressionTargets(comp) {
+        var sel = ae.selectedProperties(comp), out = [], i;
+        for (i = 0; i < sel.length; i++) if (hasExpression(sel[i])) out.push(sel[i]);
+        if (out.length) return out;
+        var layers = comp.selectedLayers;
+        for (i = 0; i < layers.length; i++) expressionLeaves(layers[i], out);
+        return out;
+    }
+
+    /** Remplace l'expression de p par une keyframe à chaque image de son calque (dans la comp),
+     *  puis désactive l'expression (son texte reste). Renvoie le nombre de keyframes posées. */
+    function bakeProperty(comp, p) {
+        var layer = ae.ownerLayer(p), fd = comp.frameDuration;
+        if (layer.locked) throw new Error('calque verrouillé');
+        if (!movable(p)) throw new Error('valeur particulière, non convertible');
+        var err = '';
+        try { err = p.expressionError; } catch (e0) { err = ''; }
+        if (err) throw new Error('erreur dans l\'expression (' + err + ')');
+        var t0 = Math.max(0, layer.inPoint), t1 = Math.min(comp.duration, layer.outPoint);
+        var times = [], values = [], k;
+        for (k = Math.ceil(t0 / fd - 1e-6); k * fd < t1 - 1e-6; k++) {
+            times.push(k * fd);
+            values.push(p.valueAtTime(k * fd, false));
+        }
+        if (!times.length) throw new Error('calque hors de la composition');
+        var keep = (p.isSpatial || p.propertyValueType === PropertyValueType.TEXT_DOCUMENT) ? { times: times, values: values } : thinSamples(times, values);
+        for (k = p.numKeys; k >= 1; k--) p.removeKey(k);
+        p.expressionEnabled = false;
+        p.setValuesAtTimes(keep.times, keep.values);
+        return keep.times.length;
     }
 
     // --- Keyframes : lire, retirer, reposer à un autre instant ---------------------
@@ -675,39 +892,121 @@
             if (size[0] === comp.width && size[1] === comp.height) {
                 return reply(comp, null, 'La composition est déjà en ' + id + ' (' + comp.width + ' × ' + comp.height + ')', 'info');
             }
-            var d = [(size[0] - comp.width) / 2, (size[1] - comp.height) / 2], time = comp.time;
             var rep = { done: 0, skipped: [] };
-            var at = function () { return d; };
-            ae.undo(TOOL_NAME + ' : format ' + id, function () {
-                comp.width = size[0];
-                comp.height = size[1];
-                for (var i = 1; i <= comp.numLayers; i++) {
-                    var layer = comp.layer(i);
-                    if (layer.parent !== null) continue;   // il suit son parent
-                    var locked = layer.locked;
+            ae.undo(TOOL_NAME + ' : format ' + id, function () { resizeComp(comp, id, rep); });
+            return result(comp, 'Composition en ' + id + ' : ' + size[0] + ' × ' + size[1] + ', ' +
+                S.plural(rep.done, 'calque recentré', 'calques recentrés'), rep);
+        },
+
+        /** Décline la comp dans d'autres formats : une copie par format (« Pub 9x16 »), contenu
+         *  recentré, l'original intact. args : { ratio } pour un seul format, sinon tous sauf le
+         *  sien. Les copies sont sélectionnées dans le panneau Projet. */
+        duplicateFormats: function (args) {
+            var comp = ae.getActiveComp();
+            if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
+            var ids = (args && args.ratio) ? [args.ratio] : otherFormats(formatOf(comp.width, comp.height)), i;
+            for (i = 0; i < ids.length; i++) if (!FORMATS.hasOwnProperty(ids[i])) return warn(comp, 'Format inconnu : ' + ids[i]);
+            var rep = { done: 0, skipped: [] }, made = [];
+            ae.undo(TOOL_NAME + ' : décliner les formats', function () {
+                var sel = app.project.selection;
+                for (var s = 0; s < sel.length; s++) sel[s].selected = false;
+                for (var k = 0; k < ids.length; k++) {
                     try {
-                        if (locked) layer.locked = false;
-                        var tr = layer.property('ADBE Transform Group'), pos = tr.property('ADBE Position');
-                        if (pos.dimensionsSeparated) {
-                            ae.offsetProperty(tr.property('ADBE Position_0'), function () { return d[0]; }, time);
-                            ae.offsetProperty(tr.property('ADBE Position_1'), function () { return d[1]; }, time);
-                        } else {
-                            ae.offsetProperty(pos, at, time);
-                        }
-                        if (layer instanceof CameraLayer || layer instanceof LightLayer) {
-                            var poi = tr.property('ADBE Anchor Point');   // point ciblé
-                            if (poi) ae.offsetProperty(poi, at, time);
-                        }
+                        var dup = comp.duplicate();
+                        dup.name = variantName(comp.name, ids[k]);
+                        var sub = { done: 0, skipped: [] };
+                        resizeComp(dup, ids[k], sub);
+                        for (var m = 0; m < sub.skipped.length; m++) rep.skipped.push(dup.name + ' › ' + sub.skipped[m]);
+                        dup.selected = true;
+                        made.push(dup.name);
                         rep.done++;
                     } catch (e) {
-                        rep.skipped.push(layer.name + ' : ' + e.message);
-                    } finally {
-                        if (locked) layer.locked = true;
+                        rep.skipped.push(ids[k] + ' : ' + e.message);
                     }
                 }
             });
-            return result(comp, 'Composition en ' + id + ' : ' + size[0] + ' × ' + size[1] + ', ' +
-                S.plural(rep.done, 'calque recentré', 'calques recentrés'), rep);
+            return result(comp, made.length
+                ? S.plural(made.length, 'composition créée', 'compositions créées') + ' : ' + made.join(', ')
+                : 'Aucune composition créée', rep);
+        },
+
+        /** Zone de travail. args.mode : 'selection' = du premier point d'entrée au dernier point de
+         *  sortie des calques sélectionnés ; 'trim' = rogner la comp à la zone de travail (comme
+         *  Composition › Rogner la composition : calques et marqueurs de comp reculent d'autant,
+         *  le timecode de départ avance d'autant, rien ne bouge par rapport au timecode). */
+        workArea: function (args) {
+            var comp = ae.getActiveComp();
+            if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
+            var fd = comp.frameDuration, origin = comp.displayStartTime || 0, i;
+            if (args && args.mode === 'trim') {
+                var start = comp.workAreaStart, dur = comp.workAreaDuration;
+                if (start < 1e-9 && Math.abs(dur - comp.duration) < 1e-9) {
+                    return reply(comp, null, 'La zone de travail couvre déjà toute la composition', 'info');
+                }
+                var rep = { done: 0, skipped: [] };
+                ae.undo(TOOL_NAME + ' : rogner à la zone de travail', function () {
+                    if (start > 0) {
+                        for (var j = 1; j <= comp.numLayers; j++) {
+                            var layer = comp.layer(j), locked = layer.locked;
+                            try {
+                                if (locked) layer.locked = false;
+                                layer.startTime = layer.startTime - start;
+                                rep.done++;
+                            } catch (e) {
+                                rep.skipped.push(layer.name + ' : ' + e.message);
+                            } finally {
+                                if (locked) layer.locked = true;
+                            }
+                        }
+                        shiftCompMarkers(comp, start, rep);
+                        comp.displayStartTime = origin + start;
+                    }
+                    comp.workAreaStart = 0;           // d'abord la zone, puis la durée qui la contient
+                    comp.workAreaDuration = dur;
+                    comp.duration = dur;
+                });
+                return reply(comp, rep, 'Composition rognée à la zone de travail : ' + seconds(dur) +
+                    (start > 0 ? ', elle commence à ' + seconds(origin + start) : '') +
+                    (rep.skipped.length ? ' · ' + rep.skipped.length + ' ignoré(s)' : '') + ' · Ctrl+Z pour annuler',
+                    rep.skipped.length ? 'warn' : 'ok');
+            }
+            var layers = comp.selectedLayers, a = null, b = null;
+            if (!layers.length) return warn(comp, 'Aucun calque sélectionné : sélectionne des calques dans la timeline');
+            for (i = 0; i < layers.length; i++) {
+                if (a === null || layers[i].inPoint < a) a = layers[i].inPoint;
+                if (b === null || layers[i].outPoint > b) b = layers[i].outPoint;
+            }
+            var w = workAreaFor(a, b, comp.duration, fd);
+            if (!w) return warn(comp, 'Les calques sélectionnés sont hors de la composition');
+            ae.undo(TOOL_NAME + ' : zone de travail', function () {
+                comp.workAreaDuration = fd;           // toujours valide, quel que soit le nouveau début
+                comp.workAreaStart = w.start;
+                comp.workAreaDuration = w.duration;
+            });
+            return reply(comp, { done: layers.length, skipped: [] }, 'Zone de travail de ' + seconds(origin + w.start) + ' à ' +
+                seconds(origin + w.start + w.duration) + ' (' + S.plural(layers.length, 'calque', 'calques') + ') · Ctrl+Z pour annuler', 'ok');
+        },
+
+        /** Convertit en keyframes les expressions actives (propriétés sélectionnées, sinon celles des
+         *  calques sélectionnés) : une keyframe par image du calque, expression désactivée ensuite. */
+        bakeExpressions: function () {
+            var comp = ae.getActiveComp();
+            if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
+            var props = expressionTargets(comp);
+            if (!props.length) return warn(comp, 'Aucune expression active : sélectionne des propriétés à expression, ou leurs calques');
+            var rep = { done: 0, skipped: [] }, keys = 0;
+            ae.undo(TOOL_NAME + ' : expressions en keyframes', function () {
+                for (var i = 0; i < props.length; i++) {
+                    try {
+                        keys += bakeProperty(comp, props[i]);
+                        rep.done++;
+                    } catch (e) {
+                        rep.skipped.push(ae.ownerLayer(props[i]).name + ' › ' + props[i].name + ' : ' + e.message);
+                    }
+                }
+            });
+            return result(comp, S.plural(rep.done, 'expression convertie', 'expressions converties') + ' en ' +
+                S.plural(keys, 'keyframe', 'keyframes'), rep);
         },
 
         /** Sélectionne dans le panneau Projet la source des calques sélectionnés
@@ -735,6 +1034,68 @@
                 ' dans le panneau Projet';
             if (skipped.length) text += ' · ' + skipped.length + ' ignoré(s)';
             return reply(comp, rep, text, skipped.length ? 'warn' : 'ok');
+        },
+
+        /** Montre le fichier source du premier calque sélectionné qui en a un, dans l'Explorateur ou
+         *  le Finder (son dossier s'il manque sur le disque). Renvoie le programme à lancer par le
+         *  panneau ; args.run : l'hôte le lance lui-même (panneau sans Node). */
+        revealFile: function (args) {
+            var comp = ae.getActiveComp();
+            if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
+            var layers = comp.selectedLayers, files = [], i;
+            if (!layers.length) return warn(comp, 'Aucun calque sélectionné : sélectionne des calques dans la timeline');
+            for (i = 0; i < layers.length; i++) {
+                var f = sourceFile(layers[i]);
+                if (f) files.push(f);
+            }
+            if (!files.length) return warn(comp, 'Aucun fichier sur le disque : texte, forme, solide ou précomposition');
+            var file = files[0], mac = isMac(), where = mac ? 'le Finder' : 'l\'Explorateur', program, text, level = 'ok';
+            if (file.exists) {
+                program = revealProgram(mac, file.fsName);
+                text = '« ' + fileLabel(file) + ' » montré dans ' + where;
+            } else {
+                var folder = file.parent;
+                if (!folder || !folder.exists) return warn(comp, 'Fichier introuvable sur le disque : ' + file.fsName);
+                program = openFolderProgram(mac, folder.fsName);
+                text = '« ' + fileLabel(file) + ' » est manquant : son dossier est ouvert dans ' + where;
+                level = 'warn';
+            }
+            if (files.length > 1) text += ' (le 1er de ' + files.length + ' fichiers)';
+            if (args && args.run) {
+                try { runHost(program); } catch (e) { return reply(comp, null, 'Impossible de montrer le fichier : ' + e.message, 'error'); }
+            }
+            var r = reply(comp, null, text, level);
+            if (!(args && args.run)) r.program = program;
+            return r;
+        },
+
+        /** Enregistre la frame rendue (frame puis frameState) à côté du projet, dans « Frames » :
+         *  « <comp>_<image>.png » (remplacé s'il existe). args : { path } du rendu temporaire.
+         *  Renvoie aussi file.reveal, le programme qui la montre dans l'Explorateur / le Finder. */
+        keepFrame: function (args) {
+            var comp = ae.getActiveComp();
+            if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
+            var tmp = frameFile(args && args.path);
+            if (!tmp || !tmp.exists) return reply(comp, null, 'Frame introuvable : relance « Exporter la frame »', 'error');
+            var folder;
+            try { folder = projectFramesFolder(); } catch (e) { return reply(comp, null, 'Dossier « Frames » impossible à créer : ' + e.message, 'error'); }
+            if (!folder) return reply(comp, null, 'Enregistre d\'abord le projet : les frames se rangent à côté de lui, dans le dossier « Frames »', 'warn');
+            var frame = (comp.time + (comp.displayStartTime || 0)) / comp.frameDuration;
+            var target = new File(folder.fsName + '/' + frameFileName(comp.name, frame));
+            if (target.exists) target.remove();
+            if (!tmp.copy(target.fsName)) return reply(comp, null, 'Enregistrement impossible : ' + target.fsName, 'error');
+            lastKept = target.fsName;
+            var r = reply(comp, null, 'Frame enregistrée à côté du projet : Frames/' + fileLabel(target), 'ok');
+            r.file = { path: target.fsName, reveal: revealProgram(isMac(), target.fsName) };
+            return r;
+        },
+
+        /** Montre la dernière frame enregistrée dans l'Explorateur / le Finder (repli hôte). */
+        revealKept: function () {
+            var comp = ae.getActiveComp();
+            if (!lastKept || !(new File(lastKept)).exists) return reply(comp, null, 'Aucune frame enregistrée à montrer', 'warn');
+            try { runHost(revealProgram(isMac(), lastKept)); } catch (e) { return reply(comp, null, 'Impossible de montrer la frame : ' + e.message, 'error'); }
+            return reply(comp, null, 'Frame montrée dans ' + (isMac() ? 'le Finder' : 'l\'Explorateur'), 'ok');
         },
 
         /** Convertit en texte modifiable les calques texte d'un Photoshop importé : ceux de la
@@ -790,6 +1151,14 @@
         pngSize:          pngSize,
         clipboardProgram: clipboardProgram,
         shellCommand:     shellCommand,
+        revealProgram:    revealProgram,
+        safeName:         safeName,
+        frameFileName:    frameFileName,
+        variantName:      variantName,
+        otherFormats:     otherFormats,
+        workAreaFor:      workAreaFor,
+        thinSamples:      thinSamples,
+        seconds:          seconds,
         readKey:          readKey,
         writeKey:         writeKey,
         moveKeys:         moveKeys,

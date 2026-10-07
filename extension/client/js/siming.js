@@ -84,13 +84,15 @@
 
     /** Lance un programme du système et attend sa fin (Node de CEP : --enable-nodejs dans le
      *  manifeste). Arguments passés tels quels, sans shell ni fenêtre. Rejette avec
-     *  code 'NO_NODE' si Node n'est pas dans le panneau (navigateur, tests). */
-    SIMING.runProgram = function (file, args) {
+     *  code 'NO_NODE' si Node n'est pas dans le panneau (navigateur, tests).
+     *  opts.anyExit : un code de sortie non nul n'est pas une erreur (explorer.exe rend 1). */
+    SIMING.runProgram = function (file, args, opts) {
         const req = (global.cep_node && global.cep_node.require) || (typeof global.require === 'function' ? global.require : null);
         if (!req) return Promise.reject(Object.assign(new Error('Node indisponible dans le panneau'), { code: 'NO_NODE' }));
+        const anyExit = !!(opts && opts.anyExit);
         return new Promise((resolve, reject) => {
             req('child_process').execFile(file, args || [], { windowsHide: true, timeout: 20000 }, (err, stdout, stderr) => {
-                if (err) reject(new Error(String(stderr || err.message).trim() || 'échec de ' + file));
+                if (err && !(anyExit && typeof err.code === 'number')) reject(new Error(String(stderr || err.message).trim() || 'échec de ' + file));
                 else resolve(String(stdout));
             });
         });

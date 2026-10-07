@@ -2,6 +2,7 @@
 /* API publique de la Boîte à outils, appelée comme par le pont (SIMING.call), sur le faux AE. */
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { loadHost, callHost, app, ROOT } = require('./helpers');
 const { FakeComp, FootageItem, FileSource, FakeFile, KeyframeInterpolationType, KeyframeEase } = require('./fake-ae');
@@ -393,5 +394,159 @@ module.exports = function (test) {
         assert.strictEqual(call('frameState', { path: next.frame.path }).copy.file, 'osascript');
         fs.unlinkSync(next.frame.path);
         assert.deepEqual(call('frameState', { path: next.frame.path }), { ready: false });
+    });
+
+    test('API keepFrame : frame enregistrée dans « Frames » à côté du projet, montrée par l\'hôte ; projet non enregistré', () => {
+        const r = rig();
+        r.comp.time = 2;
+        r.comp.name = 'Pub: final';
+        const { call, sandbox } = host();
+        const st = call('frame', {});
+        const unsaved = call('keepFrame', { path: st.frame.path });
+        assert.strictEqual(unsaved.status.level, 'warn');
+        assert.ok(/Enregistre d'abord le projet/.test(unsaved.status.text));
+        const dir = path.join(os.tmpdir(), 'siming-fake-projet');
+        app.project.file = new FakeFile(path.join(dir, 'Mon projet.aep'));
+        const kept = call('keepFrame', { path: st.frame.path });
+        const out = path.join(dir, 'Frames', 'Pub_ final_00050.png');
+        assert.strictEqual(kept.status.text, 'Frame enregistrée à côté du projet : Frames/Pub_ final_00050.png');
+        assert.ok(fs.existsSync(out), out);
+        assert.strictEqual(kept.file.path, out);
+        assert.deepEqual(Array.from(kept.file.reveal.args), ['/select,', out]);
+        assert.strictEqual(kept.file.reveal.anyExit, true, 'explorer.exe sort en code 1 même quand tout va bien');
+        assert.strictEqual(call('revealKept', {}).status.level, 'ok');
+        assert.strictEqual(sandbox.system.calls[0], 'explorer.exe /select, "' + out + '"');
+        r.comp.displayStartTime = 1;                                   // image affichée : 75
+        call('keepFrame', { path: st.frame.path });
+        assert.ok(fs.existsSync(path.join(dir, 'Frames', 'Pub_ final_00075.png')), 'numéro d\'image du timecode affiché');
+        assert.strictEqual(call('keepFrame', { path: path.join(ROOT, 'package.json') }).status.level, 'error', 'seulement une frame rendue par l\'outil');
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(path.join(os.tmpdir(), 'siming-fake-ae'), { recursive: true, force: true });
+    });
+
+    test('API revealFile : fichier source dans l\'Explorateur ou le Finder, dossier si le fichier manque, lancé par l\'hôte sur demande', () => {
+        const r = rig();
+        const file = (name) => new FootageItem(name, new FileSource(new FakeFile(path.join(ROOT, name)), true));
+        const X = r.comp.addLayer('Données', { source: file('package.json') });
+        const Y = r.comp.addLayer('Absent', { source: file('absent.png') });
+        const T = r.comp.addLayer('Titre', { kind: 'text', text: 'Titre' });
+        r.comp.select(T, X, Y);
+        const { call, sandbox } = host();
+        const st = call('revealFile', {});
+        assert.strictEqual(st.status.text, '« package.json » montré dans l\'Explorateur (le 1er de 2 fichiers)');
+        assert.deepEqual(Array.from(st.program.args), ['/select,', path.join(ROOT, 'package.json')]);
+        assert.strictEqual(sandbox.system.calls.length, 0, 'le panneau lance le programme lui-même');
+        const ran = call('revealFile', { run: true });
+        assert.strictEqual(ran.program, undefined);
+        assert.strictEqual(sandbox.system.calls.length, 1, 'panneau sans Node : l\'hôte le lance');
+        r.comp.select(Y);
+        const miss = call('revealFile', {});
+        assert.strictEqual(miss.status.level, 'warn');
+        assert.ok(/« absent\.png » est manquant : son dossier est ouvert/.test(miss.status.text), miss.status.text);
+        assert.deepEqual([miss.program.file, Array.from(miss.program.args)], ['explorer.exe', [ROOT]]);
+        sandbox.$.os = 'Macintosh OS 14.0';
+        r.comp.select(X);
+        const mac = call('revealFile', {});
+        assert.deepEqual([mac.program.file, Array.from(mac.program.args)], ['open', ['-R', path.join(ROOT, 'package.json')]]);
+        assert.ok(/le Finder/.test(mac.status.text));
+        r.comp.select(T);
+        assert.ok(/Aucun fichier sur le disque/.test(call('revealFile', {}).status.text));
+    });
+
+    test('API duplicateFormats : une copie par autre format, contenu recentré, original intact, copies sélectionnées dans le Projet', () => {
+        const r = rig();
+        const comp = r.comp;
+        comp.name = 'Pub 16x9';
+        r.L(r.A).position.setValue([960, 540]);
+        r.B.parent = r.A;
+        const { call } = host();
+        const st = call('duplicateFormats', {});
+        assert.strictEqual(st.status.text, '3 compositions créées : Pub 4x5, Pub 1x1, Pub 9x16 · Ctrl+Z pour annuler');
+        assert.deepEqual([comp.width, comp.height, comp.name], [1920, 1080, 'Pub 16x9'], 'original intact');
+        assert.deepEqual(r.L(r.A).position.value, [960, 540]);
+        assert.strictEqual(app.project.activeItem, comp, 'la comp active ne change pas');
+        const v = app.project.items.find((i) => i.name === 'Pub 9x16');
+        assert.deepEqual([v.width, v.height], [1080, 1920]);
+        assert.deepEqual(v.layer(1).position.value, [540, 960], 'recentré dans la copie');
+        assert.deepEqual(v.layer(3).position.value, [480, 1320]);
+        assert.strictEqual(v.layers[1].parent, v.layers[0], 'parenté refaite dans la copie');
+        assert.deepEqual(v.layer(2).position.value, [500, 300], 'enfant : suit son parent');
+        assert.deepEqual(app.project.selection.map((i) => i.name), ['Pub 4x5', 'Pub 1x1', 'Pub 9x16']);
+        assert.deepEqual(app.undoGroups, ['Boîte à outils : décliner les formats']);
+        assert.strictEqual(call('duplicateFormats', { ratio: '1:1' }).status.text, '1 composition créée : Pub 1x1 · Ctrl+Z pour annuler');
+        assert.strictEqual(call('duplicateFormats', { ratio: '3:2' }).status.level, 'warn');
+    });
+
+    test('API workArea : zone de travail sur la sélection ; rogner la comp (calques, keyframes, verrouillé, marqueurs, timecode)', () => {
+        const r = rig();
+        const comp = r.comp;
+        r.A.inPoint = 1; r.A.outPoint = 4;
+        r.B.inPoint = 2; r.B.outPoint = 6;
+        comp.select(r.A, r.B);
+        const { call } = host();
+        let st = call('workArea', { mode: 'selection' });
+        assert.strictEqual(st.status.text, 'Zone de travail de 1,00 s à 6,00 s (2 calques) · Ctrl+Z pour annuler');
+        assert.deepEqual([comp.workAreaStart, comp.workAreaDuration], [1, 5]);
+        r.C.inPoint = 12; r.C.outPoint = 14;
+        comp.select(r.C);
+        assert.ok(/hors de la composition/.test(call('workArea', { mode: 'selection' }).status.text));
+        comp.select();
+        assert.ok(/Aucun calque sélectionné/.test(call('workArea', { mode: 'selection' }).status.text));
+        // Rogner : zone de travail de 2 s à 7 s
+        r.C.inPoint = 0; r.C.outPoint = 10;
+        comp.workAreaStart = 2; comp.workAreaDuration = 5;
+        r.L(r.A).position.setValueAtTime(3, [0, 0]);
+        r.C.locked = true;
+        const m = comp.markerProperty;
+        m.setValueAtTime(1, { comment: 'avant' });
+        m.setValueAtTime(3, { comment: 'dedans' });
+        st = call('workArea', { mode: 'trim' });
+        assert.strictEqual(st.status.level, 'warn', 'un marqueur retiré');
+        assert.strictEqual(st.status.text, 'Composition rognée à la zone de travail : 5,00 s, elle commence à 2,00 s · 1 ignoré(s) · Ctrl+Z pour annuler');
+        assert.deepEqual(st.report.skipped, ['Marqueur de comp à 1,00 s : avant la zone de travail, retiré']);
+        assert.deepEqual([comp.duration, comp.workAreaStart, comp.workAreaDuration, comp.displayStartTime], [5, 0, 5, 2]);
+        assert.deepEqual([r.A.startTime, r.B.startTime, r.C.startTime], [-2, -2, -2]);
+        near(r.L(r.A).position.keyTime(1), 1, 'keyframe reculée avec son calque');
+        assert.strictEqual(r.C.locked, true, 'verrouillé : reculé puis reverrouillé');
+        assert.deepEqual([m.numKeys, m.keyTime(1), m.keyValue(1).comment], [1, 1, 'dedans']);
+        assert.deepEqual(app.undoGroups.slice(-1), ['Boîte à outils : rogner à la zone de travail']);
+        assert.strictEqual(call('workArea', { mode: 'trim' }).status.level, 'info', 'déjà rognée');
+    });
+
+    test('API bakeExpressions : une keyframe par image, expression désactivée (texte gardé), constantes allégées, erreurs signalées', () => {
+        const r = rig();
+        const comp = r.comp;
+        const pa = r.L(r.A).position;
+        pa.expression = '[100 + time * 25, 0]';
+        pa._state.exprFn = (t) => [100 + Math.round(t * 25), 0];
+        pa.setValueAtTime(5, [0, 0]);                              // keyframe existante : remplacée
+        pa.selected = true;
+        const { call } = host();
+        let st = call('bakeExpressions', {});
+        assert.strictEqual(st.status.text, '1 expression convertie en 250 keyframes · Ctrl+Z pour annuler');
+        assert.strictEqual(pa.numKeys, 250, 'une par image, position comprise (pas d\'allègement sur un tracé)');
+        assert.deepEqual(pa.keyValue(11), [110, 0], 'image 10');
+        assert.strictEqual(pa.expressionEnabled, false);
+        assert.strictEqual(pa.expression, '[100 + time * 25, 0]', 'texte de l\'expression gardé');
+        assert.deepEqual(app.undoGroups, ['Boîte à outils : expressions en keyframes']);
+        // Calque sélectionné, sans propriété : toutes ses expressions
+        pa.selected = false;
+        const op = r.L(r.B).transform.property('ADBE Opacity');
+        op.expression = '50';
+        op._state.exprFn = () => 50;
+        const rot = r.L(r.B).transform.property('ADBE Rotate Z');
+        rot.expression = 'oups';
+        rot._state.expressionError = 'Erreur de syntaxe';
+        r.B.inPoint = 0; r.B.outPoint = 2;
+        comp.select(r.B);
+        st = call('bakeExpressions', {});
+        assert.strictEqual(st.status.level, 'warn');
+        assert.ok(/^1 expression convertie en 2 keyframes/.test(st.status.text), st.status.text);
+        assert.deepEqual(st.report.skipped, ['B › Rotation : erreur dans l\'expression (Erreur de syntaxe)']);
+        assert.deepEqual([op.numKeys, op.keyTime(1), op.keyValue(2)], [2, 0, 50], 'valeur constante : première et dernière image');
+        near(op.keyTime(2), 1.96, 'dernière image du calque');
+        assert.strictEqual(rot.expressionEnabled, true, 'expression en erreur : laissée telle quelle');
+        comp.select();
+        assert.ok(/Aucune expression active/.test(call('bakeExpressions', {}).status.text));
     });
 };

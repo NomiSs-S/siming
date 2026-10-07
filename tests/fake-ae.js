@@ -259,6 +259,10 @@ class FakeComp extends CompItem {
         this.bgColor = [0, 0, 0];
         this.selected = false;   // panneau Projet
         this.frames = [];        // instants rendus par saveFrameToPng
+        this.workAreaStart = 0;
+        this.workAreaDuration = 10;
+        this.displayStartTime = 0;
+        this.parentFolder = (opts && opts.parentFolder) || null;
         const comp = this;
         let nulls = 0, shapes = 0;
         // comp.layers est aussi la LayerCollection d'AE : addNull, addShape (calque ajouté tout en haut)
@@ -279,6 +283,31 @@ class FakeComp extends CompItem {
                 return refOf(st, comp);
             },
         });
+    }
+    /** Marqueurs de la comp : propriété dont chaque keyframe porte un objet marqueur. */
+    get markerProperty() {
+        if (!this._markers) this._markers = Object.assign(P.makePropState({ name: 'Marker', matchName: 'ADBE Marker', value: 0, canSetExpression: false }), { valueType: 'MARKER' });
+        return new P.PropertyRef(this._markers, { comp: this, layerState: { locked: false }, layerRef: () => null });
+    }
+    /** Copie de la comp (« <nom> 2 ») : calques recopiés, parentés refaites, sources partagées ;
+     *  rangée dans le projet, à côté de l'original. */
+    duplicate() {
+        const c = new FakeComp(nextId++, this.name + ' 2', { width: this.width, height: this.height, parentFolder: this.parentFolder });
+        for (const k of ['frameDuration', 'duration', 'time', 'workAreaStart', 'workAreaDuration', 'displayStartTime']) c[k] = this[k];
+        c.bgColor = this.bgColor.slice();
+        const map = new Map();
+        for (const st of this.layers) {
+            const n = Object.assign({}, st, {
+                id: this.noIds ? undefined : nextId++, parent: null, rect: Object.assign({}, st.rect),
+                transform: P.cloneState(st.transform, null), effects: P.cloneState(st.effects, null),
+                contents: st.contents ? P.cloneState(st.contents, null) : null,
+            });
+            map.set(st, n);
+            c.layers.push(n);
+        }
+        for (const [o, n] of map) if (o.parent) n.parent = map.get(o.parent) || null;
+        app.project.items.push(c);
+        return c;
     }
     /** Imite AE : écrit un PNG (en-tête seulement) à la taille de la comp. */
     saveFrameToPng(time, file) {
@@ -394,6 +423,7 @@ const app = {
         item(i) { return this.items[i - 1]; },
         /** Éléments sélectionnés dans le panneau Projet. */
         get selection() { return this.items.filter((it) => it.selected); },
+        file: null,            // FakeFile du projet enregistré (.aep), null s'il ne l'est pas
         rootFolder: new FolderItem('Racine'),
     },
     preferences: makePreferences(),
@@ -423,6 +453,7 @@ const app = {
     reset() {
         this.project.activeItem = null;
         this.project.items = [];
+        this.project.file = null;
         this.preferences = makePreferences();
         this.presetsApplied = [];
         this.undoDepth = 0;
@@ -461,6 +492,10 @@ class FakeFile {
     close() { return true; }
     remove() {
         try { fs.unlinkSync(this.path); return true; } catch (e) { return false; }
+    }
+    /** Copie vers target (chemin ou File) ; remplace un fichier existant. */
+    copy(target) {
+        try { fs.copyFileSync(this.path, typeof target === 'string' ? target : target.fsName); return true; } catch (e) { return false; }
     }
     toString() { return this.absoluteURI; }
 }

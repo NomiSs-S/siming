@@ -39,6 +39,22 @@ comp active (`id, name, width, height, format, bg`), relue aussi quand le pointe
 Mots retenus pour offset / step (Simon a choisi « écart + paquets ») : **Écart** (images) et
 **Par paquets de**. Aléatoire = « ordre mélangé ».
 
+## 2 bis. Ajouts du même jour (idées 1, 2, 3, 4 et 6 retenues par Simon)
+
+Convention : **Alt + clic** donne la variante d'un geste ; Entrée rejoue la variante choisie ; chaque
+variante a sa propre action dans le registre (23 actions).
+
+| Section | Geste | Comportement |
+|---|---|---|
+| Frame | Exporter en PNG (Alt : et la montrer) | Même rendu que Copier, puis `keepFrame` copie le PNG dans `Frames/` à côté du projet : `<comp>_<image>.png` (numéro d'image du timecode affiché, nom nettoyé, fichier remplacé s'il existe). Projet jamais enregistré : message. Alt : montré dans l'Explorateur (`explorer.exe /select,`, code de sortie 1 accepté) ou le Finder (`open -R`). |
+| Format | Décliner dans les autres formats ; Alt + case = une copie dans ce format | `comp.duplicate()` par format, nommée `<nom> 9x16` (un suffixe de format existant est remplacé), contenu recentré, original intact et toujours actif ; copies sélectionnées dans le panneau Projet. |
+| Zone de travail | Sur la sélection ; Rogner la compo | Sélection : du premier point d'entrée au dernier point de sortie, borné à la comp. Rogner : calques (verrouillés compris) et marqueurs de comp reculent du début de la zone, le timecode de départ avance d'autant (comme la commande d'AE), durée = zone ; un marqueur avant la zone est retiré et signalé. |
+| Calques | Afficher la source (Alt : son fichier) | Fichier source du premier calque sélectionné qui en a un, montré dans l'Explorateur / le Finder ; fichier manquant : son dossier ouvert. |
+| Calques | Convertir les expressions en keyframes | Propriétés sélectionnées à expression active, sinon toutes celles des calques sélectionnés ; une keyframe par image du calque (bornée à la comp), valeurs échantillonnées avant de retirer les keyframes existantes ; valeurs égales consécutives fusionnées sauf position (tracé) et texte ; expression désactivée, son texte gardé. Expression en erreur, marqueurs, calque verrouillé : signalés. |
+
+Programmes lancés (montrer un fichier) : construits par l'hôte d'après la sélection ou la dernière
+frame enregistrée, jamais d'après un chemin venu du panneau ; Node du panneau d'abord, sinon l'hôte.
+
 ## 3. Architecture
 
 - Hôte : `host/tools/toolbox.jsx`, fonctions pures exposées dans `_core` (formats, créneaux,
@@ -47,7 +63,7 @@ Mots retenus pour offset / step (Simon a choisi « écart + paquets ») : **Éca
   `layerBox`, `offsetProperty`, `selectedKeyframes`…), partagées par les deux outils.
 - Panneau : `tools/toolbox.js` ; `SIMING.runProgram(file, args)` dans `js/siming.js` (Node de CEP) ;
   manifeste : `--enable-nodejs` (contexte séparé, `cep_node.require`). `ui.valueBar({ integer })`.
-- Icônes : `boite`, `appareil`, `fond`, `source`, `texte` (45 icônes).
+- Icônes : `boite`, `appareil`, `fond`, `source`, `texte`, puis `exporter`, `decliner`, `zone`, `rogner`, `figer` (50 icônes).
 - Tests : `toolbox-core`, `toolbox-api`, `toolbox-view` ; faux AE étendu (null, forme, temps des
   calques, keyframes ajoutées et retirées, PNG, commandes de menu, presse-papier, sélecteur de couleur).
 

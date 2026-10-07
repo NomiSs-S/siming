@@ -65,6 +65,9 @@ Règle n°1. On doit pouvoir enchaîner les outils vite, sans viser.
   est cerclé `--accent-text` et Entrée le rejoue sur la nouvelle sélection.
 - Raccourcis en bonus, jamais obligatoires (Entrée, chiffres du rail, molette, pavé numérique) ;
   chaque geste est une action nommée, réglable dans Réglages › Raccourcis clavier.
+- **Alt + clic = variante** d'un geste, annoncée dans l'infobulle (« · Alt + clic : … ») : montrer le
+  fichier, faire une copie au lieu de modifier, revenir à la valeur par défaut. Entrée rejoue la
+  variante choisie ; chaque variante a sa propre action dans le registre de raccourcis.
 
 ## 4. Mesures
 
@@ -150,7 +153,8 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
   panneau (fenêtre à barre de titre : « Ouvrir dans un panneau »),
   ajouter, fermer, valider, attention, déplier, menu, plus, éclair, keyframe, ressort,
   étiquette, aligner et répartir, boîte à outils, appareil photo (frame), fond, source
-  (dossier et flèche), texte (T et curseur) : 45 icônes).
+  (dossier et flèche), texte (T et curseur), exporter (flèche vers un bac), décliner (deux cadres
+  de formats), zone (crochets de la zone de travail), rogner, figer (trois keyframes) : 50 icônes).
 - Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
 
 ## 8. Textes

@@ -201,7 +201,10 @@ class PropertyRef {
     // --- valeurs ---
     get numKeys() { return this._state.keys.length; }
     get value() { return this.valueAtTime(this._ctx.comp.time, true); }
-    valueAtTime(t) {
+    /** preExpression faux : si le test a donné state.exprFn(t), l'expression active en donne la valeur. */
+    valueAtTime(t, preExpression) {
+        const s = this._state;
+        if (preExpression === false && s.expressionEnabled && typeof s.exprFn === 'function') return copy(s.exprFn(t));
         const keys = this._state.keys;
         if (!keys.length) return copy(this._state.value);
         if (t <= keys[0].time) return copy(keys[0].value);
@@ -341,6 +344,29 @@ class PropertyRef {
     }
     get expressionEnabled() { return this._state.expressionEnabled; }
     set expressionEnabled(v) { this._state.expressionEnabled = !!v; }
+    /** Message d'erreur de l'expression ('' si elle marche) : state.expressionError en test. */
+    get expressionError() { return this._state.expressionError || ''; }
+    setValuesAtTimes(times, values) {
+        if (times.length !== values.length) throw new Error('setValuesAtTimes: arrays of different lengths');
+        for (let i = 0; i < times.length; i++) this.setValueAtTime(times[i], values[i]);
+    }
+}
+
+/** Copie profonde d'un état de propriété ou de groupe (pour comp.duplicate). */
+function cloneState(s, parent) {
+    if (s.kind === 'group') {
+        const g = Object.assign({}, s, { parent, children: [] });
+        s.children.forEach((c) => g.children.push(cloneState(c, g)));
+        return g;
+    }
+    const ease = (list) => list.map((e) => new KeyframeEase(e.speed, e.influence));
+    return Object.assign({}, s, {
+        parent, value: copy(s.value),
+        keys: s.keys.map((k) => Object.assign({}, k, {
+            value: copy(k.value), inEase: ease(k.inEase), outEase: ease(k.outEase),
+            inTangent: copy(k.inTangent), outTangent: copy(k.outTangent),
+        })),
+    });
 }
 
 class GroupRef {
@@ -414,5 +440,5 @@ function selectedStates(root) {
 module.exports = {
     KeyframeInterpolationType, PropertyValueType, PropertyType, KeyframeEase,
     PropertyRef, GroupRef, refFor, makePropState, makeGroupState, makeTransform, makeEffects,
-    makeElasticController, makeSliderControl, makeShapeContents, allProps, selectedStates, visibleChildren,
+    makeElasticController, makeSliderControl, makeShapeContents, allProps, selectedStates, visibleChildren, cloneState,
 };

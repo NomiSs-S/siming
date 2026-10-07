@@ -62,7 +62,8 @@ async function setup(opts) {
 module.exports = function (test) {
     test('vue boîte à outils : sections, réglages par défaut, comp active lue, gestes dans le registre', async () => {
         const t = await setup();
-        assert.deepEqual(t.$$('.s-section-label').map((e) => e.textContent), ['Frame', 'Séquencer', 'Créer', 'Format de la compo', 'Calques']);
+        assert.deepEqual(t.$$('.s-section-label').map((e) => e.textContent), ['Frame', 'Séquencer', 'Créer', 'Format de la compo', 'Zone de travail', 'Calques']);
+        assert.strictEqual(t.$('[data-role=format-variants] .s-action-label').textContent, 'Décliner dans les 3 autres formats');
         assert.strictEqual(t.$('[data-role=primary]'), null, 'gestes rapides : pas de bouton principal');
         assert.deepEqual(t.$$('.s-bar-value').map((e) => e.textContent), ['2 im', '1']);
         assert.deepEqual(t.$$('[data-role=seq-mode] .s-seg-btn').map((b) => b.classList.contains('is-on')), [true, false, false]);
@@ -71,7 +72,8 @@ module.exports = function (test) {
         assert.strictEqual(t.$('[data-role=format-section] .s-label-hint').textContent, '1920 × 1080');
         assert.ok(t.$('[data-role=bg-color]').classList.contains('is-auto'), 'fond : couleur de la comp par défaut');
         const ids = t.keys.actions().filter((a) => a.group === 'Boîte à outils').map((a) => a.id);
-        assert.strictEqual(ids.length, 12, ids.join(' '));
+        assert.strictEqual(ids.length, 23, ids.join(' '));
+        assert.ok(ids.includes('toolbox.frame-export-alt') && ids.includes('toolbox.reveal-alt') && ids.includes('toolbox.format-9x16-copy'), 'variantes Alt aussi dans le registre');
         assert.deepEqual(t.keys.binding('toolbox.replay'), { code: 'Enter', label: 'Entrée', user: false });
         assert.strictEqual(t.keys.binding('toolbox.frame'), null, 'sans touche par défaut');
         assert.strictEqual(t.status.level, 'info');
@@ -165,6 +167,74 @@ module.exports = function (test) {
         t.sandbox.pickedColor = -1;                                  // sélecteur annulé : rien ne change
         await t.click(t.$('[data-role=bg-color]'));
         assert.strictEqual(t.win.localStorage.getItem('siming.toolbox.bgColor'), '');
+    });
+
+    test('vue boîte à outils : exporter la frame à côté du projet, Alt = la montrer (Node, code de sortie 1 accepté ; sinon l\'hôte)', async () => {
+        const dir = path.join(os.tmpdir(), 'siming-fake-projet-vue');
+        const runs = [];
+        const node = { execFile: (file, args, opts, cb) => { runs.push({ file, args }); setTimeout(() => cb(Object.assign(new Error('exit 1'), { code: 1 }), '', ''), 0); } };
+        const t = await setup({ node, prepare: (s) => { s.comp.time = 0.4; } });
+        await t.click(t.$('[data-role=frame-export]'));
+        assert.strictEqual(t.status.level, 'warn', 'projet jamais enregistré');
+        app.project.file = new (require('./fake-ae').FakeFile)(path.join(dir, 'Projet.aep'));
+        await t.click(t.$('[data-role=frame-export]'));
+        assert.strictEqual(t.status.text, 'Frame enregistrée à côté du projet : Frames/Rig_00010.png');
+        assert.strictEqual(runs.length, 0, 'clic simple : rien n\'est montré');
+        await t.click(t.$('[data-role=frame-export]'), { altKey: true });
+        assert.strictEqual(t.status.text, 'Frame enregistrée à côté du projet : Frames/Rig_00010.png · montrée');
+        assert.strictEqual(t.status.level, 'ok', 'explorer.exe sort en code 1 : pas une erreur');
+        assert.deepEqual([runs[0].file, runs[0].args[0]], ['explorer.exe', '/select,']);
+        t.section.focus();
+        await t.key({ key: 'Enter', code: 'Enter' }, t.section);
+        assert.strictEqual(runs.length, 2, 'Entrée rejoue la variante Alt');
+        const h = await setup();                                       // sans Node : l'hôte montre la frame
+        await h.click(h.$('[data-role=frame-export]'), { altKey: true });
+        assert.strictEqual(h.status.level, 'ok', h.status.text);
+        assert.ok(h.sandbox.system.calls.some((c) => c.startsWith('explorer.exe /select, ')), h.sandbox.system.calls.join(' | '));
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(path.join(os.tmpdir(), 'siming-fake-ae'), { recursive: true, force: true });
+    });
+
+    test('vue boîte à outils : Alt + clic sur Afficher la source = fichier dans l\'Explorateur ; clic = panneau Projet', async () => {
+        const { FootageItem, FileSource, FakeFile } = require('./fake-ae');
+        const { ROOT } = require('./helpers');
+        const runs = [];
+        const node = { execFile: (file, args, opts, cb) => { runs.push({ file, args }); setTimeout(() => cb(null, '', ''), 0); } };
+        const t = await setup({ node, prepare: (s) => {
+            const item = new FootageItem('package.json', new FileSource(new FakeFile(path.join(ROOT, 'package.json')), true));
+            app.project.items.push(item);
+            s.comp.select(s.comp.addLayer('Données', { source: item }));
+        } });
+        await t.click(t.$('[data-role=reveal]'), { altKey: true });
+        assert.strictEqual(t.status.text, '« package.json » montré dans l\'Explorateur');
+        assert.deepEqual(runs[0].args, ['/select,', path.join(ROOT, 'package.json')]);
+        await t.click(t.$('[data-role=reveal]'));
+        assert.strictEqual(t.status.text, 'Source « package.json » sélectionnée dans le panneau Projet');
+        assert.strictEqual(runs.length, 1);
+    });
+
+    test('vue boîte à outils : décliner les formats (bouton, Alt sur une case), zone de travail, expressions en keyframes', async () => {
+        const t = await setup({ prepare: (s) => {
+            s.A.inPoint = 1; s.A.outPoint = 3;
+            s.comp.select(s.A);
+        } });
+        await t.click(t.$('[data-role=format-variants]'));
+        assert.strictEqual(t.status.text, '3 compositions créées : Rig 4x5, Rig 1x1, Rig 9x16 · Ctrl+Z pour annuler');
+        assert.deepEqual([t.s.comp.width, t.s.comp.height], [1920, 1080], 'original intact');
+        await t.click(t.$('[data-role=format-9x16]'), { altKey: true });
+        assert.strictEqual(t.status.text, '1 composition créée : Rig 9x16 · Ctrl+Z pour annuler');
+        assert.deepEqual(t.$$('.s-format.is-on').map((b) => b.getAttribute('data-format')), ['16:9'], 'la comp active reste en 16:9');
+        await t.click(t.$('[data-role=work-selection]'));
+        assert.deepEqual([t.s.comp.workAreaStart, t.s.comp.workAreaDuration], [1, 2]);
+        await t.click(t.$('[data-role=work-trim]'));
+        assert.deepEqual([t.s.comp.duration, t.s.comp.displayStartTime], [2, 1]);
+        const pos = t.s.comp.layer(1).position;
+        pos.expression = '[0, time]';
+        pos._state.exprFn = (time) => [0, Math.round(time * 100)];
+        pos.selected = true;
+        await t.click(t.$('[data-role=bake]'));
+        assert.ok(/^1 expression convertie en \d+ keyframes/.test(t.status.text), t.status.text);
+        assert.strictEqual(pos.expressionEnabled, false);
     });
 
     test('vue boîte à outils : éléments ignorés en dialogue, un seul appel à la fois', async () => {

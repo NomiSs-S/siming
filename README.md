@@ -9,7 +9,7 @@ dans son propre panneau.
 | Outil | Version | Rôle |
 |---|---|---|
 | Quick Tools | 1.0.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir |
-| Boîte à outils | 1.0.0 | Copier la frame, séquencer, null relié, fond, format de compo, source, textes PSD |
+| Boîte à outils | 1.0.0 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.0.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
 
@@ -70,9 +70,11 @@ statut dit ensuite combien d'éléments ont été traités. Le dernier geste est
 Des gestes moins fréquents, un clic et un Ctrl+Z chacun ; comme Quick Tools, le dernier geste
 est cerclé de bleu et **Entrée** le rejoue.
 
-1. **Copier la frame** : l'image de la tête de lecture est rendue et copiée dans le presse-papier,
-   prête à coller (Slack, mail, Photoshop). After Effects doit autoriser les scripts à écrire des
-   fichiers (Préférences › Scripts et expressions) ; le panneau le rappelle si besoin.
+1. **Frame** : l'image de la tête de lecture est rendue et **copiée** dans le presse-papier, prête à
+   coller (Slack, mail, Photoshop), ou **exportée en PNG** à côté du projet, dans le dossier
+   `Frames` (`Pub_00125.png` ; Alt + clic : et la montrer dans l'Explorateur / le Finder). After
+   Effects doit autoriser les scripts à écrire des fichiers (Préférences › Scripts et expressions) ;
+   le panneau le rappelle si besoin.
 2. **Séquencer** les **calques** ou les **keyframes** sélectionnés : Cascade (ordre de sélection),
    Inverse, ou Aléatoire (ordre tiré au hasard à chaque clic). **Écart** = images entre deux
    départs ; **Par paquets de** = combien partent ensemble. Le plus tôt reste en place. Les
@@ -82,8 +84,15 @@ est cerclé de bleu et **Entrée** le rejoue.
    la compo ; sa couleur se choisit dans la pastille (Alt + clic : couleur de fond de la compo).
 4. **Format de la compo** : 16:9, 4:5, 1:1, 9:16. Le plus petit côté est gardé (1920 × 1080 →
    1080 × 1920), le contenu reste centré, keyframes comprises. Le format en cours est allumé.
-5. **Afficher la source dans le Projet** et **Convertir les textes PSD** en texte modifiable
-   (sélection, sinon toute la compo).
+   **Décliner** crée une copie de la compo dans chacun des autres formats (`Pub 9x16`…), l'original
+   ne change pas ; Alt + clic sur un format : une seule copie, dans ce format.
+5. **Zone de travail** : la caler **sur la sélection**, ou **rogner la compo** à la zone de travail
+   (comme la commande d'AE : le timecode de départ suit).
+6. **Afficher la source dans le Projet** (Alt + clic : son fichier dans l'Explorateur / le Finder),
+   **Convertir les textes PSD** en texte modifiable (sélection, sinon toute la compo) et
+   **Convertir les expressions en keyframes** (une par image, expression désactivée, son texte gardé).
+
+Alt + clic donne la variante d'un geste ; Entrée rejoue la variante choisie.
 
 ## Libellés : principe
 
