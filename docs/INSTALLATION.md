@@ -27,6 +27,13 @@ L'installeur vient d'Internet et n'est pas signé, le système te prévient la p
 - **macOS 14 (Sonoma) et avant** : clic droit sur `SIMING-Installer.command` → **Ouvrir** → **Ouvrir**.
 - **macOS 15 (Sequoia) et après** : le clic droit ne suffit plus. Double-clique sur `SIMING-Installer.command` (macOS refuse de l'ouvrir), puis va dans **Réglages Système › Confidentialité et sécurité**, descends jusqu'au message sur `SIMING-Installer.command` et clique sur **Ouvrir quand même** (ton mot de passe de session peut être demandé). Relance ensuite l'installeur.
 
+## Une préférence à cocher (Boîte à outils)
+
+Pour **Copier** ou **Exporter** la frame, After Effects doit autoriser les scripts à écrire des
+fichiers, une fois pour toutes : **Préférences › Scripts et expressions** › coche
+**« Autoriser les scripts à écrire des fichiers et à accéder au réseau »**. Le panneau te le
+rappelle si ce n'est pas fait.
+
 ## Revenir à une version précédente
 
 Relance l'installeur et tape le numéro de la version voulue.
