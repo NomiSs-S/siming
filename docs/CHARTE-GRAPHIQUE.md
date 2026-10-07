@@ -81,7 +81,7 @@ Règle n°1. On doit pouvoir enchaîner les outils vite, sans viser.
 | Rail d'outils | hauteur 48, boutons 44 × 40 |
 | Ligne de statut | hauteur 24 |
 | Rayon | 4 (pastilles : 9) |
-| Largeur minimale à tenir | 260 |
+| Largeur | conçue pour 260–400 ; rien n'est rogné jusqu'à 180 (voir « Panneau étroit ») |
 
 ## 5. Structure d'un panneau
 
@@ -128,6 +128,11 @@ Dans un panneau isolé (« SIMING – <Outil> »), pas de rail ; le reste est id
 | Étiquette de couleur | Carrés de 18 (14 dans une ligne), couleurs et noms des Préférences › Étiquettes d'AE ; Aucune = carré barré, Ne pas changer = carré pointillé. Bouton pastille : 30 de haut, cadre `--bg-inset`, carré seul (32 de large) ou carré + nom + chevron (136). |
 | Sélecteur d'étiquette | Fenêtre flottante `--bg-surface` sous le bouton (au-dessus si la place manque) : nom de la couleur survolée, 16 cases de 34 × 30 en 4 × 4, puis Aucune et Ne pas changer en lignes pleines ; choisie = contour `--text-strong` (aucune et « Plusieurs couleurs » si la sélection en mélange) ; geste en un clic : bouton enfoncé = ouvert, relâché sur une couleur = choisie, relâché sur le bouton = reste ouvert, ailleurs = fermé ; flèches, Échap et clic dehors ; un seul ouvert à la fois. |
 | Récapitulatif (Libellés) | Liste à lignes groupée par règle : en-tête 34 (bouton pastille de la règle, nom, compteur), lignes de 32 : couleur actuelle → couleur posée, nom, pastille d'état discrète (« à la main » en `--accent-soft`, « déjà bon », « inchangé ») ; toute la ligne ouvre le sélecteur. Sélection multiple : Ctrl + clic, Maj + clic (plage), nom du groupe (bouton, tout le groupe) ; ligne sélectionnée en `--accent-soft`, nom en `--text-strong` ; le sélecteur ouvert depuis une ligne sélectionnée colore toute la sélection ; Échap désélectionne. |
+| Bouton de geste (Boîte à outils) | 36 px, icône 16 `--accent-text` à gauche puis verbe court ; le titre de section porte le verbe quand le bouton n'a qu'un nom (« Séquencer » : Calques, Keyframes). Grille `auto-fit` de cases d'au moins 140 : deux colonnes, une seule quand la place manque ; liste pleine largeur pour les libellés longs. Dernier geste cerclé, comme Quick Tools. |
+| Pastille de couleur | 36 × 36 à droite de son bouton, carré 18 de la couleur ; clic = sélecteur de couleur du système, Alt + clic = couleur par défaut (alors carré cerclé de pointillés). |
+| Tuile de format | Case de 50 de haut dans une grille de 4 : cadre au trait 1,5 aux proportions du format (même surface pour tous), nom en mono 10 dessous ; format en cours en `--accent-soft` / `--accent-text`. |
+| Barre de défilement | 10 de large, piste transparente, sans flèches ; curseur `--line` de 4 (arrondi), 6 et `#5A5A5A` au survol, `--icon-rest` tenu. Jamais la barre claire du système. |
+| Panneau étroit | Aucune largeur minimale imposée : ce qui est côte à côte passe à la ligne (`flex-wrap`, grilles `auto-fit`), jamais rogné. Aide de section sous son titre ; Ancrage au-dessus d'Aligner ; nom d'une nature au-dessus de sa couleur ; libellé d'un raccourci au-dessus de sa touche ; segmenté coupé par « … » avec infobulle. Sous 260 : marges 8, grilles de 6 en 3, version masquée du statut, libellés longs sur deux lignes. Rail : « … » allumé quand l'outil affiché y est rangé. Pas de requêtes de conteneur (Chromium 88 dans CEP 11) : `@media (max-width)`. |
 | Ligne de statut | Pastille 6 px : gris info, `--ok`, `--warn`, `--error` ; s'efface à l'action suivante. |
 | Dialogue | Fond `--bg-surface`, titre en question, conséquence en une ligne, actions à droite. Remplace `alert`. |
 | Infobulle | Attribut `title` ou bulle de la charte, phrase courte à l'infinitif. |
@@ -144,7 +149,8 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
   null, nettoyer, rafraîchir, cibler, chercher, réglages (deux curseurs), aide, visible, verrou,
   panneau (fenêtre à barre de titre : « Ouvrir dans un panneau »),
   ajouter, fermer, valider, attention, déplier, menu, plus, éclair, keyframe, ressort,
-  étiquette, aligner et répartir).
+  étiquette, aligner et répartir, boîte à outils, appareil photo (frame), fond, source
+  (dossier et flèche), texte (T et curseur) : 45 icônes).
 - Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
 
 ## 8. Textes

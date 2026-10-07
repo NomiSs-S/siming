@@ -278,6 +278,10 @@ module.exports = function (test) {
         rail.layout();
         assert.strictEqual(t.$('[data-role=rail-more]').hidden, false);
         assert.deepEqual(rail.overflow.map((x) => x.id), ['demo', 'casse', 'absent']);
+        assert.ok(!t.$('[data-role=rail-more]').classList.contains('is-active'), 'outil affiché visible dans le rail');
+        t.hub.show('casse');
+        assert.ok(t.$('[data-role=rail-more]').classList.contains('is-active'), 'outil affiché rangé dans « … » : « … » allumé');
+        t.hub.show('unparent');
         t.$('[data-role=rail-more]').click();
         const items = t.win.document.querySelectorAll('[data-role=rail-menu] .s-menu-item');
         assert.strictEqual(items.length, 3);

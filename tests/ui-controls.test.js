@@ -200,6 +200,22 @@ module.exports = function (test) {
         assert.strictEqual(input.hidden, true);
     });
 
+    test('valueBar entière et segmenté étroit : valeurs arrondies à l\'unité, libellé dans un span avec infobulle', () => {
+        const { ui, win } = setup();
+        const changes = [];
+        const bar = ui.valueBar({ label: 'Écart', min: 0, max: 30, unit: ' im', integer: true, value: 2.6, onChange: (v) => changes.push(v) });
+        assert.strictEqual(bar.value, 3);
+        assert.strictEqual(bar.querySelector('.s-bar-value').textContent, '3 im');
+        bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+        assert.deepEqual(changes, [4]);
+        bar.set(7.4);
+        assert.strictEqual(bar.value, 7);
+        const seg = ui.segmented({ labels: ['Cascade', 'Aléatoire'] });
+        const btn = seg.querySelectorAll('.s-seg-btn')[1];
+        assert.strictEqual(btn.querySelector('.s-seg-label').textContent, 'Aléatoire');
+        assert.strictEqual(btn.title, 'Aléatoire', 'libellé complet au survol quand il est coupé');
+    });
+
     test('point9 : neuf cases dans l\'ordre du pavé, clic et set', () => {
         const { ui } = setup();
         const picks = [];

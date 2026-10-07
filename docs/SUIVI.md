@@ -120,9 +120,33 @@ Tests : 200, 0 échec. Rendu et geste vérifiés dans Chrome (page de démonstra
 
 Demande de Simon : commencer à partager SIMING avec des collègues, mises à jour par l'installeur. Publiée sans test complet dans AE, à sa demande (corrections éventuelles en 1.2.1). Release https://github.com/NomiSs-S/siming/releases/tag/v1.2.0 : `SIMING-1.2.0.zxp` (signature vérifiée), installeurs Windows et macOS, `INSTALLATION.md` ; notes « Ajout : Quick Tools et Libellés, raccourcis combinés ». La 1.1.0 n'a jamais été publiée : la 1.2.0 apporte Quick Tools et Libellés d'un coup. Commit 3654966 sur `main`.
 
+### 2026-10-07 : trois retours d'interface et Boîte à outils (1.3.0, à valider dans AE)
+
+Spec : `docs/superpowers/specs/2026-10-07-boite-a-outils-design.md`.
+- **Quick Tools par défaut** : premier de `tools.json` (rail, touche 1, outil de la première ouverture). Ordre : Quick Tools, Boîte à outils, Unparent, Libellés.
+- **Interface étroite** : cause = `min-width: 260px` sur `.s-app`, le panneau était rogné à droite (vu dans Chrome à 220 px). Retirée ; rangées qui passent à la ligne (`flex-wrap`, grilles `auto-fit`, `@media (max-width: 259px)`) ; segmentés à « … » ; « … » du rail allumé quand l'outil affiché y est rangé. CEP 11 = Chromium 88 : pas de `@container`.
+- **Barre de défilement** aux couleurs de la charte (`::-webkit-scrollbar`).
+- **Boîte à outils** (outil `toolbox` 1.0.0) : Copier la frame (PNG rendu par `saveFrameToPng`, copié par Node du panneau, repli `system.callSystem`), Séquencer calques / keyframes (Cascade, Inverse, Aléatoire ; « offset » = **Écart**, « step » = **Par paquets de**, choix de Simon), Null relié, Fond (forme à expressions, pastille de couleur `$.colorPicker`), Format 16:9 / 4:5 / 1:1 / 9:16 (plus petit côté gardé, contenu recentré), Afficher la source dans le Projet, Convertir les textes PSD. Deux questions posées à Simon : sens d'offset / step, et aléatoire = ordre mélangé (écart régulier).
+- Géométrie de Quick Tools déplacée dans `siming.jsx` (`SIMING.geom`, `SIMING.ae.*`) pour être partagée. Manifeste : `--enable-nodejs`. `ui.valueBar({ integer })`, `SIMING.runProgram`. 5 icônes (45).
+- Relecture du code (agent) : corrigé `short` (mot réservé ES3, ajouté au test de syntaxe), keyframes perdues si l'une ne se repose pas (refus d'emblée des marqueurs et valeurs particulières, retour arrière), déplacement libre reposé en seconde passe, identifiant 3799 retiré (aucune commande lancée sans nom reconnu), début des calques créés posé à 0, Z en dimensions séparées, chemin de frame limité au dossier de l'outil.
+- Tests : 227, 0 échec. Rendu vérifié dans Chrome à 340 et 220 px (page de démonstration branchée sur le vrai cœur et le faux AE).
+Choix faits sans demander (à corriger si besoin) : null nommé « Contrôle » (« Contrôle <calque> » pour un seul), placé juste au-dessus du plus haut calque sélectionné ; fond = couleur de fond de la comp tant qu'aucune couleur n'est choisie ; format qui modifie la comp (pas de duplication) ; textes PSD : comp active seulement (pas les précompos) ; écart 0–30 images et paquets 1–10 au curseur.
+État : à tester dans AE (sections Hub et Boîte à outils de `docs/TESTS-MANUELS.md`, recharger le panneau ou relancer `tools/dev-install` pour le nouveau manifeste), puis Release 1.3.0.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
+
+**Boîte à outils : idées proposées à Simon le 2026-10-07 (pas encore demandées)**
+- Exporter la frame en PNG à côté du projet (même rendu que « Copier la frame »).
+- Révéler le fichier source dans l'Explorateur / le Finder (Alt + clic sur « Afficher la source »).
+- Dupliquer la compo dans un autre format au lieu de la modifier (déclinaisons 16:9 / 9:16 / 1:1 d'un coup).
+- Zone de travail : la caler sur les calques sélectionnés, ou rogner la comp à la zone de travail.
+- Séquencer depuis la tête de lecture ; répartir la sélection sur une durée donnée.
+- Null : un null par calque sélectionné ; nom choisi.
+- Convertir les expressions en keyframes sur les propriétés sélectionnées.
+- Textes PSD : aussi dans les précompositions du PSD.
+- Copier des infos : timecode courant, nom et taille de la comp, noms des calques sélectionnés.
 
 **Outils à venir**
 - **Quick Tools** : curseurs d'influence du lissage de vitesse en entrée, en sortie,
@@ -132,8 +156,7 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
   keyframe) ; alignement façon fenêtre Aligner.
 - **Point d'ancrage** : carré 3 × 3, cases de 36 entièrement cliquables, pavé numérique 1–9.
 - **Renommer** : rechercher / remplacer avec aperçu, `##` pour la numérotation.
-- **Échelonner** (séquence) : pas en images, ordre pile / inverse / aléatoire, aperçu.
-- **Null de contrôle** : nom, position (centre de la sélection ou comp), couleur, parenter la sélection.
+- ~~Échelonner~~ et ~~Null de contrôle~~ : faits dans la Boîte à outils (1.3.0) ; reste un aperçu avant de séquencer, le choix du nom et de la couleur du null.
 - **Nettoyer le projet** : métrages inutilisés, compos vides, solides en double, rangement par type.
 
 **Unparent**
@@ -153,7 +176,7 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Sélectionner dans la timeline les calques d'un groupe du récapitulatif.
 
 **Idées de Simon notées le 2026-10-06 (étude faite, pas encore demandées)**
-- Copier la frame courante dans le presse-papier : `comp.saveFrameToPng` puis Node (`child_process` : PowerShell `Clipboard.SetImage` en STA, `osascript` sur Mac), plus une boîte d'outils rares (exporter la frame, copier timecode / infos de comp / noms de calques, révéler la source, médias manquants, polices, convertir expressions en keyframes, zone de travail).
+- ~~Copier la frame courante dans le presse-papier~~ (fait, Boîte à outils 1.3.0). Restent pour la boîte d'outils rares : exporter la frame, copier timecode / infos de comp / noms de calques, médias manquants, polices, convertir expressions en keyframes, zone de travail.
 - Retours Frame.io : d'abord vérifier le panneau Frame.io intégré d'AE ; sinon API v4 (OAuth Adobe, serveur local Node pour le retour), recherche de la vidéo par nom normalisé, mémoire compo ↔ vidéo dans le commentaire de comp, saut à la frame, cocher un retour. Limites : décalage de timecode et de cadence, versions, annotations dessinées.
 
 **Hub et distribution**
@@ -172,6 +195,10 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - **`assert.deepStrictEqual` échoue entre contextes vm** (2026-10-05) : autre `Object.prototype` ; utiliser `deepEqual`.
 - **BOM à vérifier après réécriture** (2026-10-05) : l'outil Write n'écrit pas de BOM.
 - **Nom de propriété qui écrase une méthode d'un faux** (2026-10-05) : dans les faux objets de test, ne pas nommer une méthode comme une propriété d'état du code testé.
+- **Largeur minimale qui rogne** (2026-10-07) : `min-width` sur le conteneur d'un panneau CEP + `overflow: hidden` = contenu coupé à droite dès qu'on ancre le panneau plus étroit (le `MinSize` du manifeste n'est pas respecté à l'ancrage). Ne pas imposer de largeur : faire passer à la ligne.
+- **Mot réservé d'ES3 comme nom de variable** (2026-10-07) : `var short` passe sous Node (tests verts) mais peut faire refuser tout le fichier par ExtendScript. Le test de syntaxe les refuse maintenant.
+- **Barres obliques inverses dans un script Node écrit par heredoc** (2026-10-07) : dans un gabarit `` `…` ``, `\\d` devient `\d` puis `d` ; pour modifier du code qui contient des expressions régulières, passer par l'outil Edit.
+- **Barre de valeur tassée** (2026-10-07) : `.s-bar` a `flex: 1` (pensé pour une rangée) ; seule dans une colonne flex, elle s'écrase à ~18 px. `.s-stack > .s-bar { flex: none; }`.
 
 ## Questions ouvertes à vérifier dans After Effects
 
@@ -188,4 +215,8 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Geste en un clic : dans CEP, le relâchement au-dessus d'une couleur arrive-t-il bien à la case (pas de capture implicite du pointeur) ?
 - Libellés : `layer.label` se change-t-il sur un calque verrouillé ? (sinon il est listé dans « Calques ignorés »)
 - Libellés : natures des cas limites (séquence d'images, PSD / AI importés en métrage, fichier manquant, calque de modèle 3D, calque de données) ; `File.displayName` disponible sur la source ?
+- Boîte à outils, frame : `saveFrameToPng` rend-il en pleine résolution ou à celle de la vue ? Synchrone ? Dépend-il de la préférence d'écriture de fichiers (et la clé `Pref_SCRIPTING_FILE_NETWORK_SECURITY` se lit-elle) ? `cep_node` est-il là avec `--enable-nodejs` (pas de fenêtre noire à la copie) ? Collage dans Slack, Photoshop, mail ; transparence ; chemin avec accents ou apostrophe.
+- Boîte à outils, commandes de menu : noms exacts en français de « Reveal Layer Source in Project » et « Convert to Editable Text » (sinon : message « introuvable dans cette langue », et noter le libellé exact pour l'ajouter).
+- Boîte à outils, séquencer : `comp.selectedLayers` est-il dans l'ordre des clics ou de la pile ? Keyframes recréées identiques (ease, tangentes, déplacement libre, couleur) ? Keyframes de Source Text ?
+- Boîte à outils, null : un enfant à la position animée garde-t-il son animation quand on le relie (compensation d'AE) ? Fond et null commencent-ils bien à 0 ?
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).

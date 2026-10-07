@@ -308,6 +308,181 @@
         return (name === '' || name === LABEL_NAMES_EN[n]) ? ae.LABEL_NAMES[n] : name;
     };
 
+    // ------------------------------------------------------------------------
+    //  Géométrie 2D (partagée par les outils : Quick Tools, Boîte à outils)
+    // ------------------------------------------------------------------------
+    var geom = {};
+
+    // Matrices 2D affines [a, b, c, d, tx, ty] : x' = a·x + c·y + tx ; y' = b·x + d·y + ty
+    geom.matMul = function (A, B) {   // A ∘ B (B appliquée d'abord)
+        return [
+            A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1],
+            A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3],
+            A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]
+        ];
+    };
+
+    geom.matApply = function (M, p) {
+        return [M[0] * p[0] + M[2] * p[1] + M[4], M[1] * p[0] + M[3] * p[1] + M[5]];
+    };
+
+    geom.matLinear = function (M, v) {
+        return [M[0] * v[0] + M[2] * v[1], M[1] * v[0] + M[3] * v[1]];
+    };
+
+    /** Inverse de la partie linéaire appliqué à v (v inchangé si la matrice est dégénérée). */
+    geom.matLinearInverse = function (M, v) {
+        var det = M[0] * M[3] - M[2] * M[1];
+        if (Math.abs(det) < 1e-9) return [v[0], v[1]];
+        return [(M[3] * v[0] - M[2] * v[1]) / det, (-M[1] * v[0] + M[0] * v[1]) / det];
+    };
+
+    /** t = { position, anchor, scale (%), rotation (°) } -> matrice espace du calque -> espace du parent. */
+    geom.layerMatrix = function (t) {
+        var r = (t.rotation || 0) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
+        var sx = t.scale[0] / 100, sy = t.scale[1] / 100;
+        var a = cs * sx, b = sn * sx, c = -sn * sy, d = cs * sy;
+        return [a, b, c, d,
+                t.position[0] - (a * t.anchor[0] + c * t.anchor[1]),
+                t.position[1] - (b * t.anchor[0] + d * t.anchor[1])];
+    };
+
+    /** Déplacement de position qui compense un déplacement `delta` du point d'ancrage. */
+    geom.compensate = function (delta, scale, rotation) {
+        return geom.matLinear(geom.layerMatrix({ position: [0, 0], anchor: [0, 0], scale: scale, rotation: rotation }), delta);
+    };
+
+    /** v + d : nombre, [x, y] ou [x, y, z] (Z conservé) ; d = nombre ou [dx, dy]. */
+    geom.addDelta = function (v, d) {
+        if (typeof v === 'number') return v + d;
+        if (v.length > 2) return [v[0] + d[0], v[1] + d[1], v[2]];
+        return [v[0] + d[0], v[1] + d[1]];
+    };
+
+    /** Rectangle englobant { left, top, right, bottom } d'une boîte transformée par M. */
+    geom.bounds = function (rect, M) {
+        var pts = [
+            geom.matApply(M, [rect.left, rect.top]),
+            geom.matApply(M, [rect.left + rect.width, rect.top]),
+            geom.matApply(M, [rect.left, rect.top + rect.height]),
+            geom.matApply(M, [rect.left + rect.width, rect.top + rect.height])
+        ];
+        var b = { left: pts[0][0], top: pts[0][1], right: pts[0][0], bottom: pts[0][1] };
+        for (var i = 1; i < 4; i++) {
+            if (pts[i][0] < b.left) b.left = pts[i][0];
+            if (pts[i][0] > b.right) b.right = pts[i][0];
+            if (pts[i][1] < b.top) b.top = pts[i][1];
+            if (pts[i][1] > b.bottom) b.bottom = pts[i][1];
+        }
+        return b;
+    };
+
+    /** Rectangle englobant de plusieurs { left, top, right, bottom } (au moins un). */
+    geom.union = function (boxes) {
+        var u = { left: boxes[0].left, top: boxes[0].top, right: boxes[0].right, bottom: boxes[0].bottom };
+        for (var i = 1; i < boxes.length; i++) {
+            if (boxes[i].left < u.left) u.left = boxes[i].left;
+            if (boxes[i].top < u.top) u.top = boxes[i].top;
+            if (boxes[i].right > u.right) u.right = boxes[i].right;
+            if (boxes[i].bottom > u.bottom) u.bottom = boxes[i].bottom;
+        }
+        return u;
+    };
+
+    SIMING.geom = geom;
+
+    /** Transformation 2D d'un calque à l'instant t (Z et rotations X/Y ignorées). */
+    ae.readTransform = function (layer, time) {
+        var tr = layer.property('ADBE Transform Group');
+        var posProp = tr.property('ADBE Position');
+        var pos;
+        if (posProp.dimensionsSeparated) {
+            pos = [tr.property('ADBE Position_0').valueAtTime(time, false), tr.property('ADBE Position_1').valueAtTime(time, false)];
+        } else {
+            pos = posProp.valueAtTime(time, false);
+        }
+        var anchor = tr.property('ADBE Anchor Point').valueAtTime(time, false);
+        var scale  = tr.property('ADBE Scale').valueAtTime(time, false);
+        var rot    = tr.property('ADBE Rotate Z').valueAtTime(time, false);
+        return { position: [pos[0], pos[1]], anchor: [anchor[0], anchor[1]], scale: [scale[0], scale[1]], rotation: rot };
+    };
+
+    /** Matrice espace du calque -> espace de la comp (chaîne des parents). */
+    ae.layerToComp = function (layer, time) {
+        var M = geom.layerMatrix(ae.readTransform(layer, time));
+        var p = layer.parent, guard = 0;
+        while (p !== null && guard++ < 200) {
+            M = geom.matMul(geom.layerMatrix(ae.readTransform(p, time)), M);
+            p = p.parent;
+        }
+        return M;
+    };
+
+    /** Déplacement en espace comp -> espace du parent du calque. */
+    ae.toParentSpace = function (layer, d, time) {
+        var p = layer.parent;
+        if (p === null) return d;
+        return geom.matLinearInverse(ae.layerToComp(p, time), d);
+    };
+
+    /** Boîte visible d'un calque dans son espace, ou une erreur explicite. */
+    ae.sourceRect = function (layer, time) {
+        if (typeof layer.sourceRectAtTime !== 'function') throw new Error('pas de boîte visible (caméra ou lumière)');
+        var rect = layer.sourceRectAtTime(time, false);
+        if (!rect || !(rect.width > 0) || !(rect.height > 0)) throw new Error('boîte vide');
+        return rect;
+    };
+
+    /** Rectangle englobant de la boîte visible d'un calque, dans l'espace de la comp. */
+    ae.layerBox = function (layer, time) {
+        return geom.bounds(ae.sourceRect(layer, time), ae.layerToComp(layer, time));
+    };
+
+    /** Décale une propriété sans créer de keyframe : chaque keyframe existante reçoit
+     *  deltaAt(son instant) ; sans keyframe, la valeur reçoit deltaAt(time). Les tangentes
+     *  spatiales posées à la main sont relues puis reposées (setValueAtKey peut les
+     *  recalculer) ; les automatiques se recalculent d'elles-mêmes, tout se décalant d'autant. */
+    ae.offsetProperty = function (prop, deltaAt, time) {
+        var n = prop.numKeys;
+        if (n === 0) {
+            prop.setValue(geom.addDelta(prop.value, deltaAt(time)));
+            return;
+        }
+        var spatial = prop.isSpatial;
+        for (var k = 1; k <= n; k++) {
+            var keep = (spatial && !prop.keySpatialAutoBezier(k))
+                ? [prop.keyInSpatialTangent(k), prop.keyOutSpatialTangent(k)] : null;
+            prop.setValueAtKey(k, geom.addDelta(prop.keyValue(k), deltaAt(prop.keyTime(k))));
+            if (keep) prop.setSpatialTangentsAtKey(k, keep[0], keep[1]);
+        }
+    };
+
+    /** Propriétés feuilles sélectionnées de la comp (ordre des calques, puis de l'arbre). */
+    ae.selectedProperties = function (comp) {
+        var out = [], props = comp.selectedProperties;
+        for (var i = 0; i < props.length; i++) {
+            if (props[i].propertyType === PropertyType.PROPERTY) out.push(props[i]);
+        }
+        return out;
+    };
+
+    /** Keyframes sélectionnées : [{ prop, index }], propriété par propriété. */
+    ae.selectedKeyframes = function (comp) {
+        var out = [], props = ae.selectedProperties(comp);
+        for (var i = 0; i < props.length; i++) {
+            var keys;
+            try { keys = props[i].selectedKeys; } catch (e) { keys = null; }
+            if (!keys) continue;
+            for (var k = 0; k < keys.length; k++) out.push({ prop: props[i], index: keys[k] });
+        }
+        return out;
+    };
+
+    /** Calque qui porte une propriété. */
+    ae.ownerLayer = function (prop) {
+        return prop.propertyGroup(prop.propertyDepth);
+    };
+
     SIMING.ae = ae;
 
     /** "1 enfant", "3 enfants". */

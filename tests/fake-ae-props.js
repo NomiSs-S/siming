@@ -91,6 +91,36 @@ function makeSliderControl(name) {
     ]);
 }
 
+/** Contenus d'un calque de forme : groupe racine, et ce qu'on peut y ajouter. */
+function makeShapeContents() {
+    return makeGroupState({ name: 'Contents', matchName: 'ADBE Root Vectors Group', indexed: true }, []);
+}
+const VECTOR_PARENTS = ['ADBE Root Vectors Group', 'ADBE Vectors Group'];
+const VECTOR_ITEMS = {
+    'ADBE Vector Group': () => makeGroupState({ name: 'Group 1', matchName: 'ADBE Vector Group' }, [
+        makeGroupState({ name: 'Contents', matchName: 'ADBE Vectors Group', indexed: true }, []),
+        makeGroupState({ name: 'Transform', matchName: 'ADBE Vector Transform Group' }, []),
+    ]),
+    'ADBE Vector Shape - Rect': () => makeGroupState({ name: 'Rectangle Path 1', matchName: 'ADBE Vector Shape - Rect' }, [
+        makePropState({ name: 'Size', matchName: 'ADBE Vector Rect Size', value: [100, 100] }),
+        makePropState({ name: 'Position', matchName: 'ADBE Vector Rect Position', value: [0, 0], spatial: true }),
+        makePropState({ name: 'Roundness', matchName: 'ADBE Vector Rect Roundness', value: 0 }),
+    ]),
+    'ADBE Vector Graphic - Fill': () => makeGroupState({ name: 'Fill 1', matchName: 'ADBE Vector Graphic - Fill' }, [
+        makePropState({ name: 'Color', matchName: 'ADBE Vector Fill Color', value: [1, 0, 0, 1] }),
+    ]),
+};
+
+/** Toutes les propriétés (états) d'un groupe, cachées comprises. */
+function allProps(g, out) {
+    const list = out || [];
+    for (const c of g.children) {
+        if (c.kind === 'group') allProps(c, list);
+        else list.push(c);
+    }
+    return list;
+}
+
 /** Propriétés visibles d'un groupe (X/Y/Z Position seulement en dimensions séparées). */
 function visibleChildren(g) {
     const pos = g.children.find((c) => c.matchName === 'ADBE Position');
@@ -145,6 +175,7 @@ class PropertyRef {
     propertyGroup(n) { return ancestor(this._state, this._ctx, n === undefined ? 1 : n); }
     get propertyValueType() {
         const s = this._state, d = dimsOf(s.value);
+        if (s.valueType) return PropertyValueType[s.valueType];   // test : type imposé (MARKER, CUSTOM_VALUE…)
         if (d === 1) return PropertyValueType.OneD;
         if (d === 2) return s.spatial ? PropertyValueType.TwoD_SPATIAL : PropertyValueType.TwoD;
         return s.spatial ? PropertyValueType.ThreeD_SPATIAL : PropertyValueType.ThreeD;
@@ -241,6 +272,34 @@ class PropertyRef {
         k.outTangent = copy(outT === undefined ? inT : outT);
         k.autoBezier = false;
     }
+    keySpatialContinuous(i) { return !!this._spatialKey(i).sCont; }
+    setSpatialContinuousAtKey(i, v) { this._spatialKey(i).sCont = !!v; }
+    /** Déplacement libre : ni la première ni la dernière keyframe (comme AE). */
+    keyRoving(i) { return !!this._spatialKey(i).roving; }
+    setRovingAtKey(i, v) {
+        const k = this._spatialKey(i);
+        if (v && (i === 1 || i === this._state.keys.length)) throw new Error('setRovingAtKey: first and last keyframes cannot rove');
+        k.roving = !!v;
+    }
+    keyTemporalContinuous(i) { return !!this._key(i).tCont; }
+    setTemporalContinuousAtKey(i, v) { this._key(i).tCont = !!v; }
+    keyTemporalAutoBezier(i) { return !!this._key(i).tAuto; }
+    setTemporalAutoBezierAtKey(i, v) { this._key(i).tAuto = !!v; }
+    keyLabel(i) { return this._key(i).label || 0; }
+    setLabelAtKey(i, v) { this._key(i).label = Number(v); }
+    /** Ajoute une keyframe à t avec la valeur à cet instant (ou renvoie celle qui y est déjà). */
+    addKey(t) {
+        // test : state.refuseKeyAt = instant où AE refuserait la keyframe
+        if (this._state.refuseKeyAt !== undefined && Math.abs(t - this._state.refuseKeyAt) < EPS) throw new Error('addKey refusé');
+        return this.setValueAtTime(t, this.valueAtTime(t));
+    }
+    /** Retire une keyframe ; sans keyframe restante, la valeur fixe devient la sienne (comme AE). */
+    removeKey(i) {
+        if (this._ctx.layerState.locked) throw new Error('Unable to remove keyframe: layer is locked');
+        const k = this._key(i);
+        this._state.keys.splice(i - 1, 1);
+        if (!this._state.keys.length) this._state.value = copy(k.value);
+    }
     keySelected(i) { return this._key(i).selected; }
     setSelectedAtKey(i, v) { this._key(i).selected = !!v; }
     get selectedKeys() {
@@ -290,6 +349,7 @@ class GroupRef {
         Object.defineProperty(this, '_ctx', { value: ctx, enumerable: false });
     }
     get name() { return this._state.name; }
+    set name(v) { this._state.name = String(v); }
     get matchName() { return this._state.matchName; }
     get propertyType() { return this._state.indexed ? PropertyType.INDEXED_GROUP : PropertyType.NAMED_GROUP; }
     get propertyDepth() { return depthOf(this._state); }
@@ -305,17 +365,24 @@ class GroupRef {
         else s = kids.find((c) => c.matchName === x) || kids.find((c) => c.name === x) || null;
         return s ? refFor(s, this._ctx) : null;
     }
-    /** Groupe Effets : ajoute un effet par matchName. */
+    /** Groupe Effets : ajoute un effet par matchName. Contenus d'un calque de forme
+     *  (« ADBE Root Vectors Group », « ADBE Vectors Group ») : groupe, rectangle, fond. */
     addProperty(matchName) {
-        if (this._state.matchName !== 'ADBE Effect Parade') throw new Error('addProperty: effects only in this fake');
-        if (this._ctx.layerState.locked) throw new Error('Unable to add effect: layer is locked');
-        let fx;
-        if (matchName === 'ADBE Slider Control') fx = makeSliderControl();
-        else if (matchName === 'Pseudo/MDS Elastic Controller') fx = makeElasticController();
-        else throw new Error('Unknown effect: ' + matchName);
-        fx.parent = this._state;
-        this._state.children.push(fx);
-        return new GroupRef(fx, this._ctx);
+        if (this._ctx.layerState.locked) throw new Error('Unable to add property: layer is locked');
+        let item;
+        if (this._state.matchName === 'ADBE Effect Parade') {
+            if (matchName === 'ADBE Slider Control') item = makeSliderControl();
+            else if (matchName === 'Pseudo/MDS Elastic Controller') item = makeElasticController();
+            else throw new Error('Unknown effect: ' + matchName);
+        } else if (VECTOR_PARENTS.includes(this._state.matchName)) {
+            if (!VECTOR_ITEMS[matchName]) throw new Error('Unknown shape item: ' + matchName);
+            item = VECTOR_ITEMS[matchName]();
+        } else {
+            throw new Error('addProperty: effects and shape contents only in this fake');
+        }
+        item.parent = this._state;
+        this._state.children.push(item);
+        return refFor(item, this._ctx);
     }
     remove() {
         if (this._ctx.layerState.locked) throw new Error('Unable to remove: layer is locked');
@@ -347,5 +414,5 @@ function selectedStates(root) {
 module.exports = {
     KeyframeInterpolationType, PropertyValueType, PropertyType, KeyframeEase,
     PropertyRef, GroupRef, refFor, makePropState, makeGroupState, makeTransform, makeEffects,
-    makeElasticController, makeSliderControl, selectedStates, visibleChildren,
+    makeElasticController, makeSliderControl, makeShapeContents, allProps, selectedStates, visibleChildren,
 };

@@ -38,7 +38,25 @@ function LayerRef(state, comp) {
         },
         enumerable: true,
     });
-    Object.defineProperty(this, 'threeDLayer', { get: () => state.threeD, enumerable: true });
+    Object.defineProperty(this, 'threeDLayer', { get: () => state.threeD, set: (v) => setThreeD(state, !!v), enumerable: true });
+    // Temps : startTime déplace le calque, ses points d'entrée / sortie et toutes ses keyframes
+    const editable = (what) => { if (state.locked) throw new Error('Unable to set ' + what + ': layer is locked'); };
+    Object.defineProperty(this, 'inPoint', { get: () => state.inPoint, set: (v) => { editable('inPoint'); state.inPoint = Number(v); }, enumerable: true });
+    Object.defineProperty(this, 'outPoint', { get: () => state.outPoint, set: (v) => { editable('outPoint'); state.outPoint = Number(v); }, enumerable: true });
+    Object.defineProperty(this, 'startTime', {
+        get: () => state.startTime,
+        set: (v) => {
+            editable('startTime');
+            const d = Number(v) - state.startTime;
+            state.startTime += d;
+            state.inPoint += d;
+            state.outPoint += d;
+            for (const g of [state.transform, state.effects].concat(state.contents ? [state.contents] : [])) {
+                for (const p of P.allProps(g)) p.keys.forEach((k) => { k.time += d; });
+            }
+        },
+        enumerable: true,
+    });
     Object.defineProperty(this, 'numProperties', { get: () => 2, enumerable: false });   // Transformation, Effets
     Object.defineProperty(this, 'transform', { get: () => new P.GroupRef(state.transform, ctx), enumerable: false });
     Object.defineProperty(this, 'anchorPoint', { get: () => this.transform.property('ADBE Anchor Point'), enumerable: false });
@@ -86,6 +104,31 @@ LayerRef.prototype.property = function (x) {
     if (x === 2 || x === 'ADBE Effect Parade' || x === 'Effects') return new P.GroupRef(st.effects, this._ctx);
     if (typeof x === 'number') return null;
     return this.transform.property(x) || this.property('ADBE Effect Parade').property(x);
+};
+
+/** Calque 3D : ancrage, position et échelle gagnent (ou perdent) leur Z. */
+function setThreeD(state, on) {
+    if (state.threeD === on) return;
+    state.threeD = on;
+    const z = { 'ADBE Anchor Point': 0, 'ADBE Position': 0, 'ADBE Scale': 100 };
+    const fix = (v, mn) => (on ? v.slice(0, 2).concat([z[mn]]) : v.slice(0, 2));
+    for (const c of state.transform.children) {
+        if (!(c.matchName in z) || !Array.isArray(c.value)) continue;
+        c.value = fix(c.value, c.matchName);
+        c.keys.forEach((k) => { k.value = fix(k.value, c.matchName); });
+    }
+}
+
+/** Ordre dans la pile : avant un autre calque, ou tout en bas. */
+LayerRef.prototype.moveBefore = function (other) {
+    const arr = this._comp.layers;
+    arr.splice(arr.indexOf(this._state), 1);
+    arr.splice(arr.indexOf(other._state), 0, this._state);
+};
+LayerRef.prototype.moveToEnd = function () {
+    const arr = this._comp.layers;
+    arr.splice(arr.indexOf(this._state), 1);
+    arr.push(this._state);
 };
 
 /** effect(nom | index 1..n) -> poignée de l'effet, ou null. */
@@ -138,6 +181,14 @@ TextLayerRef.prototype.property = function (x) {
 function ShapeLayerRef(state, comp) { LayerRef.call(this, state, comp); }
 ShapeLayerRef.prototype = Object.create(LayerRef.prototype);
 ShapeLayerRef.prototype.constructor = ShapeLayerRef;
+/** Calque de forme : contenus (« ADBE Root Vectors Group ») en plus de la transformation. */
+ShapeLayerRef.prototype.property = function (x) {
+    if (x === 'ADBE Root Vectors Group' || x === 'Contents') {
+        if (!this._state.contents) this._state.contents = P.makeShapeContents();
+        return new P.GroupRef(this._state.contents, this._ctx);
+    }
+    return LayerRef.prototype.property.call(this, x);
+};
 
 /** Poignée de la bonne classe selon le genre du calque. */
 function refOf(state, comp) {
@@ -176,7 +227,20 @@ class FootageItem {
         this.hasAudio = !!o.hasAudio;
         this.parentFolder = o.parentFolder || null;
         this.label = 0;
+        this.selected = false;   // panneau Projet
     }
+}
+
+/** En-tête PNG (signature + bloc IHDR) d'une image w × h : ce que lit le cœur hôte. */
+function pngHeader(w, h) {
+    const b = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).copy(b, 0);
+    b.writeUInt32BE(13, 8);
+    b.write('IHDR', 12, 'latin1');
+    b.writeUInt32BE(w, 16);
+    b.writeUInt32BE(h, 20);
+    b[24] = 8; b[25] = 6;
+    return b;
 }
 
 class FakeComp extends CompItem {
@@ -191,6 +255,36 @@ class FakeComp extends CompItem {
         this.width = (opts && opts.width) || 1920;
         this.height = (opts && opts.height) || 1080;
         this.frameDuration = 1 / 25;
+        this.duration = 10;
+        this.bgColor = [0, 0, 0];
+        this.selected = false;   // panneau Projet
+        this.frames = [];        // instants rendus par saveFrameToPng
+        const comp = this;
+        let nulls = 0, shapes = 0;
+        // comp.layers est aussi la LayerCollection d'AE : addNull, addShape (calque ajouté tout en haut)
+        Object.defineProperty(this.layers, 'addNull', {
+            value(duration) {
+                const st = comp._state('Nul ' + (++nulls), { nullLayer: true, source: new FootageItem('Nul ' + nulls, new SolidSource()), outPoint: duration || comp.duration });
+                st.transform.children.find((c) => c.matchName === 'ADBE Anchor Point').value = [50, 50];
+                st.transform.children.find((c) => c.matchName === 'ADBE Position').value = [comp.width / 2, comp.height / 2];
+                comp.layers.unshift(st);
+                return refOf(st, comp);
+            },
+        });
+        Object.defineProperty(this.layers, 'addShape', {
+            value() {
+                const st = comp._state('Calque de forme ' + (++shapes), { kind: 'shape' });
+                st.transform.children.find((c) => c.matchName === 'ADBE Position').value = [comp.width / 2, comp.height / 2];
+                comp.layers.unshift(st);
+                return refOf(st, comp);
+            },
+        });
+    }
+    /** Imite AE : écrit un PNG (en-tête seulement) à la taille de la comp. */
+    saveFrameToPng(time, file) {
+        this.frames.push(time);
+        fs.mkdirSync(path.dirname(file.fsName), { recursive: true });
+        fs.writeFileSync(file.fsName, pngHeader(this.width, this.height));
     }
     get numLayers() { return this.layers.length; }
     layer(i) {
@@ -210,18 +304,24 @@ class FakeComp extends CompItem {
     /** Ajoute un calque et renvoie son ÉTAT interne (pas une poignée).
      *  opts : kind ('av' | 'camera' | 'light'), threeD, rect { top, left, width, height }, locked, label… */
     addLayer(name, opts) {
+        const state = this._state(name, opts);
+        this.layers.push(state);
+        return state;
+    }
+    /** État neuf d'un calque (non rangé dans la pile). */
+    _state(name, opts) {
         const o = opts || {};
-        const state = Object.assign(
+        return Object.assign(
             {
                 id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1,
                 kind: o.kind || 'av', threeD: !!o.threeD,
                 transform: P.makeTransform(!!o.threeD), effects: P.makeEffects(),
+                contents: o.kind === 'shape' ? P.makeShapeContents() : null,
                 rect: { top: 0, left: 0, width: 100, height: 100 },
+                startTime: 0, inPoint: 0, outPoint: this.duration,
             },
             o
         );
-        this.layers.push(state);
-        return state;
     }
     select(...states) { this.selection = states; }
     removeLayer(state) {
@@ -244,6 +344,11 @@ const DEFAULT_LABEL_NAMES = [
     'Green', 'Purple', 'Orange', 'Brown', 'Fuchsia', 'Cyan', 'Sandstone', 'Dark Green',
 ];
 
+const SCRIPT_WRITE_KEY = 'Pref_SCRIPTING_FILE_NETWORK_SECURITY';
+
+/** Commandes de menu connues (noms anglais, comme un After Effects en anglais). */
+const MENU_COMMANDS = { 'Convert to Editable Text': 3799, 'Reveal Layer Source in Project': 2517 };
+
 /** Faux app.preferences : getPrefAsString renvoie les 4 octets ARGB sous forme de
  *  caractères, comme After Effects en encodage BINARY. `labels[i]` = étiquette n° i + 1. */
 function makePreferences() {
@@ -251,7 +356,16 @@ function makePreferences() {
         labels: DEFAULT_LABELS.slice(),
         names: DEFAULT_LABEL_NAMES.slice(),
         reads: [],
-        havePref(section, key) { return this._index(section, key) !== null; },
+        // « Autoriser les scripts à écrire des fichiers… » : true, false, ou null (préférence absente)
+        scriptWrite: null,
+        havePref(section, key) {
+            if (key === SCRIPT_WRITE_KEY) return section === 'Main Pref Section v2' && this.scriptWrite !== null;
+            return this._index(section, key) !== null;
+        },
+        getPrefAsLong(section, key) {
+            if (key === SCRIPT_WRITE_KEY && section === 'Main Pref Section v2' && this.scriptWrite !== null) return this.scriptWrite ? 1 : 0;
+            throw new Error('Pref not found: ' + section + ' / ' + key);
+        },
         getPrefAsString(section, key) {
             const i = this._index(section, key);
             if (i === null) throw new Error('Pref not found: ' + section + ' / ' + key);
@@ -278,14 +392,34 @@ const app = {
         items: [],
         get numItems() { return this.items.length; },
         item(i) { return this.items[i - 1]; },
+        /** Éléments sélectionnés dans le panneau Projet. */
+        get selection() { return this.items.filter((it) => it.selected); },
         rootFolder: new FolderItem('Racine'),
     },
     preferences: makePreferences(),
     presetsApplied: [],
     undoDepth: 0,
     undoGroups: [],
+    commands: [],          // identifiants passés à executeCommand
+    menuNames: MENU_COMMANDS,
     beginUndoGroup(name) { this.undoDepth++; this.undoGroups.push(name); },
     endUndoGroup() { this.undoDepth--; },
+    /** 0 si le nom n'est pas celui d'une commande (autre langue d'AE). */
+    findMenuCommandId(name) { return this.menuNames[name] || 0; },
+    /** 3799 « Convert to Editable Text » : chaque calque sélectionné marqué psdText devient
+     *  un calque texte (sa source disparaît). Les autres commandes sont seulement notées. */
+    executeCommand(id) {
+        this.commands.push(id);
+        const comp = this.project.activeItem;
+        if (id !== 3799 || !comp || !comp.selection) return;
+        for (const st of comp.selection) {
+            if (!st.psdText) continue;
+            st.kind = 'text';
+            st.text = st.psdText;
+            st.source = null;
+            delete st.psdText;
+        }
+    },
     reset() {
         this.project.activeItem = null;
         this.project.items = [];
@@ -293,6 +427,8 @@ const app = {
         this.presetsApplied = [];
         this.undoDepth = 0;
         this.undoGroups = [];
+        this.commands = [];
+        this.menuNames = MENU_COMMANDS;
     },
 };
 
@@ -310,6 +446,22 @@ class FakeFile {
     get absoluteURI() { return this.path.replace(/\\/g, '/'); }
     get exists() { return fs.existsSync(this.path) && fs.statSync(this.path).isFile(); }
     get parent() { return new FakeFolder(path.dirname(this.path)); }
+    get length() { return this.exists ? fs.statSync(this.path).size : 0; }
+    /** Lecture seulement ('r') ; read(n) rend n octets, un caractère par octet (BINARY). */
+    open(mode) {
+        if (mode !== 'r' || !this.exists) return false;
+        this._pos = 0;
+        return true;
+    }
+    read(n) {
+        const buf = fs.readFileSync(this.path).subarray(this._pos, this._pos + n);
+        this._pos += buf.length;
+        return buf.toString('latin1');
+    }
+    close() { return true; }
+    remove() {
+        try { fs.unlinkSync(this.path); return true; } catch (e) { return false; }
+    }
     toString() { return this.absoluteURI; }
 }
 
@@ -320,6 +472,9 @@ class FakeFolder {
     get absoluteURI() { return this.path.replace(/\\/g, '/'); }
     get exists() { return fs.existsSync(this.path) && fs.statSync(this.path).isDirectory(); }
     get parent() { return new FakeFolder(path.dirname(this.path)); }
+    /** Dossier temporaire du système (Folder.temp), ici un sous-dossier propre aux tests. */
+    static get temp() { return new FakeFolder(path.join(require('os').tmpdir(), 'siming-fake-ae')); }
+    create() { fs.mkdirSync(this.path, { recursive: true }); return true; }
     getFiles(mask) {
         if (!this.exists) return [];
         const re = mask ? new RegExp('^' + String(mask).replace(/\./g, '\\.').replace(/\*/g, '.*') + '$', 'i') : null;
@@ -361,7 +516,15 @@ function createSandbox() {
         PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType,
     };
     sandbox.alert = (msg) => sandbox.alerts.push(String(msg));
-    sandbox.$ = { global: sandbox, fileName: '', evalFile: (file) => runFile(sandbox, file) };
+    // system.callSystem : commandes notées, rien n'est lancé
+    sandbox.system = { calls: [], callSystem(cmd) { this.calls.push(String(cmd)); return ''; } };
+    // $.colorPicker : couleurs de départ notées ; renvoie pickedColor (-1 = annulé)
+    sandbox.colorPicks = [];
+    sandbox.pickedColor = 0x336699;
+    sandbox.$ = {
+        global: sandbox, fileName: '', os: 'Windows/64 10.0', evalFile: (file) => runFile(sandbox, file),
+        colorPicker: (c) => { sandbox.colorPicks.push(c); return sandbox.pickedColor; },
+    };
     vm.createContext(sandbox);
     return sandbox;
 }

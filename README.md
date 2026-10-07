@@ -4,13 +4,17 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.2.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.3.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
-| Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Quick Tools | 1.0.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir |
+| Boîte à outils | 1.0.0 | Copier la frame, séquencer, null relié, fond, format de compo, source, textes PSD |
+| Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.0.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
+
+Quick Tools est le premier outil du rail (touche 1) et celui qui s'ouvre la première fois.
+Le panneau se range même très étroit : ce qui ne tient plus côte à côte passe à la ligne.
 
 ## Installation
 
@@ -61,6 +65,26 @@ Les boutons portent le verbe seul : la sélection n'est connue qu'au clic, la li
 statut dit ensuite combien d'éléments ont été traités. Le dernier geste est cerclé de bleu :
 **Entrée** le rejoue sur la nouvelle sélection.
 
+## Boîte à outils : principe
+
+Des gestes moins fréquents, un clic et un Ctrl+Z chacun ; comme Quick Tools, le dernier geste
+est cerclé de bleu et **Entrée** le rejoue.
+
+1. **Copier la frame** : l'image de la tête de lecture est rendue et copiée dans le presse-papier,
+   prête à coller (Slack, mail, Photoshop). After Effects doit autoriser les scripts à écrire des
+   fichiers (Préférences › Scripts et expressions) ; le panneau le rappelle si besoin.
+2. **Séquencer** les **calques** ou les **keyframes** sélectionnés : Cascade (ordre de sélection),
+   Inverse, ou Aléatoire (ordre tiré au hasard à chaque clic). **Écart** = images entre deux
+   départs ; **Par paquets de** = combien partent ensemble. Le plus tôt reste en place. Les
+   keyframes gardent leur ease, leurs tangentes et restent sélectionnées (on peut relancer).
+3. **Null relié** : au centre des calques sélectionnés, juste au-dessus d'eux, relié à eux (la
+   hiérarchie existante est gardée). **Fond** : calque de forme tout en bas, toujours à la taille de
+   la compo ; sa couleur se choisit dans la pastille (Alt + clic : couleur de fond de la compo).
+4. **Format de la compo** : 16:9, 4:5, 1:1, 9:16. Le plus petit côté est gardé (1920 × 1080 →
+   1080 × 1920), le contenu reste centré, keyframes comprises. Le format en cours est allumé.
+5. **Afficher la source dans le Projet** et **Convertir les textes PSD** en texte modifiable
+   (sélection, sinon toute la compo).
+
 ## Libellés : principe
 
 Rien n'est automatique : l'outil propose, tu corriges, il pose.
@@ -100,7 +124,7 @@ Le bouton Réglages du rail ouvre trois onglets, pensés pour beaucoup d'outils 
   touche de l'outil : les 9 premiers outils visibles ont 1 à 9. Un champ de recherche
   apparaît à partir de 7 outils.
 - **Raccourcis** : recherche (action, outil ou touche), puis une touche par action
-  (afficher un outil, rejouer le dernier geste, chaque geste de Quick Tools) ; clic sur
+  (afficher un outil, rejouer le dernier geste, chaque geste de Quick Tools et de la Boîte à outils) ; clic sur
   la touche, puis frappe du nouveau raccourci : une touche seule ou une combinaison avec
   Ctrl, Alt, Maj (Cmd sur Mac), par exemple Ctrl + Alt + 5 ; Retour arrière = aucun,
   « Rétablir » pour revenir aux défauts. Le panneau réclame ses raccourcis à After Effects,

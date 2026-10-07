@@ -28,6 +28,8 @@ const FORBIDDEN = [
     [/\.trim\(/, 'trim'],
     [/\bJSON\./, 'JSON natif'],
     [/Object\.keys/, 'Object.keys'],
+    // Mots réservés pour l'avenir en ES3 : ExtendScript peut refuser tout le fichier
+    [/\b(?:var|function)\s+(?:short|int|long|char|byte|float|double|boolean|final|native|goto|synchronized|transient|volatile|abstract|implements|interface|package|private|protected|public|static|throws|enum|export|extends|import|super|class)\b/, 'mot réservé ES3 comme nom'],
 ];
 
 function stripComments(src) {

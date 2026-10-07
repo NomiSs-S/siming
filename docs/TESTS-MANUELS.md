@@ -20,7 +20,10 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 ## Hub
 
 - [ ] Fond, rail horizontal (48 px), icônes nettes, outil actif bleu avec trait bas, Réglages à droite, statut en bas avec `v1.0.0`.
+- [ ] Première ouverture (installation neuve, ou après avoir effacé les réglages du panneau) : Quick Tools affiché, premier du rail, touche 1 ; puis Boîte à outils, Unparent, Libellés. Un ordre déjà réglé à la main reste le même après mise à jour.
 - [ ] Panneau étroit (≈ 260 px) : rien ne déborde ; avec plusieurs outils, le menu « … » apparaît.
+- [ ] Panneau très étroit (ancré à 180–220 px de large) : **rien n'est rogné à droite** ; les aides de section passent sous leur titre, Ancrage au-dessus d'Aligner (Quick Tools), Répartir en 3 colonnes, couleur d'une nature sous son nom (Libellés › Règles), touche d'un raccourci sous son libellé (Réglages), boutons de la Boîte à outils l'un sous l'autre ; quand l'outil affiché est rangé dans « … », « … » est allumé en bleu.
+- [ ] Barre de défilement (panneau court, Réglages › Raccourcis, récapitulatif de Libellés) : fine, grise, arrondie, sans flèches ; plus épaisse au survol, plus claire quand on la tient ; plus de barre claire de Windows.
 - [ ] Touches 1…n (rangée de chiffres, avec ou sans Maj en AZERTY) changent d'outil dans l'ordre du rail (pas dans un champ) ; infobulle du rail « Nom (1) ».
 - [ ] Réglages : trois onglets Outils / Raccourcis / Général, le dernier ouvert est retrouvé après fermeture/réouverture. Général : outil au lancement (menu déroulant lisible en thème sombre) respecté après réouverture ; « À propos » liste les versions.
 - [ ] Réglages › Outils : glisser une ligne par sa poignée (la ligne suit la souris, contour bleu) réordonne le rail au relâchement ; ↑ ↓ sur la poignée aussi ; les touches 1…n, les infobulles et la pastille de touche de chaque ligne suivent ; ordre retrouvé après réouverture.
@@ -72,7 +75,7 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 
 ## Quick Tools (1.1.0)
 
-Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` avec une échelle animée, `C` tourné de 45° à 150 %, `D` parenté à `C`, une caméra. Touche 2 : l'outil s'affiche, cinq sections visibles sans défilement dans un panneau de 640 px ; Ancrage et Aligner côte à côte, y compris à 260 px de large.
+Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` avec une échelle animée, `C` tourné de 45° à 150 %, `D` parenté à `C`, une caméra. Touche 1 : l'outil s'affiche, cinq sections visibles sans défilement dans un panneau de 640 px ; Ancrage et Aligner côte à côte, y compris à 260 px de large.
 
 - [ ] Barre de valeur : glisser n'importe où (saut au clic), Maj = précision, molette ±1 et Maj ±10, flèches, double-clic = saisie (Entrée valide, Échap annule), Alt + clic = 33. Valeurs retrouvées après fermeture/réouverture.
 - [ ] Première keyframe de `A` sélectionnée, picto « Entrée » à 75 % : le **départ du mouvement** est lissé (éditeur de graphiques : Bézier, vitesse 0, influence 75 sur le côté sortant de la keyframe, côté entrant inchangé ; icône de keyframe : moitié droite arrondie) ; statut « 1 keyframe lissée, entrée 75 % » ; un seul Ctrl+Z (« Quick Tools : lisser »). Dernière keyframe, picto « Sortie » : l'arrivée est lissée (côté entrant).
@@ -93,7 +96,7 @@ Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` a
 
 ## Libellés (1.2.0)
 
-Préparer dans « Pub » : un texte (nom automatique), un texte renommé « Logo animé », une forme, une image `LOGO_client.png`, une image rangée dans un dossier de projet « Logos », une image `bg_ciel.jpg`, une vidéo, un fichier son, un solide, un nul, un calque de réglage, une précomposition, une caméra. Touche 3 : l'outil s'affiche.
+Préparer dans « Pub » : un texte (nom automatique), un texte renommé « Logo animé », une forme, une image `LOGO_client.png`, une image rangée dans un dossier de projet « Logos », une image `bg_ciel.jpg`, une vidéo, un fichier son, un solide, un nul, un calque de réglage, une précomposition, une caméra. Touche 4 : l'outil s'affiche.
 
 - [ ] Rien ne bouge tant qu'on ne clique pas la carte : changer la sélection ne déclenche aucune analyse.
 - [ ] Sélection de 3 calques, clic sur la carte : récapitulatif « Mot-clé « logo » », « Texte »… ; bouton « Appliquer 3 libellés ». Composition : les 13 calques, groupes dans l'ordre mots-clés puis natures.
@@ -108,3 +111,18 @@ Préparer dans « Pub » : un texte (nom automatique), un texte renommé « Logo
 - [ ] Geste en un clic : appuyer sur une ligne (ou une pastille), glisser sur une couleur, relâcher : couleur choisie, sélecteur fermé. Simple clic : le sélecteur reste ouvert, clic sur une couleur. Relâcher hors du sélecteur : fermé sans choix.
 - [ ] Sélection multiple : Ctrl + clic sur 3 lignes (surlignées en bleu), appuyer sur l'une : « Plusieurs couleurs » si elles diffèrent, la couleur choisie va aux 3. Maj + clic : plage. Clic sur le nom d'un groupe : tout le groupe. Échap : désélectionné. Appuyer sur une ligne hors sélection : seule cette ligne change.
 - [ ] Panneau isolé « SIMING – Libellés » : identique ; à 260 px de large, rien ne déborde (pastilles nommées des natures, sélecteur).
+
+## Boîte à outils (1.3.0)
+
+Préparer dans « Rig » (1920 × 1080) : trois calques `A`, `B`, `C` animés en position (deux keyframes chacun, une en Bézier avec un ease et une tangente tirée à la main), un calque verrouillé, une caméra à deux nœuds, un PSD importé en composition (calques conservés) qui contient au moins deux textes et une image. Touche 2 : l'outil s'affiche.
+
+- [ ] **Copier la frame** : Préférences › Scripts et expressions › « Autoriser les scripts à écrire des fichiers… » **décochée** : message orange qui dit quoi cocher. Cochée : statut « Frame 1920 × 1080 copiée dans le presse-papier » ; coller dans Slack, un mail, Photoshop, Paint (Windows) / Aperçu › Nouveau depuis le presse-papier (macOS) : l'image de la tête de lecture. Noter : temps de rendu sur une comp lourde, résolution obtenue en Demi / Quart, transparence (comp sans fond) dans Photoshop, et si une fenêtre noire apparaît un instant (elle ne devrait pas : la copie passe par Node du panneau).
+- [ ] **Séquencer › Calques** : sélectionner `A`, `B`, `C` (dans cet ordre), Écart 5, Cascade : `B` part 5 images après `A`, `C` 10 images après ; keyframes déplacées avec leur calque ; un seul Ctrl+Z. Inverse : `C` d'abord. Aléatoire : chaque clic donne un nouvel ordre, toujours tous les 5 images. Par paquets de 2 : `A` et `B` ensemble, `C` 5 images après. Calque verrouillé : listé dans « Éléments ignorés ». Calques rognés (point d'entrée ≠ début) : c'est le point d'entrée qui s'aligne.
+- [ ] **Séquencer › Keyframes** : sélectionner les keyframes des trois calques, Cascade, Écart 5 : chaque calque décalé de 5 images ; dans l'éditeur de graphiques, l'ease, la tangente tirée à la main, l'interpolation (linéaire / Bézier / maintien), les keyframes « déplacement libre » et leur couleur sont conservés ; les keyframes restent sélectionnées (relancer avec Inverse fonctionne). Un seul calque, keyframes de Position et d'Échelle sélectionnées : décalées propriété par propriété. Keyframe déplacée sur une keyframe non sélectionnée : statut orange « 1 keyframe remplacée ». Source Text (texte animé) : noter si ça marche.
+- [ ] **Null relié** : `A` et `B` sélectionnés : null « Contrôle » au centre de leurs boîtes, juste au-dessus du plus haut, de la durée des deux, seul sélectionné ; déplacer le null entraîne `A` et `B`, rien n'a sauté. `A` et `B` enfants d'un même parent `P` : le null devient enfant de `P`, la hiérarchie tient. Calques 3D : null 3D. Rien de sélectionné : null au centre de la comp. Noter la couleur d'étiquette obtenue.
+- [ ] **Fond** : pastille › sélecteur de couleur du système, choisir une couleur : la pastille la montre (gardée après fermeture d'AE) ; « Fond » posé tout en bas, de la taille de la comp ; changer la taille de la comp (Composition › Paramètres) : le fond suit. Alt + clic sur la pastille : retour à la couleur de fond de la comp (pastille en pointillés).
+- [ ] **Format** : 16:9 allumé sur une comp 1920 × 1080 (taille affichée à droite du titre). 9:16 : comp en 1080 × 1920, tout le contenu reste centré, à toutes les images (keyframes décalées, aucune créée), calque verrouillé recentré et toujours verrouillé, caméra à deux nœuds (position et point ciblé) ; un seul Ctrl+Z. 4:5 → 1080 × 1350, 1:1 → 1080 × 1080. Changer de comp puis survoler le panneau : le format allumé suit.
+- [ ] **Afficher la source dans le Projet** : un calque image sélectionné : sa source est sélectionnée et montrée dans le panneau Projet (dossier ouvert, défilement) ; noter si After Effects en français trouve la commande (sinon seulement sélectionnée, sans défilement). Calque texte : listé « pas de source ».
+- [ ] **Convertir les textes PSD** : dans la comp du PSD, rien de sélectionné : les textes deviennent des calques texte modifiables (police, contenu), l'image est listée « pas un calque texte Photoshop » ; un seul Ctrl+Z. After Effects en français : noter si la commande est trouvée par son nom. Un seul calque texte sélectionné : lui seul.
+- [ ] Dernier geste cerclé de bleu, Entrée le rejoue ; Réglages › Raccourcis, groupe « Boîte à outils » : 12 gestes ; donner une touche à « Copier la frame » et la frapper.
+- [ ] Panneau isolé « SIMING – Boîte à outils » : identique ; à 200 px de large, rien n'est rogné, les libellés longs passent sur deux lignes.

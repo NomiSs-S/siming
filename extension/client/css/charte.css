@@ -37,7 +37,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-icon { flex: none; display: block; }
 
 /* Structure */
-.s-app { display: flex; flex-direction: column; height: 100vh; min-width: 260px; }
+.s-app { display: flex; flex-direction: column; height: 100vh; min-width: 0; }
 .s-views { flex: 1; min-height: 0; overflow-y: auto; }
 .s-view { display: flex; flex-direction: column; gap: 8px; padding: 12px; min-height: 100%; }
 .s-view:focus { outline: none; }
@@ -58,9 +58,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-menu-item:hover { background: var(--accent); color: #fff; }
 
 /* En-tête et sections */
-.s-header { display: flex; align-items: center; justify-content: space-between; min-height: 32px; }
-.s-title { font-size: 13px; font-weight: 600; color: var(--text-strong); }
-.s-header-actions { display: flex; gap: 2px; }
+.s-header { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 32px; }
+.s-title { min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-header-actions { display: flex; gap: 2px; flex: none; }
 .s-icon-btn { width: 32px; height: 32px; border: 0; border-radius: var(--radius); background: transparent; color: var(--icon-rest); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .s-icon-btn:hover { background: #2E2E2E; color: var(--text); }
 .s-section { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
@@ -95,7 +95,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 
 /* Segmenté */
 .s-seg { display: flex; gap: 2px; padding: 2px; background: var(--bg-inset); border: 1px solid var(--line); border-radius: var(--radius); }
-.s-seg-btn { flex: 1; height: 26px; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.s-seg-btn { flex: 1; min-width: 0; height: 26px; padding: 0 4px; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.s-seg-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s-seg-btn:hover { background: #262626; color: var(--text); }
 .s-seg-btn.is-on { background: var(--segment-on); color: var(--text-strong); }
 .s-seg-count { font-family: var(--mono); font-size: 10px; opacity: .7; }
@@ -183,9 +184,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-order-row .s-icon-btn { height: 30px; }
 .s-order-row .s-icon-btn:disabled { opacity: .3; cursor: default; }
 .s-keys-group { display: flex; justify-content: space-between; margin-top: 6px; padding: 0 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
-.s-key-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 2px 0 8px; border-radius: 3px; }
+.s-key-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px 8px; min-height: 30px; padding: 0 2px 0 8px; border-radius: 3px; }
 .s-key-row:hover { background: var(--bg-hover); }
-.s-key-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-key-label { flex: 1 1 110px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s-key-btn { flex: none; min-width: 96px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); font-family: var(--mono); font-size: 11px; color: var(--text-strong); cursor: pointer; }
 .s-key-btn:hover { border-color: #5A5A5A; background: var(--bg-surface); }
 .s-key-btn.is-empty { color: var(--text-muted); }
@@ -213,12 +214,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-ease-row { display: flex; align-items: center; gap: 4px; }
 .s-ease-row .s-icon-btn { flex: none; width: 32px; height: 30px; }
 .s-ease-row .s-icon-btn:hover { color: var(--accent-text); }
-.s-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.s-label-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 8px; }
 .s-label-row .s-section { margin-top: 0; }
-.s-label-hint { font-size: 10px; color: var(--icon-rest); white-space: nowrap; }
-.s-place-row { display: flex; align-items: flex-start; gap: 12px; }
+.s-label-hint { min-width: 0; font-size: 10px; color: var(--icon-rest); }
+.s-place-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
 .s-place-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.s-place-col.is-wide { flex: 1; }
+.s-place-col.is-wide { flex: 1 1 108px; }   /* passe sous l'ancrage quand 3 cases de 36 ne tiennent plus */
 .s-tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
 .s-tool-grid.is-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .s-tool { min-width: 0; height: 36px; padding: 0; border: 0; border-radius: var(--radius); background: var(--bg-surface); color: var(--icon-rest); display: flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -272,6 +273,48 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-rule-row { display: flex; align-items: center; gap: 4px; }
 .s-rule-row .s-icon-btn { flex: none; height: 30px; }
 .s-type-list { display: flex; flex-direction: column; gap: 1px; }
-.s-type-row { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 0 0 8px; border-radius: 3px; }
+.s-type-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px 8px; min-height: 34px; padding: 2px 0 2px 8px; border-radius: 3px; }
 .s-type-row:hover { background: var(--bg-hover); }
-.s-type-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-type-name { flex: 1 1 90px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Boîte à outils : boutons de geste (icône + verbe) en grille qui s'empile, pastille de couleur, formats */
+.s-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 4px; }
+.s-actions.is-list { grid-template-columns: minmax(0, 1fr); }
+.s-stack > .s-bar { flex: none; }   /* barre seule dans une colonne : hauteur de la charte, pas tassée */
+.s-action { height: 36px; min-width: 0; justify-content: flex-start; padding: 0 10px; }
+.s-action .s-icon { color: var(--accent-text); }
+.s-action-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-action-pair { display: flex; gap: 4px; min-width: 0; }
+.s-action-pair .s-action { flex: 1; }
+.s-color-chip { flex: none; width: 36px; height: 36px; padding: 0; border: 1px solid #444; border-radius: var(--radius); background: var(--bg-inset); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.s-color-chip:hover { border-color: #5A5A5A; background: var(--bg-surface); }
+.s-color-chip:disabled { opacity: .38; cursor: default; }
+.s-color-chip-dot { width: 18px; height: 18px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.s-color-chip.is-auto .s-color-chip-dot { outline: 1px dashed #6E6E6E; outline-offset: 2px; }
+.s-tool-grid.is-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.s-format { height: 50px; flex-direction: column; gap: 6px; }
+.s-format-frame { flex: none; border: 1.5px solid currentColor; border-radius: 2px; }
+.s-format-label { font-family: var(--mono); font-size: 10px; line-height: 1; }
+.s-format.is-on { background: var(--accent-soft); color: var(--accent-text); }
+
+/* Barre de défilement : fine, grise, sans flèches ; s'épaissit au survol, plus claire quand on la tient */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-thumb { min-height: 32px; border: 3px solid transparent; border-radius: 5px; background: var(--line) padding-box; }
+::-webkit-scrollbar-thumb:hover { border-width: 2px; background-color: #5A5A5A; }
+::-webkit-scrollbar-thumb:active { border-width: 2px; background-color: var(--icon-rest); }
+
+/* Panneaux étroits : les rangées côte à côte s'empilent au lieu de déborder */
+@media (max-width: 259px) {
+    .s-view { padding: 10px 8px; }
+    .s-tool-grid.is-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .s-status-right { display: none; }
+    .s-swatch-btn.is-named { width: auto; flex: 1 1 120px; }
+    .s-action { height: auto; min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+    .s-action-label { white-space: normal; text-align: left; }
+}
+@media (max-width: 199px) {
+    .s-header-actions .s-icon-btn { width: 30px; }
+    .s-gesture-row .s-btn { padding: 0 8px; }
+}

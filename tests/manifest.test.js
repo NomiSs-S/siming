@@ -45,6 +45,10 @@ module.exports = function (test) {
         assert.strictEqual(doc.querySelector('Host').getAttribute('Name'), 'AEFT');
         assert.strictEqual(doc.querySelector('Host').getAttribute('Version'), '[' + M.MIN_AE + ',99.9]');
         assert.strictEqual(doc.querySelector('RequiredRuntime').getAttribute('Version'), M.CSXS);
+        for (const e of dispatch) {
+            const params = Array.from(e.querySelectorAll('CEFCommandLine > Parameter')).map((p) => p.textContent);
+            assert.deepEqual(params, ['--allow-file-access-from-files', '--allow-file-access', '--enable-nodejs'], 'Node pour le presse-papier (Boîte à outils)');
+        }
     });
 
     test('manifeste : tools.json invalide refusé avec un message clair', () => {

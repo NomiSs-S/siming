@@ -46,6 +46,7 @@ function panel(x) {
         '          <CEFCommandLine>',
         '            <Parameter>--allow-file-access-from-files</Parameter>',
         '            <Parameter>--allow-file-access</Parameter>',
+        '            <Parameter>--enable-nodejs</Parameter>',   // Node (contexte séparé) : SIMING.runProgram
         '          </CEFCommandLine>',
         '        </Resources>',
         '        <Lifecycle>',

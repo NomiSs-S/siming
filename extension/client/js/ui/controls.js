@@ -94,7 +94,8 @@
                 const b = buttons[i];
                 if (!b) return;
                 const label = typeof item === 'string' ? item : item.label;
-                b.replaceChildren(label);
+                b.replaceChildren(h('span', { class: 's-seg-label', text: label }));   // span : points de suspension si étroit
+                b.title = label;
                 if (typeof item !== 'string' && item.count !== undefined && item.count !== null) {
                     b.append(h('span', { class: 's-seg-count', text: String(item.count) }));
                 }
@@ -217,8 +218,9 @@
     /** Barre de valeur (30 px) : libellé et valeur dedans ; glisser n'importe où (clic =
      *  saut, Maj = précision), molette ±step (Maj ×10), flèches ±step (Maj ×10),
      *  double-clic = saisie au clavier, Alt + clic = valeur par défaut.
-     *  onInput pendant le geste, onChange au relâchement, à la molette, au clavier et à la saisie. */
-    ui.valueBar = function ({ label, min, max, step, unit, value, defaultValue, onInput, onChange, role }) {
+     *  onInput pendant le geste, onChange au relâchement, à la molette, au clavier et à la saisie.
+     *  integer : valeurs entières (sinon au dixième). */
+    ui.valueBar = function ({ label, min, max, step, unit, value, defaultValue, onInput, onChange, role, integer }) {
         const lo = (min === undefined) ? 0 : min;
         const hi = (max === undefined) ? 100 : max;
         const inc = step || 1;
@@ -235,7 +237,7 @@
         let current = clamp(value === undefined ? base : value);
 
         function clamp(v) {
-            v = Math.round(Number(v) * 10) / 10;
+            v = integer ? Math.round(Number(v)) : Math.round(Number(v) * 10) / 10;
             if (isNaN(v)) v = base;
             return Math.min(hi, Math.max(lo, v));
         }

@@ -47,9 +47,17 @@
         el.append(spacer, more, settings, menu);
 
         el.overflow = [];
+        let active = null;
+
+        /** « … » s'allume quand l'outil affiché est rangé dans son menu (panneau étroit). */
+        function markMore() {
+            more.classList.toggle('is-active', el.overflow.some((t) => t.id === active));
+        }
 
         el.setActive = function (id) {
+            active = id;
             buttons.forEach((b, key) => b.classList.toggle('is-active', key === id));
+            markMore();
         };
 
         /** Nouvel ordre d'affichage (ids) : ids inconnus ignorés, outils oubliés à la fin.
@@ -92,6 +100,7 @@
             });
             more.hidden = el.overflow.length === 0;
             if (more.hidden) menu.hidden = true;
+            markMore();
         };
 
         return el;

@@ -100,80 +100,12 @@
         return [rect.left + rect.width * fx, rect.top + rect.height * fy];
     }
 
-    // Matrices 2D affines [a, b, c, d, tx, ty] : x' = a·x + c·y + tx ; y' = b·x + d·y + ty
-    function matMul(A, B) {   // A ∘ B (B appliquée d'abord)
-        return [
-            A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1],
-            A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3],
-            A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]
-        ];
-    }
-
-    function matApply(M, p) {
-        return [M[0] * p[0] + M[2] * p[1] + M[4], M[1] * p[0] + M[3] * p[1] + M[5]];
-    }
-
-    function matLinear(M, v) {
-        return [M[0] * v[0] + M[2] * v[1], M[1] * v[0] + M[3] * v[1]];
-    }
-
-    /** Inverse de la partie linéaire appliqué à v (v inchangé si la matrice est dégénérée). */
-    function matLinearInverse(M, v) {
-        var det = M[0] * M[3] - M[2] * M[1];
-        if (Math.abs(det) < 1e-9) return [v[0], v[1]];
-        return [(M[3] * v[0] - M[2] * v[1]) / det, (-M[1] * v[0] + M[0] * v[1]) / det];
-    }
-
-    /** t = { position, anchor, scale (%), rotation (°) } -> matrice espace du calque -> espace du parent. */
-    function layerMatrix(t) {
-        var r = (t.rotation || 0) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
-        var sx = t.scale[0] / 100, sy = t.scale[1] / 100;
-        var a = cs * sx, b = sn * sx, c = -sn * sy, d = cs * sy;
-        return [a, b, c, d,
-                t.position[0] - (a * t.anchor[0] + c * t.anchor[1]),
-                t.position[1] - (b * t.anchor[0] + d * t.anchor[1])];
-    }
-
-    /** Déplacement de position qui compense un déplacement `delta` du point d'ancrage. */
-    function compensate(delta, scale, rotation) {
-        return matLinear(layerMatrix({ position: [0, 0], anchor: [0, 0], scale: scale, rotation: rotation }), delta);
-    }
-
-    /** v + d : nombre, [x, y] ou [x, y, z] (Z conservé) ; d = nombre ou [dx, dy]. */
-    function addDelta(v, d) {
-        if (typeof v === 'number') return v + d;
-        if (v.length > 2) return [v[0] + d[0], v[1] + d[1], v[2]];
-        return [v[0] + d[0], v[1] + d[1]];
-    }
-
-    /** Rectangle englobant { left, top, right, bottom } d'une boîte transformée par M. */
-    function bounds(rect, M) {
-        var pts = [
-            matApply(M, [rect.left, rect.top]),
-            matApply(M, [rect.left + rect.width, rect.top]),
-            matApply(M, [rect.left, rect.top + rect.height]),
-            matApply(M, [rect.left + rect.width, rect.top + rect.height])
-        ];
-        var b = { left: pts[0][0], top: pts[0][1], right: pts[0][0], bottom: pts[0][1] };
-        for (var i = 1; i < 4; i++) {
-            if (pts[i][0] < b.left) b.left = pts[i][0];
-            if (pts[i][0] > b.right) b.right = pts[i][0];
-            if (pts[i][1] < b.top) b.top = pts[i][1];
-            if (pts[i][1] > b.bottom) b.bottom = pts[i][1];
-        }
-        return b;
-    }
-
-    function union(boxes) {
-        var u = { left: boxes[0].left, top: boxes[0].top, right: boxes[0].right, bottom: boxes[0].bottom };
-        for (var i = 1; i < boxes.length; i++) {
-            if (boxes[i].left < u.left) u.left = boxes[i].left;
-            if (boxes[i].top < u.top) u.top = boxes[i].top;
-            if (boxes[i].right > u.right) u.right = boxes[i].right;
-            if (boxes[i].bottom > u.bottom) u.bottom = boxes[i].bottom;
-        }
-        return u;
-    }
+    // Géométrie commune (siming.jsx) : matrices 2D, boîtes, décalage de propriété.
+    var G = S.geom;
+    var matMul = G.matMul, matApply = G.matApply, matLinear = G.matLinear, matLinearInverse = G.matLinearInverse;
+    var layerMatrix = G.layerMatrix, compensate = G.compensate, addDelta = G.addDelta, bounds = G.bounds, union = G.union;
+    var readTransform = ae.readTransform, layerToComp = ae.layerToComp, toParentSpace = ae.toParentSpace;
+    var sourceRect = ae.sourceRect, offsetProperty = ae.offsetProperty;
 
     var EDGES = { left: 1, centerX: 1, right: 1, top: 1, centerY: 1, bottom: 1 };
 
@@ -226,59 +158,6 @@
         else prop.setValue(value);
     }
 
-    /** Décale une propriété sans créer de keyframe : chaque keyframe existante reçoit
-     *  deltaAt(son instant) ; sans keyframe, la valeur reçoit deltaAt(time). Les tangentes
-     *  spatiales posées à la main sont relues puis reposées (setValueAtKey peut les
-     *  recalculer) ; les automatiques se recalculent d'elles-mêmes, tout se décalant d'autant. */
-    function offsetProperty(prop, deltaAt, time) {
-        var n = prop.numKeys;
-        if (n === 0) {
-            prop.setValue(addDelta(prop.value, deltaAt(time)));
-            return;
-        }
-        var spatial = prop.isSpatial;
-        for (var k = 1; k <= n; k++) {
-            var keep = (spatial && !prop.keySpatialAutoBezier(k))
-                ? [prop.keyInSpatialTangent(k), prop.keyOutSpatialTangent(k)] : null;
-            prop.setValueAtKey(k, addDelta(prop.keyValue(k), deltaAt(prop.keyTime(k))));
-            if (keep) prop.setSpatialTangentsAtKey(k, keep[0], keep[1]);
-        }
-    }
-
-    /** Transformation 2D d'un calque à l'instant t (Z et rotations X/Y ignorées). */
-    function readTransform(layer, time) {
-        var tr = layer.property('ADBE Transform Group');
-        var posProp = tr.property('ADBE Position');
-        var pos;
-        if (posProp.dimensionsSeparated) {
-            pos = [tr.property('ADBE Position_0').valueAtTime(time, false), tr.property('ADBE Position_1').valueAtTime(time, false)];
-        } else {
-            pos = posProp.valueAtTime(time, false);
-        }
-        var anchor = tr.property('ADBE Anchor Point').valueAtTime(time, false);
-        var scale  = tr.property('ADBE Scale').valueAtTime(time, false);
-        var rot    = tr.property('ADBE Rotate Z').valueAtTime(time, false);
-        return { position: [pos[0], pos[1]], anchor: [anchor[0], anchor[1]], scale: [scale[0], scale[1]], rotation: rot };
-    }
-
-    /** Matrice espace du calque -> espace de la comp (chaîne des parents). */
-    function layerToComp(layer, time) {
-        var M = layerMatrix(readTransform(layer, time));
-        var p = layer.parent, guard = 0;
-        while (p !== null && guard++ < 200) {
-            M = matMul(layerMatrix(readTransform(p, time)), M);
-            p = p.parent;
-        }
-        return M;
-    }
-
-    /** Déplacement en espace comp -> espace du parent du calque. */
-    function toParentSpace(layer, d, time) {
-        var p = layer.parent;
-        if (p === null) return d;
-        return matLinearInverse(layerToComp(p, time), d);
-    }
-
     /** Déplace la position d'un calque de [dx, dy] dans l'espace de son parent (Z conservé). */
     function shiftPosition(layer, d, time) {
         var tr = layer.property('ADBE Transform Group');
@@ -293,14 +172,6 @@
         }
     }
 
-    /** Boîte visible d'un calque dans son espace, ou une erreur explicite. */
-    function sourceRect(layer, time) {
-        if (typeof layer.sourceRectAtTime !== 'function') throw new Error('pas de boîte visible (caméra ou lumière)');
-        var rect = layer.sourceRectAtTime(time, false);
-        if (!rect || !(rect.width > 0) || !(rect.height > 0)) throw new Error('boîte vide');
-        return rect;
-    }
-
     /** Parcourt les propriétés feuilles d'un groupe (ou d'un calque). */
     function walkProperties(group, fn) {
         var n = group.numProperties;
@@ -312,30 +183,7 @@
         }
     }
 
-    /** Propriétés feuilles sélectionnées de la comp. */
-    function selectedProperties(comp) {
-        var out = [], props = comp.selectedProperties;
-        for (var i = 0; i < props.length; i++) {
-            if (props[i].propertyType === PropertyType.PROPERTY) out.push(props[i]);
-        }
-        return out;
-    }
-
-    /** Keyframes sélectionnées : [{ prop, index }]. */
-    function selectedKeyframes(comp) {
-        var out = [], props = selectedProperties(comp);
-        for (var i = 0; i < props.length; i++) {
-            var keys;
-            try { keys = props[i].selectedKeys; } catch (e) { keys = null; }
-            if (!keys) continue;
-            for (var k = 0; k < keys.length; k++) out.push({ prop: props[i], index: keys[k] });
-        }
-        return out;
-    }
-
-    function ownerLayer(prop) {
-        return prop.propertyGroup(prop.propertyDepth);
-    }
+    var selectedProperties = ae.selectedProperties, selectedKeyframes = ae.selectedKeyframes, ownerLayer = ae.ownerLayer;
 
     // ------------------------------------------------------------------------
     //  Lissage

@@ -93,7 +93,7 @@ module.exports = function (test) {
         const opened = bootable(win, sandbox, { cs: true });
         const app = await win.SIMING.boot('hub');
         assert.ok(win.document.querySelector('.s-rail'));
-        assert.strictEqual(app.current, 'unparent');
+        assert.strictEqual(app.current, 'quicktools', 'Quick Tools : premier outil, affiché à la première ouverture');
         assert.strictEqual(app.status.level, 'info', app.status.text);
         app.views.get('unparent').querySelector('[data-role=open-standalone]').click();
         assert.deepEqual(opened, ['com.siming.tool.unparent']);

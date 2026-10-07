@@ -14,11 +14,12 @@ module.exports = function (test) {
             'relancer node tools/build-icons.js');
     });
 
-    test('icônes : les 40 icônes de la charte sont présentes', () => {
+    test('icônes : les 45 icônes de la charte sont présentes', () => {
         const win = makeDom(SCRIPTS);
         const names = Object.keys(win.SIMING.ICONS);
-        assert.strictEqual(names.length, 40);
-        for (const n of ['lier', 'delier', 'cibler', 'rafraichir', 'reglages', 'aide', 'menu', 'plus', 'eclair', 'keyframe', 'ressort', 'etiquette', 'panneau', 'alignLeft', 'distBottom']) {
+        assert.strictEqual(names.length, 45);
+        for (const n of ['lier', 'delier', 'cibler', 'rafraichir', 'reglages', 'aide', 'menu', 'plus', 'eclair', 'keyframe', 'ressort', 'etiquette', 'panneau', 'alignLeft', 'distBottom',
+            'boite', 'appareil', 'fond', 'source', 'texte']) {
             assert.ok(names.includes(n), n);
         }
     });

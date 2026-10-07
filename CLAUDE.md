@@ -6,7 +6,8 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : 1.0.0** (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
+**État : 1.3.0** : Quick Tools (outil par défaut), Boîte à outils, Unparent, Libellés
+(plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
 
 ## Structure
 
@@ -15,7 +16,8 @@ projet (`extension/host/`). Spec de référence :
   `css/charte.css`, `js/bridge.js` (seul contact avec AE), `js/keys.js` (raccourcis :
   registre d'actions, un outil y enregistre ses gestes via `ctx.keys`), `js/ui/` (composants),
   `tools/<id>.js` (vues).
-- `extension/host/` : `siming.jsx` (JSON, helpers AE, annulation, routeur),
+- `extension/host/` : `siming.jsx` (JSON, helpers AE, géométrie partagée `SIMING.geom`, sélection
+  de propriétés et keyframes, annulation, routeur),
   `tools/<id>.jsx` (cœur et API de chaque outil).
 - `tests/` : `node tests/run.js`. `tools/` : dev-install, make-cert, release.js, installeurs.
 - `docs/SUIVI.md` : journal, pistes, erreurs. À mettre à jour à chaque session.
@@ -24,7 +26,8 @@ projet (`extension/host/`). Spec de référence :
 ## Règles de code
 
 **Hôte (`.jsx`)**
-- ES3 strict : pas de `forEach`, `map`, `filter`, `indexOf`, `trim`, `JSON`, `Object.keys`, `let`, `const`, fonctions fléchées.
+- ES3 strict : pas de `forEach`, `map`, `filter`, `indexOf`, `trim`, `JSON`, `Object.keys`, `let`, `const`, fonctions fléchées,
+  ni de mot réservé d'ES3 comme nom (`short`, `int`, `long`, `char`, `final`…).
 - UTF-8 **avec BOM** ; après toute réécriture complète d'un `.jsx`, vérifier que le BOM est là.
 - Jamais `===` entre deux objets calque : comparer `index` ou `id` (`SIMING.ae.sameLayer`).
 - Chaque action utilisateur = un seul groupe d'annulation via `SIMING.ae.undo(nom, fn)`.
