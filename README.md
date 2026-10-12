@@ -4,14 +4,14 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.3.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.3.1 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
-| Quick Tools | 1.0.1 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir (sur la partie visible, masques compris) |
+| Quick Tools | 1.1.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir (sur la partie visible, masques compris) |
 | Boîte à outils | 1.0.0 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
-| Libellés | 1.0.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
+| Libellés | 1.1.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
 
 Quick Tools est le premier outil du rail (touche 1) et celui qui s'ouvre la première fois.
 Le panneau se range même très étroit : ce qui ne tient plus côte à côte passe à la ligne.
@@ -49,7 +49,8 @@ Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun
 1. **Lissage de vitesse** : règle l'influence (Entrée, Sortie, Les deux), puis clique le
    picto de keyframe de la ligne ou relâche la barre : les keyframes sélectionnées passent en Bézier,
    vitesse 0, influence voulue sur ce côté. Entrée = le départ du mouvement (côté sortant
-   de la keyframe), Sortie = son arrivée.
+   de la keyframe), Sortie = son arrivée. La barre va de 5 en 5 (glisser, molette, flèches),
+   à l'unité avec Maj ; double-clic : saisir une valeur exacte.
 2. **Elastic** : « Appliquer Elastic » pose l'expression de rebond et l'effet « Elastic
    Controller » (Amplitude 20, Frequency 40, Decay 60, à régler dans le panneau Effets)
    sur les propriétés animées sélectionnées ; la croix les enlève.
@@ -59,7 +60,7 @@ Quatre gestes sur la sélection de la timeline, un clic chacun, un Ctrl+Z chacun
    décalées, aucune n'est créée.
 4. **Aligner et répartir** : comme la fenêtre Aligner d'After Effects, par rapport à la
    sélection ou à la composition, sur les bords visibles (rotation, échelle et parents
-   pris en compte).
+   pris en compte). Un seul calque sélectionné : toujours sur la composition.
 
 Les boutons portent le verbe seul : la sélection n'est connue qu'au clic, la ligne de
 statut dit ensuite combien d'éléments ont été traités. Le dernier geste est cerclé de bleu :
@@ -114,8 +115,10 @@ Onglet **Règles** :
 - **Mots-clés**, prioritaires, le premier de la liste gagne : mots entiers séparés par des
   virgules, cherchés dans le nom du calque, de sa source, de son fichier et des dossiers du
   projet qui la contiennent (majuscules, accents et pluriel ignorés). « logo » trouve
-  `LOGO_client.png`, `logoClient` ou le dossier `Logos`, pas `logotype`. « .ai » vise
-  l'extension du fichier. Un calque texte ne compte que par un nom donné à la main.
+  `LOGO_client.png`, `logoClient` ou le dossier `Logos`, pas `logotype`. Une astérisque
+  finale demande le mot seul : « fond* » trouve `Fond`, pas `fond_txt`. « .ai » vise
+  l'extension du fichier. Un calque texte ne compte que par un nom donné à la main. La
+  poignée de chaque ligne (glisser, ou ↑ ↓ au clavier) change l'ordre, donc la priorité.
 - **Par nature** : Texte, Forme, Vidéo, Image, Son, Solide, Nul, Réglage, Précompo, Caméra,
   Lumière, Autre ; chacune une étiquette ou « Ne pas changer ».
 

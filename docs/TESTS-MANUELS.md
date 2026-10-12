@@ -77,7 +77,8 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 
 Préparer dans « Rig » : `A` avec une position animée (deux keyframes), `B` avec une échelle animée, `C` tourné de 45° à 150 %, `D` parenté à `C`, une caméra. Touche 1 : l'outil s'affiche, cinq sections visibles sans défilement dans un panneau de 640 px ; Ancrage et Aligner côte à côte, y compris à 260 px de large.
 
-- [ ] Barre de valeur : glisser n'importe où (saut au clic), Maj = précision, molette ±1 et Maj ±10, flèches, double-clic = saisie (Entrée valide, Échap annule), Alt + clic = 33. Valeurs retrouvées après fermeture/réouverture.
+- [ ] Barres de lissage (1.3.1) : glisser n'importe où (saut au clic) donne 5, 10… 100 ; Maj enfoncée pendant le glissé : à l'unité, sans saut ; molette et flèches de 5 en 5 (33 → 35 → 40), Maj : ±1. Clic simple : appliqué une fraction de seconde après. **Double-clic** : la saisie s'ouvre sur la valeur d'avant, **rien n'est appliqué** (un seul groupe dans l'historique après saisie de 37 + Entrée) ; Échap annule. Alt + clic = 33. Valeurs retrouvées après fermeture/réouverture.
+- [ ] Aligner (1.3.1) : un seul calque sélectionné, mode **Sélection**, « Aligner à gauche » : collé au bord gauche de la composition (statut « … de la composition »).
 - [ ] Première keyframe de `A` sélectionnée, picto « Entrée » à 75 % : le **départ du mouvement** est lissé (éditeur de graphiques : Bézier, vitesse 0, influence 75 sur le côté sortant de la keyframe, côté entrant inchangé ; icône de keyframe : moitié droite arrondie) ; statut « 1 keyframe lissée, entrée 75 % » ; un seul Ctrl+Z (« Quick Tools : lisser »). Dernière keyframe, picto « Sortie » : l'arrivée est lissée (côté entrant).
 - [ ] Relâcher la barre « Les deux » applique aussi. Keyframes d'échelle (2D) : les deux dimensions reçoivent l'influence. Keyframe en maintien : ignorée et listée dans le dialogue.
 - [ ] Rien de sélectionné : « Aucune keyframe sélectionnée », rien ne change.
@@ -111,7 +112,9 @@ Préparer dans « Pub » : un texte (nom automatique), un texte renommé « Logo
 - [ ] Entrée applique (focus dans le panneau, pas dans un champ) ; Réglages › Raccourcis, groupe « Libellés » : donner une touche à « Analyser et appliquer », sélectionner, la frapper.
 - [ ] Geste en un clic : appuyer sur une ligne (ou une pastille), glisser sur une couleur, relâcher : couleur choisie, sélecteur fermé. Simple clic : le sélecteur reste ouvert, clic sur une couleur. Relâcher hors du sélecteur : fermé sans choix.
 - [ ] Sélection multiple : Ctrl + clic sur 3 lignes (surlignées en bleu), appuyer sur l'une : « Plusieurs couleurs » si elles diffèrent, la couleur choisie va aux 3. Maj + clic : plage. Clic sur le nom d'un groupe : tout le groupe. Échap : désélectionné. Appuyer sur une ligne hors sélection : seule cette ligne change.
-- [ ] Panneau isolé « SIMING – Libellés » : identique ; à 260 px de large, rien ne déborde (pastilles nommées des natures, sélecteur).
+- [ ] Mot seul (1.3.1) : règle « fond* », calques `Fond`, `FOND`, `fond_txt`, `fond 2` : seuls `Fond` et `FOND` vont dans le groupe « fond* ». Le dossier de projet « Fond » compte aussi (comme pour les autres mots-clés).
+- [ ] Priorité (1.3.1) : onglet Règles, glisser la poignée d'un mot-clé tout en haut (puis ↑ ↓ au clavier, focus sur la poignée) : l'ordre est gardé après fermeture d'AE ; retour à Calques : ré-analyse, un calque qui répond à deux règles prend celle du haut.
+- [ ] Panneau isolé « SIMING – Libellés » : identique ; à 260 px de large, rien ne déborde (pastilles nommées des natures, sélecteur, poignées des mots-clés).
 
 ## Boîte à outils (1.3.0)
 

@@ -272,15 +272,21 @@
         });
     };
 
+    /** Délai d'un double-clic : un clic simple sur une barre n'est validé qu'après. */
+    ui.DOUBLE_CLICK_MS = 350;
+
     /** Barre de valeur (30 px) : libellé et valeur dedans ; glisser n'importe où (clic =
      *  saut, Maj = précision), molette ±step (Maj ×10), flèches ±step (Maj ×10),
      *  double-clic = saisie au clavier, Alt + clic = valeur par défaut.
-     *  onInput pendant le geste, onChange au relâchement, à la molette, au clavier et à la saisie.
-     *  integer : valeurs entières (sinon au dixième). */
-    ui.valueBar = function ({ label, min, max, step, unit, value, defaultValue, onInput, onChange, role, integer }) {
+     *  onInput pendant le geste, onChange au relâchement, à la molette, au clavier et à la saisie ;
+     *  un clic sans glisser n'est validé qu'après ui.DOUBLE_CLICK_MS (un double-clic l'annule).
+     *  integer : valeurs entières (sinon au dixième).
+     *  snap : glisser, molette et flèches par multiples de snap ; Maj = à l'unité ; saisie libre. */
+    ui.valueBar = function ({ label, min, max, step, unit, value, defaultValue, onInput, onChange, role, integer, snap }) {
         const lo = (min === undefined) ? 0 : min;
         const hi = (max === undefined) ? 100 : max;
         const inc = step || 1;
+        const grid = snap > 0 ? snap : 0;
         const base = (defaultValue === undefined) ? lo : defaultValue;
         const fill = h('span', { class: 's-bar-fill' });
         const mark = h('span', { class: 's-bar-mark' });
@@ -320,44 +326,68 @@
             return lo + Math.min(1, Math.max(0, t)) * (hi - lo);
         }
 
-        let drag = null;
+        /** Valeur de position, au multiple de snap le plus proche si la barre en a un. */
+        const snapped = (v) => (grid ? Math.round(v / grid) * grid : v);
+        /** Un cran (dir = ±1) : multiple de snap suivant (Maj : à l'unité), sinon ±step (Maj ×10). */
+        function notch(dir, shift) {
+            if (!grid) return current + dir * inc * (shift ? 10 : 1);
+            if (shift) return current + dir;
+            return dir > 0 ? Math.floor(current / grid) * grid + grid : Math.ceil(current / grid) * grid - grid;
+        }
+
+        let drag = null;      // { x, from, lastRaw, fine, moved }
+        let pending = null;   // { timer, from } : clic simple en attente de validation
         el.addEventListener('pointerdown', (e) => {
             if (e.button !== 0 || !input.hidden) return;
+            // Deuxième clic d'un double-clic : on garde la valeur d'avant le premier.
+            const from = pending ? pending.from : current;
+            if (pending) { clearTimeout(pending.timer); pending = null; }
             if (e.altKey) { set(base, 'change'); return; }
             const raw = valueAt(e.clientX);
-            drag = { lastRaw: raw };
+            drag = { x: e.clientX, from, lastRaw: raw, fine: null, moved: false };
             if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) { /* hors navigateur */ } }
             el.classList.add('is-dragging');
-            set(raw, 'input');
+            set(e.shiftKey ? raw : snapped(raw), 'input');
         });
         el.addEventListener('pointermove', (e) => {
             if (!drag) return;
             const raw = valueAt(e.clientX);
-            const next = e.shiftKey ? current + (raw - drag.lastRaw) * 0.1 : raw;
+            if (Math.abs(e.clientX - drag.x) > 3) drag.moved = true;
+            if (e.shiftKey) {
+                // Précision : un dixième du déplacement, cumulé (sinon l'arrondi à l'unité le mangerait).
+                drag.fine = (drag.fine === null ? current : drag.fine) + (raw - drag.lastRaw) * 0.1;
+                set(drag.fine, 'input');
+            } else {
+                drag.fine = null;
+                set(snapped(raw), 'input');
+            }
             drag.lastRaw = raw;
-            set(next, 'input');
         });
         const endDrag = (e) => {
             if (!drag) return;
+            const d = drag;
             drag = null;
             el.classList.remove('is-dragging');
             if (el.releasePointerCapture) { try { el.releasePointerCapture(e.pointerId); } catch (err) { /* idem */ } }
-            set(current, 'change');
+            if (d.moved || e.type === 'pointercancel') { set(current, 'change'); return; }
+            const timer = setTimeout(() => { pending = null; set(current, 'change'); }, ui.DOUBLE_CLICK_MS);
+            pending = { timer, from: d.from };
         };
         el.addEventListener('pointerup', endDrag);
         el.addEventListener('pointercancel', endDrag);
         el.addEventListener('wheel', (e) => {
             if (!input.hidden) return;
             e.preventDefault();
-            set(current + (e.deltaY < 0 ? inc : -inc) * (e.shiftKey ? 10 : 1), 'changed');
+            set(notch(e.deltaY < 0 ? 1 : -1, e.shiftKey), 'changed');
         }, { passive: false });
         el.addEventListener('keydown', (e) => {
             if (!input.hidden) return;
-            const k = inc * (e.shiftKey ? 10 : 1);
-            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); set(current + k, 'changed'); }
-            else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); set(current - k, 'changed'); }
+            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); set(notch(1, e.shiftKey), 'changed'); }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); set(notch(-1, e.shiftKey), 'changed'); }
         });
         el.addEventListener('dblclick', () => {
+            // Le clic qui précède n'est pas validé : la saisie part de la valeur d'avant.
+            if (pending) { clearTimeout(pending.timer); set(pending.from, null); pending = null; }
             input.value = String(current);
             input.hidden = false;
             lab.hidden = true;
@@ -387,6 +417,62 @@
         Object.defineProperty(el, 'value', { get: () => current });
         render();
         return el;
+    };
+
+    /** Poignée pour réordonner les lignes d'une liste : glisser (la ligne suit le pointeur,
+     *  ordre rendu au relâchement) ou ↑ ↓ au clavier. Les lignes sont les enfants de list qui
+     *  portent l'attribut attr (leur clé) ; onOrder(clés dans le nouvel ordre) n'est appelé que
+     *  si l'ordre change : à l'appelant d'enregistrer et de redessiner (le focus revient ensuite
+     *  sur la poignée de la ligne déplacée). */
+    ui.orderGrip = function ({ list, attr, label, title, disabled, onOrder }) {
+        const grip = h('button', {
+            class: 's-grip', type: 'button', 'data-role': 'order-grip', disabled: !!disabled,
+            title: title || 'Glisser pour déplacer (↑ ↓ au clavier)', 'aria-label': label || 'Déplacer',
+        }, ui.icon('poignee', 16));
+        const rows = () => Array.from(list.children).filter((r) => r.hasAttribute(attr));
+        const keysOf = (rs) => rs.map((r) => r.getAttribute(attr));
+        const rowOf = () => rows().find((r) => r.contains(grip));
+
+        grip.addEventListener('keydown', (e) => {
+            const dir = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+            const rs = rows();
+            const i = rs.indexOf(rowOf());
+            if (!dir || i < 0 || i + dir < 0 || i + dir >= rs.length) return;
+            e.preventDefault();
+            onOrder(SIMING.moveItem(keysOf(rs), i, i + dir));
+            const again = rows()[i + dir];
+            const g = again && again.querySelector('[data-role=order-grip]');
+            if (g) g.focus();
+        });
+
+        grip.addEventListener('pointerdown', (e) => {
+            const row = rowOf();
+            if (e.button !== 0 || grip.disabled || !row) return;
+            const before = keysOf(rows());
+            row.classList.add('is-dragging');
+            if (grip.setPointerCapture) { try { grip.setPointerCapture(e.pointerId); } catch (err) { /* hors navigateur */ } }
+            const move = (ev) => {
+                const others = rows().filter((r) => r !== row);
+                const next = others.find((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+                if (next) { if (row.nextSibling !== next) list.insertBefore(row, next); }
+                else {
+                    const last = others[others.length - 1];
+                    if (last && row.previousSibling !== last) last.after(row);
+                }
+            };
+            const end = () => {
+                grip.removeEventListener('pointermove', move);
+                grip.removeEventListener('pointerup', end);
+                grip.removeEventListener('pointercancel', end);
+                row.classList.remove('is-dragging');
+                const after = keysOf(rows());
+                if (after.join('\n') !== before.join('\n')) onOrder(after);
+            };
+            grip.addEventListener('pointermove', move);
+            grip.addEventListener('pointerup', end);
+            grip.addEventListener('pointercancel', end);
+        });
+        return grip;
     };
 
     const SVG_NS = 'http://www.w3.org/2000/svg';

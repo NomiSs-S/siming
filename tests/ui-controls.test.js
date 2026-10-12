@@ -216,6 +216,118 @@ module.exports = function (test) {
         assert.strictEqual(btn.title, 'Aléatoire', 'libellé complet au survol quand il est coupé');
     });
 
+    test('valueBar par pas de 5 : glisser de 5 en 5, Maj = à l\'unité (glisser, flèches, molette), saisie libre', () => {
+        const { ui, win, doc } = setup();
+        const changes = [];
+        const bar = ui.valueBar({ label: 'Entrée', min: 1, max: 100, unit: ' %', integer: true, snap: 5, value: 33, defaultValue: 33, onChange: (v) => changes.push(v) });
+        doc.body.append(bar);
+        bar.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 30, right: 200, bottom: 30 });
+        const pe = (type, x, extra) => bar.dispatchEvent(new win.PointerEvent(type, Object.assign({ clientX: x, button: 0, pointerId: 1, bubbles: true }, extra || {})));
+        const kd = (key, shiftKey) => bar.dispatchEvent(new win.KeyboardEvent('keydown', { key, shiftKey: !!shiftKey, bubbles: true }));
+        const wheel = (deltaY, shiftKey) => bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY, shiftKey: !!shiftKey, bubbles: true, cancelable: true }));
+        assert.strictEqual(bar.value, 33, 'valeur gardée telle quelle');
+        pe('pointerdown', 100);                          // 50,5
+        assert.strictEqual(bar.value, 50);
+        pe('pointermove', 137);                          // 68,8
+        assert.strictEqual(bar.value, 70);
+        pe('pointermove', 141, { shiftKey: true });      // Maj : +0,2 depuis 70
+        assert.strictEqual(bar.value, 70, 'Maj : pas de saut');
+        pe('pointermove', 161, { shiftKey: true });      // +1 de plus : le petit reste est gardé
+        assert.strictEqual(bar.value, 71, 'Maj : à l\'unité');
+        pe('pointermove', 180);                          // 90,1
+        assert.strictEqual(bar.value, 90);
+        pe('pointerup', 180);
+        assert.deepEqual(changes, [90], 'glissé : appliqué au relâchement');
+        kd('ArrowUp');
+        assert.strictEqual(bar.value, 95);
+        kd('ArrowUp', true);
+        assert.strictEqual(bar.value, 96, 'Maj + flèche : +1');
+        kd('ArrowDown');
+        assert.strictEqual(bar.value, 95, 'flèche : multiple de 5 suivant');
+        wheel(100);
+        assert.strictEqual(bar.value, 90);
+        wheel(-100, true);
+        assert.strictEqual(bar.value, 91, 'Maj + molette : +1');
+        bar.set(3);
+        kd('ArrowDown');
+        assert.strictEqual(bar.value, 1, 'borné au minimum');
+        bar.dispatchEvent(new win.MouseEvent('dblclick', { bubbles: true }));
+        const input = bar.querySelector('.s-bar-input');
+        input.value = '37';
+        input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        assert.strictEqual(bar.value, 37, 'saisie : valeur exacte');
+        assert.deepEqual(changes, [90, 95, 96, 95, 90, 91, 1, 37]);
+    });
+
+    test('valueBar : un clic applique après un court délai, un double-clic ouvre la saisie sans rien appliquer', async () => {
+        const { ui, win, doc } = setup();
+        ui.DOUBLE_CLICK_MS = 30;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const changes = [];
+        const bar = ui.valueBar({ label: 'Entrée', min: 0, max: 100, integer: true, snap: 5, value: 33, onChange: (v) => changes.push(v) });
+        doc.body.append(bar);
+        bar.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 30, right: 200, bottom: 30 });
+        const pe = (type, x) => bar.dispatchEvent(new win.PointerEvent(type, { clientX: x, button: 0, pointerId: 1, bubbles: true }));
+        pe('pointerdown', 100);
+        pe('pointerup', 100);
+        assert.strictEqual(bar.value, 50, 'saut affiché tout de suite');
+        assert.deepEqual(changes, [], 'pas encore appliqué : peut-être un double-clic');
+        await wait(60);
+        assert.deepEqual(changes, [50], 'clic simple : appliqué');
+        pe('pointerdown', 20);
+        pe('pointerup', 20);
+        pe('pointerdown', 20);
+        pe('pointerup', 20);
+        bar.dispatchEvent(new win.MouseEvent('dblclick', { bubbles: true }));
+        assert.strictEqual(bar.value, 50, 'valeur d\'avant le double-clic');
+        const input = bar.querySelector('.s-bar-input');
+        assert.strictEqual(input.hidden, false);
+        assert.strictEqual(input.value, '50');
+        await wait(60);
+        assert.deepEqual(changes, [50], 'le double-clic n\'applique rien');
+        input.value = '42';
+        input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        assert.deepEqual(changes, [50, 42]);
+    });
+
+    test('orderGrip : réordonner au clavier (↑ ↓, focus gardé) et au glisser (ordre rendu au relâchement)', () => {
+        const { ui, win, doc } = setup();
+        const list = doc.createElement('div');
+        doc.body.append(list);
+        let order = ['a', 'b', 'c'];
+        const orders = [];
+        function render() {
+            list.replaceChildren(...order.map((k) => ui.h('div', { class: 's-order-row', 'data-k': k },
+                ui.orderGrip({ list, attr: 'data-k', label: 'Déplacer ' + k, onOrder: (o) => { orders.push(o.join('')); order = o; render(); } }))));
+            list.querySelectorAll('[data-k]').forEach((r) => {   // lignes de 34 px empilées
+                r.getBoundingClientRect = () => { const i = Array.from(r.parentNode.children).indexOf(r); return { top: i * 34, height: 34, bottom: i * 34 + 34 }; };
+            });
+        }
+        render();
+        const grip = (k) => list.querySelector('[data-k="' + k + '"] [data-role=order-grip]');
+        const kd = (el, key) => el.dispatchEvent(new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        assert.strictEqual(grip('a').getAttribute('aria-label'), 'Déplacer a');
+        kd(grip('c'), 'ArrowUp');
+        assert.deepEqual(order, ['a', 'c', 'b']);
+        assert.strictEqual(doc.activeElement, grip('c'), 'le focus suit la ligne déplacée');
+        kd(grip('a'), 'ArrowUp');
+        kd(grip('b'), 'ArrowDown');
+        assert.deepEqual(orders, ['acb'], 'premier ↑ et dernier ↓ : rien');
+        let g = grip('a');
+        const ptr = (type, y) => g.dispatchEvent(new win.MouseEvent(type, { bubbles: true, button: 0, clientY: y }));
+        ptr('pointerdown', 10);
+        assert.ok(g.closest('[data-k]').classList.contains('is-dragging'));
+        ptr('pointermove', 100);
+        assert.deepEqual(orders, ['acb'], 'pendant le glissé : rien d\'enregistré');
+        ptr('pointerup', 100);
+        assert.deepEqual(order, ['c', 'b', 'a']);
+        assert.deepEqual(orders, ['acb', 'cba']);
+        g = grip('b');
+        ptr('pointerdown', 40);
+        ptr('pointerup', 40);
+        assert.strictEqual(orders.length, 2, 'lâché à sa place : rien');
+    });
+
     test('point9 : neuf cases dans l\'ordre du pavé, clic et set', () => {
         const { ui } = setup();
         const picks = [];

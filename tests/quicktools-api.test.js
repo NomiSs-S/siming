@@ -308,10 +308,13 @@ module.exports = function (test) {
         st = call('align', { edge: 'left', relative: 'comp' });
         nearVec(r.L(3).position.value, [-50, 0], 'delta comp -120 -> -60 dans le parent');
 
+        // Un seul calque : aligné sur la composition, même en mode Sélection
         r.comp.select(r.A);
         st = call('align', { edge: 'left', relative: 'selection' });
-        assert.ok(/au moins 2 calques/.test(st.status.text));
-        assert.strictEqual(st.report, null);
+        assert.strictEqual(st.status.text, '1 calque aligné à gauche de la composition · Ctrl+Z pour annuler');
+        const alone = r.L(1).position.value.slice();
+        call('align', { edge: 'left', relative: 'comp' });
+        nearVec(r.L(1).position.value, alone, 'même résultat que Comp');
         r.comp.select();
         st = call('align', { edge: 'left', relative: 'comp' });
         assert.ok(/au moins 1 calque/.test(st.status.text));

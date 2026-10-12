@@ -27,14 +27,6 @@
     /** Ids séparés par des virgules -> tableau (vides retirés). */
     const parseIds = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
-    /** Déplace l'élément d'indice from à l'indice to (copie du tableau). */
-    SIMING.moveItem = function (items, from, to) {
-        const out = items.slice();
-        const [it] = out.splice(from, 1);
-        out.splice(Math.max(0, Math.min(out.length, to)), 0, it);
-        return out;
-    };
-
     /** Texte sans accents ni majuscules, pour les recherches. */
     SIMING.fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -211,23 +203,14 @@
             toolSearch.hidden = ts.length < SEARCH_FROM;
             const q = SIMING.fold(toolQuery.trim());
             const filtering = !toolSearch.hidden && q !== '';
-            const rows = ts.map((t, i) => {
+            const rows = ts.map((t) => {
                 const isOff = off.includes(t.id);
                 const b = map['hub.show.' + t.id];
-                const grip = h('button', {
-                    class: 's-grip', type: 'button', 'data-role': 'order-grip', disabled: filtering,
-                    title: filtering ? 'Vide la recherche pour réordonner' : 'Glisser pour déplacer (↑ ↓ au clavier)',
-                    'aria-label': 'Déplacer ' + t.name,
-                }, ui.icon('poignee', 16));
-                grip.addEventListener('keydown', (e) => {
-                    const dir = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
-                    if (!dir || i + dir < 0 || i + dir >= ts.length) return;
-                    e.preventDefault();
-                    onOrder(SIMING.moveItem(ts.map((x) => x.id), i, i + dir));
-                    const again = toolList.querySelector('[data-tool="' + t.id + '"] [data-role=order-grip]');
-                    if (again) again.focus();
+                const grip = ui.orderGrip({
+                    list: toolList, attr: 'data-tool', label: 'Déplacer ' + t.name, disabled: filtering,
+                    title: filtering ? 'Vide la recherche pour réordonner' : null,
+                    onOrder: (order) => { onOrder(order); status.set('Ordre des outils enregistré', 'ok'); },
                 });
-                grip.addEventListener('pointerdown', (e) => startDrag(e, row));
                 const eye = h('button', {
                     class: 's-icon-btn s-eye' + (isOff ? ' is-off' : ''), type: 'button', 'data-role': 'tool-visible',
                     'aria-pressed': String(!isOff), disabled: !isOff && off.length >= ts.length - 1,
@@ -247,36 +230,6 @@
             });
             toolList.replaceChildren(...rows);
             if (filtering && rows.every((r) => r.hidden)) toolList.append(h('div', { class: 's-empty', text: 'Aucun outil ne correspond' }));
-        }
-
-        /** Glisser une ligne par sa poignée : la ligne suit le pointeur, l'ordre est
-         *  enregistré au relâchement. */
-        function startDrag(e, row) {
-            if (e.button !== 0 || e.currentTarget.disabled) return;
-            const grip = e.currentTarget;
-            const before = Array.from(toolList.children).map((r) => r.getAttribute('data-tool'));
-            row.classList.add('is-dragging');
-            if (grip.setPointerCapture) { try { grip.setPointerCapture(e.pointerId); } catch (err) { /* hors navigateur */ } }
-            const move = (ev) => {
-                const others = Array.from(toolList.querySelectorAll('.s-order-row')).filter((r) => r !== row);
-                const next = others.find((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
-                if (next) { if (row.nextSibling !== next) toolList.insertBefore(row, next); }
-                else if (toolList.lastElementChild !== row) toolList.append(row);
-            };
-            const end = () => {
-                grip.removeEventListener('pointermove', move);
-                grip.removeEventListener('pointerup', end);
-                grip.removeEventListener('pointercancel', end);
-                row.classList.remove('is-dragging');
-                const after = Array.from(toolList.querySelectorAll('.s-order-row')).map((r) => r.getAttribute('data-tool'));
-                if (after.join(',') !== before.join(',')) {
-                    onOrder(after);
-                    status.set('Ordre des outils enregistré', 'ok');
-                }
-            };
-            grip.addEventListener('pointermove', move);
-            grip.addEventListener('pointerup', end);
-            grip.addEventListener('pointercancel', end);
         }
 
         // --- Raccourcis ----------------------------------------------------------------

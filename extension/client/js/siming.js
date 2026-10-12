@@ -19,6 +19,14 @@
         return n + ' ' + (n === 1 ? one : many);
     };
 
+    /** Déplace l'élément d'indice from à l'indice to (copie du tableau). */
+    SIMING.moveItem = function (items, from, to) {
+        const out = items.slice();
+        const [it] = out.splice(from, 1);
+        out.splice(Math.max(0, Math.min(out.length, to)), 0, it);
+        return out;
+    };
+
     /** Réglages du panneau (localStorage, clés préfixées « siming. »). */
     SIMING.settings = {
         get(key, fallback) {

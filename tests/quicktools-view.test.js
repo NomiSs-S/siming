@@ -82,11 +82,14 @@ module.exports = function (test) {
         assert.strictEqual(t.status.text, '1 keyframe lissée, entrée 33 % · Ctrl+Z pour annuler');
         assert.strictEqual(t.status.level, 'ok');
         const bar = t.$('[data-role=ease-out]');
-        bar.dispatchEvent(new t.win.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));   // 34 : applique aussi
+        bar.dispatchEvent(new t.win.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));   // 35 (de 5 en 5) : applique aussi
         await t.api.idle();
-        assert.strictEqual(t.status.text, '1 keyframe lissée, sortie 34 % · Ctrl+Z pour annuler');
-        assert.strictEqual(t.win.localStorage.getItem('siming.quicktools.easeOut'), '34');
-        assert.strictEqual(t.s.L(1).position.keyInTemporalEase(2)[0].influence, 34, '« sortie » = arrivée du mouvement = côté entrant de la keyframe');
+        assert.strictEqual(t.status.text, '1 keyframe lissée, sortie 35 % · Ctrl+Z pour annuler');
+        bar.dispatchEvent(new t.win.WheelEvent('wheel', { deltaY: -100, shiftKey: true, bubbles: true, cancelable: true }));   // Maj : 36
+        await t.api.idle();
+        assert.strictEqual(t.status.text, '1 keyframe lissée, sortie 36 % · Ctrl+Z pour annuler');
+        assert.strictEqual(t.win.localStorage.getItem('siming.quicktools.easeOut'), '36');
+        assert.strictEqual(t.s.L(1).position.keyInTemporalEase(2)[0].influence, 36, '« sortie » = arrivée du mouvement = côté entrant de la keyframe');
         assert.strictEqual(t.s.L(1).position.keyOutTemporalEase(2)[0].influence, 33, '« entrée » posée avant = côté sortant');
         const again = await setup({ prepare: (s) => { s.L(1).position.setSelectedAtKey(2, true); s.L(1).position.selected = true; } });
         assert.strictEqual(again.$('[data-role=ease-out]').value, 33, 'autre fenêtre jsdom : réglages à part');

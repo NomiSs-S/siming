@@ -189,6 +189,35 @@ module.exports = function (test) {
         assert.strictEqual(t.status.text, 'Règles par défaut rétablies');
     });
 
+    test('vue libellés : mots-clés réordonnés par priorité (poignée au clavier et au glisser), « mot* » expliqué', async () => {
+        const stored = JSON.stringify({ words: [{ words: 'logo', label: 9 }, { words: 'client', label: 5 }, { words: 'bg', label: 1 }], types: {} });
+        const t = await setup({ storage: { 'siming.labels.rules': stored }, prepare: (s) => s.comp.select(s.L.logo) });
+        await t.click(t.$('[data-role=analyze]'));
+        assert.deepEqual(t.groups(), ['Mot-clé « logo » 1'], 'LOGO_client.png : logo passe avant client');
+        await t.click(t.$$('[data-role=labels-tabs] .s-seg-btn')[1]);
+        assert.ok(t.$$('[data-pane=rules] .s-hint').some((e) => /fond\*/.test(e.textContent)), 'l\'astérisque est expliquée');
+        const grip = (i) => t.$$('[data-role=word-rules] [data-role=order-grip]')[i];
+        const words = () => t.$$('[data-role=word-input]').map((i) => i.value);
+        grip(1).dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+        assert.deepEqual(words(), ['client', 'logo', 'bg']);
+        assert.deepEqual(t.rules().words.map((w) => w.words), ['client', 'logo', 'bg'], 'ordre gardé');
+        assert.strictEqual(t.doc.activeElement, grip(0), 'le focus suit la règle déplacée');
+        t.$$('[data-role=word-rules] .s-rule-row').forEach((r) => {   // lignes de 34 px empilées
+            r.getBoundingClientRect = () => { const i = Array.from(r.parentNode.children).indexOf(r); return { top: i * 34, height: 34, bottom: i * 34 + 34 }; };
+        });
+        const g = grip(2);
+        const ptr = (type, y) => g.dispatchEvent(new t.win.MouseEvent(type, { bubbles: true, button: 0, clientY: y }));
+        ptr('pointerdown', 80);
+        ptr('pointermove', 5);
+        ptr('pointerup', 5);
+        assert.deepEqual(t.rules().words.map((w) => w.words), ['bg', 'client', 'logo'], 'glissé : bg en tête');
+        assert.deepEqual(t.rules().words.map((w) => w.label), [1, 5, 9], 'chaque couleur suit sa règle');
+        const calls = t.counter.calls;
+        await t.click(t.$$('[data-role=labels-tabs] .s-seg-btn')[0]);
+        assert.strictEqual(t.counter.calls, calls + 1, 'ordre changé : ré-analyse au retour');
+        assert.deepEqual(t.groups(), ['Mot-clé « client » 1'], 'client passe maintenant avant logo');
+    });
+
     test('vue libellés : règles gardées d\'un lancement à l\'autre, Entrée applique, analyser et appliquer', async () => {
         const stored = JSON.stringify({ words: [], types: { text: 7, bidon: 3 } });
         const t = await setup({ storage: { 'siming.labels.rules': stored }, prepare: (s) => s.comp.select(s.L.title, s.L.logo) });

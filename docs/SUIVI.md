@@ -173,6 +173,16 @@ Retour de Simon (Mac) : l'installeur répétait « After Effects est ouvert : fe
 - **Lien de développement** : `tools/._dev-install.command` (métadonnées macOS, 2026-10-08) montre que `dev-install.command` a été lancé sur un Mac depuis ce dépôt : ce Mac a un lien `com.siming` vers le dépôt, en plus de la version installée. L'installeur retire maintenant ce lien avant d'installer (le lien seul, jamais son contenu).
 - **Plantages d'AE** : cause non établie sans rapport de plantage (Console › Rapports de plantage › « After Effects… »). Pistes : quitter et relancer AE en boucle pour satisfaire l'installeur, deux SIMING chargés (lien de dev + version installée), lien vers un volume réseau ou partagé. Aucun sondage du panneau vers AE (pas de `setInterval`), rien d'exécuté par le panneau au démarrage qui touche au système.
 Tests : 245, 0 échec ; boucle vérifiée dans bash avec un faux `pgrep` (fermé, ouvert puis fermé, `i`, sans clavier), retrait du lien vérifié sur une jonction (dépôt intact).
+Publié le jour même à la demande de Simon : commit 3285df0, `SIMING-Installer-macOS.zip` et `INSTALLATION.md` remplacés dans la Release v1.3.0 (extension inchangée).
+
+### 2026-10-12 : lissage de 5 en 5, aligner un calque seul, « mot* » et priorité des règles (1.3.1)
+
+Demande de Simon (3 points).
+- **Barres de lissage** : `ui.valueBar` gagne `snap` (ici 5, valeurs entières) : glisser, molette et flèches par multiples de 5 (33 → 35), Maj = à l'unité (glissé fin cumulé : sans cumul, l'arrondi à l'unité mangeait chaque petit déplacement ; le défaut valait aussi pour les barres entières de la Boîte à outils). Un clic sans glisser n'est validé qu'après `ui.DOUBLE_CLICK_MS` (350 ms) : un double-clic ouvre la saisie sur la valeur d'avant sans rien appliquer (avant, le premier clic sautait et lissait les keyframes). Saisie libre (37).
+- **Aligner** : un seul calque sélectionné = sur la composition, même en mode Sélection (avant : « au moins 2 calques »).
+- **Libellés, mot seul** : « fond* » ne retient un texte que si ses mots sont exactement ceux du mot-clé (`Fond`, `fonds` oui ; `fond_txt`, `fond 2` non). Vaut pour chaque texte regardé (nom, source, fichier, dossiers).
+- **Libellés, priorité** : poignée sur chaque mot-clé (glisser, ↑ ↓) ; la poignée du hub (ordre des outils) devient le composant `ui.orderGrip`, partagé ; `SIMING.moveItem` passe dans `js/siming.js`.
+Versions : SIMING 1.3.1, Quick Tools 1.1.0, Libellés 1.1.0. Tests : 250, 0 échec ; rendu et gestes vérifiés dans Chrome à 260 px (page de démonstration).
 
 ## Pistes
 

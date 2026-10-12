@@ -6,7 +6,7 @@
  *  Pose l'étiquette de couleur des calques d'après des règles :
  *  - mots-clés d'abord, dans l'ordre de la liste, cherchés en mots entiers dans
  *    le nom du calque, le nom de sa source, son fichier et les dossiers du projet
- *    qui la contiennent (« .ai » vise l'extension du fichier) ;
+ *    qui la contiennent (« .ai » vise l'extension du fichier, « fond* » le mot seul) ;
  *  - sinon la nature du calque (texte, forme, vidéo, image…).
  *  Rien n'est automatique : analyze propose, la vue corrige, apply pose.
  *
@@ -110,7 +110,9 @@
         return out;
     }
 
-    /** « logo, .ai ; arrière-plan » -> [{ text, tokens }] ou [{ text, ext }] (extension). */
+    /** « logo, .ai ; fond* » -> [{ text, tokens }], [{ text, ext }] (extension) ou
+     *  [{ text, tokens, exact: true }] : l'astérisque finale demande le mot seul
+     *  (« fond* » vise « Fond » mais pas « fond_txt »). */
     function parsePhrases(str) {
         var parts = String(str || '').split(/[,;]+/), out = [];
         for (var i = 0; i < parts.length; i++) {
@@ -121,8 +123,12 @@
                 if (ext !== '') out.push({ text: raw, ext: ext });
                 continue;
             }
-            var tk = tokens(raw);
-            if (tk.length) out.push({ text: raw, tokens: tk });
+            var exact = raw.charAt(raw.length - 1) === '*';
+            var tk = tokens(exact ? raw.substring(0, raw.length - 1) : raw);
+            if (!tk.length) continue;
+            var ph = { text: raw, tokens: tk };
+            if (exact) ph.exact = true;
+            out.push(ph);
         }
         return out;
     }
@@ -166,7 +172,9 @@
                 if (ph.ext) {
                     hit = (info.ext === ph.ext);
                 } else {
-                    for (i = 0; i < texts.length && !hit; i++) hit = containsPhrase(texts[i], ph.tokens);
+                    for (i = 0; i < texts.length && !hit; i++) {
+                        hit = (!ph.exact || texts[i].length === ph.tokens.length) && containsPhrase(texts[i], ph.tokens);
+                    }
                 }
                 if (hit) {
                     return { rule: 'word:' + w, label: compiled.words[w].label,

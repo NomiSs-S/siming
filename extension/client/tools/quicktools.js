@@ -21,14 +21,14 @@
                 { ease: 'in', name: 'Entrée', text: 'Lisse le départ du mouvement (côté droit de la keyframe).' },
                 { ease: 'out', name: 'Sortie', text: 'Lisse l\'arrivée du mouvement (côté gauche).' },
                 { ease: 'both', name: 'Les deux', text: 'Clic sur le picto, ou relâcher le curseur : applique l\'influence réglée.',
-                    keys: [{ k: ['Maj'], t: 'glisser finement' }, { k: ['Alt', 'clic'], t: 'revenir à 33 %' }, { k: ['double-clic'], t: 'saisir' }] },
+                    keys: [{ k: ['glisser'], t: 'de 5 en 5' }, { k: ['Maj'], t: 'à l\'unité' }, { k: ['Alt', 'clic'], t: 'revenir à 33 %' }, { k: ['double-clic'], t: 'saisir une valeur' }] },
             ] },
             { title: 'Elastic', items: [
                 { icon: 'ressort', name: 'Appliquer Elastic', text: 'Un rebond après la dernière keyframe des propriétés animées sélectionnées, réglable dans l\'effet « Elastic Controller ». La croix le retire.' },
             ] },
             { title: 'Placer', items: [
                 { icon: 'ancre', name: 'Ancrage', text: 'Le point d\'ancrage va sur la partie visible des calques (masques compris) ; rien ne bouge à l\'écran.', keys: [{ k: ['Pavé 1–9'], t: 'les 9 positions' }] },
-                { icon: 'alignLeft', name: 'Aligner', text: 'Entre eux (Sélection) ou sur la composition (Comp), bords visibles, masques compris.' },
+                { icon: 'alignLeft', name: 'Aligner', text: 'Entre eux (Sélection) ou sur la composition (Comp), bords visibles, masques compris. Un seul calque : toujours sur la composition.' },
                 { icon: 'distCenterX', name: 'Répartir', text: '3 calques ou plus ; les deux extrêmes ne bougent pas.' },
             ] },
             { title: 'Rejouer', items: [
@@ -92,7 +92,7 @@
             const apply = () => run('ease', { mode: d.mode, influence: bar.value });
             const bar = ui.valueBar({
                 label: d.label, min: 1, max: 100, unit: ' %', value: pref(d.key, EASE_DEFAULT), defaultValue: EASE_DEFAULT,
-                role: 'ease-' + d.mode,
+                integer: true, snap: 5, role: 'ease-' + d.mode,
                 onChange: (v) => { settings.set('quicktools.' + d.key, v); gesture(picto, apply); },
             });
             picto = h('button', {

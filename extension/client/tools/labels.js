@@ -27,6 +27,7 @@
             ] },
             { title: 'Règles', items: [
                 { icon: 'chercher', name: 'Mots-clés', text: 'Avant la nature ; le premier de la liste gagne. Mot entier dans le nom du calque, de sa source ou de ses dossiers ; « .ai » vise l\'extension.' },
+                { icon: 'poignee', name: 'Priorité, mot seul', text: 'La poignée change l\'ordre des mots-clés. « fond* » vise le mot seul : « Fond » oui, « fond_txt » non.' },
                 { icon: 'etiquette', name: 'Par nature', text: 'Texte, forme, vidéo, image, son… : une couleur, ou « Ne pas changer ».' },
             ] },
         ],
@@ -141,7 +142,7 @@
         });
         const rulesPane = h('div', { class: 's-stack', 'data-pane': 'rules', hidden: true },
             labelRow('Mots-clés', 'avant la nature, le premier gagne'), wordList, addWord,
-            h('div', { class: 's-hint', text: 'Mots entiers séparés par des virgules, cherchés dans le nom du calque, de sa source, de son fichier et de ses dossiers du projet (majuscules, accents et pluriel ignorés). « .ai » vise une extension.' }),
+            h('div', { class: 's-hint', text: 'Mots entiers séparés par des virgules, cherchés dans le nom du calque, de sa source, de son fichier et de ses dossiers du projet (majuscules, accents et pluriel ignorés). « fond* » : le mot seul (« Fond » oui, « fond_txt » non). « .ai » vise une extension. La poignée change la priorité.' }),
             labelRow('Par nature'), typeList,
             h('div', { class: 's-settings-actions' }, reset));
 
@@ -396,6 +397,15 @@
             return el;
         }
 
+        /** Nouvel ordre des mots-clés (indices d'avant, en texte) : le premier gagne. */
+        function moveWords(order) {
+            const before = rules.words;
+            rules.words = order.map((k) => before[Number(k)]);
+            saveRules();
+            renderRules();
+            ctx.status.set('Priorité des mots-clés enregistrée', 'ok');
+        }
+
         function renderRules() {
             if (!rules) return;
             wordList.replaceChildren(...rules.words.map((w, i) => {
@@ -405,6 +415,10 @@
                 });
                 input.addEventListener('input', () => { w.words = input.value; saveRules(); });
                 return h('div', { class: 's-rule-row', 'data-word': String(i) },
+                    ui.orderGrip({
+                        list: wordList, attr: 'data-word', label: 'Déplacer la règle ' + (i + 1),
+                        title: 'Glisser pour changer la priorité (↑ ↓ au clavier)', onOrder: moveWords,
+                    }),
                     ui.labelSwatch({ palette, value: w.label, allowKeep: true, role: 'word-swatch', title: 'Couleur', onChange: (v) => { w.label = v; saveRules(); } }),
                     input,
                     h('button', {

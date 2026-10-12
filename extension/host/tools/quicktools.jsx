@@ -435,13 +435,14 @@
             return result('Point d\'ancrage placé sur ' + S.plural(rep.done, 'calque', 'calques'), rep);
         },
 
-        /** Aligne les calques sélectionnés. args : { edge, relative: 'selection' | 'comp' }. */
+        /** Aligne les calques sélectionnés. args : { edge, relative: 'selection' | 'comp' }.
+         *  Un seul calque sélectionné : sur la composition, quel que soit le mode. */
         align: function (args) {
             var comp = ae.getActiveComp();
             if (!comp) return error(MSG_NO_COMP);
             var edge = args && args.edge;
             if (!EDGES.hasOwnProperty(edge)) return warn('Alignement inconnu');
-            var toComp = !!(args && args.relative === 'comp');
+            var toComp = !!(args && args.relative === 'comp') || comp.selectedLayers.length === 1;
             var time = comp.time, skipped = [];
             var items = boxedLayers(comp, time, skipped);
             if (toComp && items.length < 1) return warn('Sélectionne au moins 1 calque à aligner sur la composition', skipped);

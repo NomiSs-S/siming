@@ -51,6 +51,27 @@ module.exports = function (test) {
         assert.strictEqual(c.classify({ type: 'image', texts: ['svg'], ext: 'png' }, ext).rule, 'type:image', 'extension : pas le nom');
     });
 
+    test('libellés : « fond* » = le mot seul (pas fond_txt), pluriel et majuscules toujours ignorés', () => {
+        const { core: c } = core();
+        assert.deepEqual(c.parsePhrases('fond*, arrière-plan *, .ai*'), [
+            { text: 'fond*', tokens: ['fond'], exact: true },
+            { text: 'arrière-plan *', tokens: ['arriere', 'plan'], exact: true },
+            { text: '.ai*', ext: 'ai' },
+        ]);
+        assert.deepEqual(c.parsePhrases('*'), [], 'astérisque seule : rien');
+        const rules = c.compileRules({ words: [{ words: 'fond*, arrière-plan*', label: 1 }, { words: 'txt', label: 2 }], types: {} });
+        const rule = (texts) => c.classify({ type: 'image', texts, ext: '' }, rules).rule;
+        assert.strictEqual(rule(['fond']), 'word:0');
+        assert.strictEqual(rule(['FOND']), 'word:0');
+        assert.strictEqual(rule(['Fonds']), 'word:0', 'pluriel');
+        assert.strictEqual(rule(['fond_txt']), 'word:1', 'pas le mot seul : règle suivante');
+        assert.strictEqual(rule(['fond 2']), 'type:image');
+        assert.strictEqual(rule(['Arrière-plan']), 'word:0');
+        assert.strictEqual(rule(['arrière-plan bleu']), 'type:image');
+        assert.strictEqual(rule(['calque', 'Fond']), 'word:0', 'un des textes suffit (source, dossier)');
+        assert.strictEqual(c.classify({ type: 'image', texts: ['fond'], ext: '' }, rules).reason, 'mot « fond* »');
+    });
+
     test('libellés : normalizeRules complète et borne les règles', () => {
         const { core: c } = core();
         assert.deepEqual(c.normalizeRules(null), c.defaultRules());

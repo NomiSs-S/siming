@@ -6,7 +6,7 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : 1.3.0** : Quick Tools (outil par défaut), Boîte à outils, Unparent, Libellés
+**État : 1.3.1** : Quick Tools (outil par défaut), Boîte à outils, Unparent, Libellés
 (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
 
 ## Structure
