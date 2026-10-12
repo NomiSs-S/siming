@@ -183,6 +183,7 @@ Demande de Simon (3 points).
 - **Libellés, mot seul** : « fond* » ne retient un texte que si ses mots sont exactement ceux du mot-clé (`Fond`, `fonds` oui ; `fond_txt`, `fond 2` non). Vaut pour chaque texte regardé (nom, source, fichier, dossiers).
 - **Libellés, priorité** : poignée sur chaque mot-clé (glisser, ↑ ↓) ; la poignée du hub (ordre des outils) devient le composant `ui.orderGrip`, partagé ; `SIMING.moveItem` passe dans `js/siming.js`.
 Versions : SIMING 1.3.1, Quick Tools 1.1.0, Libellés 1.1.0. Tests : 250, 0 échec ; rendu et gestes vérifiés dans Chrome à 260 px (page de démonstration).
+Publiée le jour même à la demande de Simon (« publie »), sans test dans After Effects : Release https://github.com/NomiSs-S/siming/releases/tag/v1.3.1 (« Latest ») : `SIMING-1.3.1.zxp` (signature vérifiée), installeurs Windows et macOS (ce dernier corrigé), `INSTALLATION.md`. Note affichée par l'installeur : « Ajout : lissage de 5 en 5, aligner un calque seul, mot seul et priorité des règles (Libellés) ».
 
 ## Pistes
 
