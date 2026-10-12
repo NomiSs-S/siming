@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const { zip, crc32 } = require('../tools/zip');
 const R = require('../tools/release');
 const M = require('../tools/manifest');
@@ -85,6 +86,26 @@ module.exports = function (test) {
         assert.ok(cmd.includes('osascript -l JavaScript'));
         assert.ok(cmd.includes('if (r.prerelease) return;'), 'pré-versions exclues');
         assert.ok(cmd.includes('releases?per_page=100'));
+    });
+
+    test('installeur macOS : After Effects reconnu à son seul processus, boucle dont on sort', () => {
+        const { cmd } = R.installers(LIST);
+        // pgrep -f voit aussi les processus d'appoint rangés dans le dossier d'AE (CEPHtmlEngine,
+        // AdobeCRDaemon…), qui survivent parfois à sa fermeture : l'installeur bouclait.
+        assert.ok(!cmd.includes('pgrep -f'), 'pas de recherche dans la ligne de commande');
+        assert.ok(cmd.includes('pgrep -x "After Effects"'), 'nom exact du processus');
+        assert.ok(cmd.includes('Cmd + Q'), 'sous macOS, fermer la fenêtre ne quitte pas AE');
+        assert.ok(/read -r -p "[^"]*Entrée[^"]*" go \|\| finish 1/.test(cmd), 'sans clavier, on sort au lieu de boucler');
+        assert.ok(cmd.includes('[ "$go" = "i" ] && break'), 'installer quand même');
+    });
+
+    test('installeur macOS : lien de développement retiré, jamais son contenu', () => {
+        const { cmd } = R.installers(LIST);
+        assert.ok(cmd.includes('if [ -L "$devlink" ]'), 'lien symbolique détecté');
+        assert.ok(cmd.includes('rm "$devlink"'), 'seul le lien est retiré');
+        assert.ok(!/rm -r[f]? "\$devlink/.test(cmd), 'jamais de rm -r sur le lien');
+        const bash = spawnSync('bash', ['-n'], { input: cmd, encoding: 'utf8' });
+        if (!bash.error) assert.strictEqual(bash.status, 0, 'syntaxe bash : ' + bash.stderr);
     });
 
     test('ZXPSignCmd en échec : code affiché, mot de passe jamais repris', () => {

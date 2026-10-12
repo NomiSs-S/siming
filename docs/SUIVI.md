@@ -165,6 +165,15 @@ Limites : la matte de piste et les effets qui rognent (Recadrer, Masque d'écrê
 
 Demande de Simon : « publie-la pour mes collègues ». Publiée sans test dans After Effects, à sa demande (corrections éventuelles en 1.3.1). Release https://github.com/NomiSs-S/siming/releases/tag/v1.3.0 (« Latest ») : `SIMING-1.3.0.zxp` (signature vérifiée ; manifeste avec `--enable-nodejs` sur les 5 panneaux, panneau isolé de la Boîte à outils, 4 cœurs d'outils), installeurs Windows et macOS, `INSTALLATION.md` (nouvelle section : préférence d'écriture de fichiers pour Copier / Exporter la frame). Note affichée par l'installeur : « Ajout : Boîte à outils, Quick Tools par défaut, panneau étroit, aide en fiches ». Outils : Quick Tools 1.0.1, Boîte à outils 1.0.0, Unparent 2.0.0, Libellés 1.0.0.
 
+### 2026-10-12 : installeur macOS qui boucle sur « ferme After Effects »
+
+Retour de Simon (Mac) : l'installeur répétait « After Effects est ouvert : ferme-le » sans fin, After Effects a planté plusieurs fois et une fenêtre disparaissait.
+- **Cause de la boucle** : `pgrep -f "Adobe After Effects"` cherchait dans la ligne de commande de tous les processus ; les processus d'appoint rangés dans le dossier d'AE (CEPHtmlEngine, rapporteur de plantage) y figurent et survivent parfois à la fermeture ou à un plantage. Autre piège : fermer la fenêtre d'AE ne le quitte pas sous macOS.
+- **Correction** (installeur seul, extension inchangée) : `pgrep -x "After Effects"` ; message « quitte-le avec Cmd + Q », Forcer à quitter s'il ne répond plus ; `i` = installer quand même ; sans clavier, sortie au lieu de boucler. `INSTALLATION.md` mis à jour.
+- **Lien de développement** : `tools/._dev-install.command` (métadonnées macOS, 2026-10-08) montre que `dev-install.command` a été lancé sur un Mac depuis ce dépôt : ce Mac a un lien `com.siming` vers le dépôt, en plus de la version installée. L'installeur retire maintenant ce lien avant d'installer (le lien seul, jamais son contenu).
+- **Plantages d'AE** : cause non établie sans rapport de plantage (Console › Rapports de plantage › « After Effects… »). Pistes : quitter et relancer AE en boucle pour satisfaire l'installeur, deux SIMING chargés (lien de dev + version installée), lien vers un volume réseau ou partagé. Aucun sondage du panneau vers AE (pas de `setInterval`), rien d'exécuté par le panneau au démarrage qui touche au système.
+Tests : 245, 0 échec ; boucle vérifiée dans bash avec un faux `pgrep` (fermé, ouvert puis fermé, `i`, sans clavier), retrait du lien vérifié sur une jonction (dépôt intact).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -227,6 +236,7 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - **Mot réservé d'ES3 comme nom de variable** (2026-10-07) : `var short` passe sous Node (tests verts) mais peut faire refuser tout le fichier par ExtendScript. Le test de syntaxe les refuse maintenant.
 - **Barres obliques inverses dans un script Node écrit par heredoc** (2026-10-07) : dans un gabarit `` `…` ``, `\\d` devient `\d` puis `d` ; pour modifier du code qui contient des expressions régulières, passer par l'outil Edit.
 - **Barre de valeur tassée** (2026-10-07) : `.s-bar` a `flex: 1` (pensé pour une rangée) ; seule dans une colonne flex, elle s'écrase à ~18 px. `.s-stack > .s-bar { flex: none; }`.
+- **`pgrep -f` pour savoir si une application tourne** (2026-10-12) : attrape tous les processus dont le chemin contient le nom (processus d'appoint dans le dossier de l'application) ; `pgrep -x` sur le nom exact du processus. Voir `NOTES-EXTENDSCRIPT.md`, Installation (macOS).
 
 ## Questions ouvertes à vérifier dans After Effects
 

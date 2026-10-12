@@ -13,7 +13,7 @@ Range-le où tu veux (Bureau, Documents) : tu le réutiliseras à chaque mise à
 
 ## 2. Installer ou mettre à jour
 
-1. Ferme After Effects.
+1. Quitte After Effects (sur Mac : **Cmd + Q** ; fermer sa fenêtre ne le quitte pas).
 2. Double-clique sur l'installeur.
 3. Appuie sur **Entrée** pour la dernière version (ou tape le numéro d'une autre version).
 4. Attends « SIMING … installé ».
@@ -43,3 +43,6 @@ Relance l'installeur et tape le numéro de la version voulue.
 - « Installeur Adobe (UPIA) introuvable » : Creative Cloud doit être installé. En secours, installe le fichier `.zxp` indiqué avec ZXP Installer (gratuit) : https://aescripts.com/learn/zxp-installer/
 - « Impossible de joindre GitHub » : vérifie ta connexion Internet, puis relance.
 - SIMING n'apparaît pas dans Fenêtre › Extensions : redémarre After Effects.
+- Mac, « After Effects est ouvert » alors qu'il semble fermé : il tourne encore sans fenêtre.
+  Quitte-le avec Cmd + Q, ou Cmd + Option + Échap › After Effects › **Forcer à quitter** s'il ne
+  répond plus. En dernier recours, tape `i` : l'installation se fait et compte au prochain lancement.

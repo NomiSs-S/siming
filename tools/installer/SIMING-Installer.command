@@ -59,8 +59,14 @@ tmp="${TMPDIR:-/tmp}/$name"
 echo "  Téléchargement de $tag..."
 curl -fsSL -H "User-Agent: SIMING-Installer" -o "$tmp" "$url" || { echo "  Téléchargement impossible."; finish 1; }
 
-while pgrep -f "Adobe After Effects" >/dev/null; do
-  read -r -p "  After Effects est ouvert : ferme-le, puis appuie sur Entrée " _
+# Seule l'application compte (processus « After Effects »). Ne pas chercher « Adobe After Effects »
+# dans les lignes de commande (option -f de pgrep) : les processus d'appoint rangés dans son dossier
+# (CEPHtmlEngine, AdobeCRDaemon...) survivent parfois à sa fermeture et l'installeur bouclait.
+while pgrep -x "After Effects" >/dev/null; do
+  echo "  After Effects est ouvert : quitte-le avec Cmd + Q (fermer sa fenêtre ne suffit pas)."
+  echo "  S'il ne répond plus : Cmd + Option + Échap, After Effects, Forcer à quitter."
+  read -r -p "  Entrée quand c'est fait (i = installer quand même, pris en compte au prochain lancement) : " go || finish 1
+  [ "$go" = "i" ] && break
 done
 
 if [ ! -x "$UPIA" ]; then
@@ -68,6 +74,14 @@ if [ ! -x "$UPIA" ]; then
   echo "  Secours : installe $tmp avec ZXP Installer (gratuit) : https://aescripts.com/learn/zxp-installer/"
   finish 1
 fi
+
+# Lien de développement (tools/dev-install.command) : After Effects verrait deux SIMING et
+# l'installeur Adobe pourrait écrire dans le dépôt à travers lui. On ne retire que le lien.
+devlink="$HOME/Library/Application Support/Adobe/CEP/extensions/com.siming"
+if [ -L "$devlink" ]; then
+  rm "$devlink" && echo "  Lien de développement retiré (tools/dev-install.command pour le remettre)."
+fi
+
 echo "  Installation..."
 if "$UPIA" --install "$tmp"; then
   echo
