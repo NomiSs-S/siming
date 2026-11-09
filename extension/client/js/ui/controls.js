@@ -176,6 +176,39 @@
         return el;
     };
 
+    /** Liste à cocher (lignes de 32 px, toute la ligne bascule la case). rows : [{ key, name, pill,
+     *  tone, checked, title }] ; pill (facultative) en pastille à droite. onChange(clés cochées) quand
+     *  une case change (à la main ou par setAll), pas à setRows. el.setRows(rows, vide?) : vide remplace
+     *  emptyText pour cette liste-là. el.checked() : clés cochées, dans l'ordre des lignes ;
+     *  el.setAll(bool) : tout cocher / décocher. */
+    ui.checkList = function ({ onChange, emptyText, role }) {
+        const el = h('div', { class: 's-rows', 'data-role': role || 'check-list' });
+        const boxes = () => Array.from(el.querySelectorAll('.s-check-row input'));
+        el.checked = () => boxes().filter((b) => b.checked).map((b) => b.closest('.s-check-row').getAttribute('data-key'));
+        const changed = () => { if (onChange) onChange(el.checked()); };
+        el.setRows = function (rows, empty) {
+            el.replaceChildren();
+            if (rows.length === 0) {
+                el.append(h('div', { class: 's-empty', text: empty || emptyText || 'Rien à afficher' }));
+                return;
+            }
+            for (const row of rows) {
+                const box = h('input', { type: 'checkbox', 'aria-label': row.name, onchange: changed });
+                box.checked = !!row.checked;
+                el.append(h('label', { class: 's-check-row', 'data-key': row.key, title: row.title },
+                    box,
+                    h('span', { class: 's-row-name', text: row.name }),
+                    row.pill ? h('span', { class: 's-pill' + (row.tone ? ' is-' + row.tone : ''), text: row.pill }) : null));
+            }
+        };
+        el.setAll = function (on) {
+            boxes().forEach((b) => { b.checked = !!on; });
+            changed();
+        };
+        el.setRows([]);
+        return el;
+    };
+
     /** Ligne de statut : pastille, message, texte à droite. Niveaux info / ok / warn / error. */
     ui.statusLine = function (opts) {
         const text = h('span', { class: 's-status-text' });

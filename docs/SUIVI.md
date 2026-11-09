@@ -229,6 +229,38 @@ Demande de Simon : « les installeurs ne marchent plus, mets-les à jour et rép
 
 Demande de Simon : « mets tout à jour pour la 1.4 ». Publiée sans test complet dans After Effects (Claude Code vérifié sur Mac le 2026-11-06). Commit 3d3be88 sur `main`. Release https://github.com/NomiSs-S/siming/releases/tag/v1.4.0 (Latest) : `SIMING-1.4.0.zxp` (signature vérifiée, `com.siming.mcp` et `mcp.jsx` inclus, aucun `._`), installeurs sans UPIA, `INSTALLATION.md`. Note affichée : « Ajout : Claude Code dans After Effects (Réglages › Claude), installeur qui ne dépend plus de Creative Cloud » ; les notes demandent de re-télécharger l'installeur une fois. Installeur Windows téléchargé de la Release : liste v1.4.0 en tête.
 
+### 2026-11-09 : Import PSD, import du lot côté hôte (non publié, à valider dans AE)
+
+Tâche 7 du plan Import PSD (spec `docs/superpowers/specs/2026-11-09-import-psd-design.md`) : `psdimport.importBatch`.
+- Par PSD : `importFile` en compo (calques rognés), compo et dossier « N Calques » rangés dans `02_ASSET` (racine d'abord, puis ailleurs, sinon créé), puis formes, textes, libellés. Tout dans un groupe d'annulation « Boîte à outils : importer les PSD ».
+- Rang des formes : parcours en profondeur de la compo (précompos créées par l'import à leur place), calques repérés par le nom du métrage `<calque>/<fichier>.psd` coupé au dernier « / », rang `nth` parmi les homonymes ; les groupes ne comptent pas.
+- `convertTextsIn` (Boîte à outils) et `labelLayers` (Libellés) extraits pour être réutilisés ; `convertPsdText` inchangé.
+- Statut : `n PSD importé(s) · t texte(s) · f forme(s)` + ` · k PSD illisible(s)` + ` · k forme(s) en erreur` + ` · textes non convertis (commande introuvable…)` + ` · Ctrl+Z pour annuler`. Les refus voulus (dégradé, calque mis à l'échelle…) ne sont jamais cités.
+- Un PSD dont le traitement échoue après l'import est compté illisible et ce qu'il a créé est retiré du projet (dans le même groupe d'annulation).
+- Faux After Effects : `importFile` (recettes par chemin), `ImportOptions`, `items.addFolder`, `item.remove()`, `openInViewer`.
+- **Reste à vérifier dans After** (voir `NOTES-EXTENDSCRIPT.md`) : onglets de Timeline laissés ouverts, dossier où `importFile` range ses éléments, noms de menu des styles de calque et de la conversion en texte.
+
+### 2026-11-09 : Import PSD, documentation et version 1.5.0 (non publiée, à valider dans AE)
+
+Tâche 9 du plan Import PSD : SIMING 1.5.0, Boîte à outils 1.1.0. Fiche d'aide « Importer les PSD », README (section Boîte à outils, formes et styles recréés, limites), scénario `TESTS-MANUELS.md` § Importer les PSD (sur une copie du projet client de référence, `PROJET_CLIENT`), pièges rassemblés dans `NOTES-EXTENDSCRIPT.md`.
+- Recréé : rectangles (tournés, arrondis à rayons égaux ; à coins inégaux, en tracé à l'identique), ellipses, autres formes en tracés, remplissage uni, contour centré ; styles ombre portée, ombre interne, lueur externe, lueur interne, biseautage et estampage, satin, incrustation couleur, contour.
+- Laissé en calque PSD, sans jamais le citer dans le statut : dégradés (remplissage, incrustation ; After refuserait les couleurs de dégradé écrites par script, à vérifier), motifs, contour intérieur / extérieur, pointillés ou extrémités et jonctions non standard, plusieurs sous-tracés avec contour ou rotation, soustraction / intersection, calques détourés ou masqués, remplissage à moins de 100 % avec styles, réglage de style sans équivalent. Contours de style, anticrénelage et texture du biseautage : pas recréés, sans message (limite dite dans le README).
+- **Pas de geste MCP** : `SIMING.mcp.GESTURES` n'accueille que des gestes de l'hôte, un appel chacun (`bridge.call(outil, geste, args)`). L'import a besoin du panneau, qui lit les PSD (Node, `SIMING.psd.read` puis `shapes`) avant de les envoyer à l'hôte : il ne tient pas dans cette forme. Claude Code peut déjà importer un fichier avec `run_extendscript` ; la recréation des formes reste un geste du panneau.
+- **Reste à constater dans After** (tout est dans le scénario) : noms de menu des styles et de la conversion en texte (anglais, français), matchNames et énumérations, dossier où `importFile` range ses éléments, écriture des couleurs de dégradé, `executeCommand` qui agit sur la compo du viewer, styles de calque modifiables ou non à l'import, un seul Ctrl+Z ou deux, taille de la lueur externe (échelle des effets 416,67 %), « Rectangle » de `7.psd` qui recouvre l'original, carré tourné à 45° et deux rectangles de « Rectangle 3 » de la planche test, ellipse en dégradé laissée en PSD, onglets de Timeline laissés ouverts.
+- Réimport d'un PSD = seconde copie ; un PSD en échec n'arrête pas le lot ; libellés posés avec les règles enregistrées de l'outil Libellés. Release non faite : `node tools/release.js` et la Release GitHub après les essais dans After.
+
+### 2026-11-09 : Import PSD, corrections de la revue finale (non publié, à valider dans AE)
+
+Revue de toute la branche `feat/import-psd` : la règle « mieux vaut un calque PSD intact qu'une forme approximative » appliquée partout où l'on devinait.
+- **Modes de fusion des styles** : Photoshop écrit les énumérations tantôt en code de 4 lettres (`Scrn`, `Mltp`), tantôt en nom long (`screen`, `blendSubtraction`) ; `7.psd` a les noms longs. `styles.js` traduit les deux vers le vocabulaire de l'hôte ; une valeur inconnue (mode, technique, source, style, direction, position) refuse le style au lieu de prendre la valeur par défaut.
+- **Contours de style** : une courbe autre que linéaire (lue point par point, jamais par son nom traduit), un satin sans contour linéaire (celui de Photoshop par défaut ne l'est pas, et l'on ne sait pas encore lequel After reproduit), un biseau à texture ou à contour : calque laissé en PSD. Le README ne promet plus d'approximation.
+- **Forme d'origine** (rectangle, rectangle arrondi, ellipse) crue seulement si **chaque nœud et ses poignées** sont là où elle les met, dans l'ordre du contour (0,5 px) ; avant, seule la boîte des nœuds était comparée (un coin rentré gardait la même boîte). Appariement origine / sous-tracé par `keyOriginIndex` ; `keyShapeInvalidated` jamais cru. Le tracé à l'identique reste le repli, toujours exact.
+- **Taille du métrage** comparée à la boîte du PSD avant de poser une forme (1 px de tolérance) : un écart (styles fusionnés par After, JSON d'un autre calque) devient une « forme en erreur » visible, plus un décalage muet.
+- **Compo active vérifiée** après `openInViewer` (et avant chaque commande de style) : jamais de `executeCommand` sur la compo de l'utilisateur ; sinon le PSD est compté illisible.
+- **Effets multiples** (`lmfx`, `lfxs`, ex. deux ombres portées) : non décodés (pas de fichier d'exemple pour s'assurer de leur sens à côté de `lfx2`), leur présence laisse le calque en PSD.
+- Aussi : base d'un détourage, tracé inversé ou désactivé (drapeaux `vsms`), remplissage initial « tous les pixels » (enregistrement de type 8 du tracé, présent à 0 dans les vrais fichiers) et mode de calque inconnu : laissés en PSD ; limite des angles du contour reprise du PSD ; « 1 PSD illisible » accordé ; progression de lecture peinte avant chaque PSD (lecture asynchrone) ; liste sans dossier : « Aucun dossier : choisis-le avec « Changer de dossier » ».
+- Restent pour plus tard (revue, mineurs) : éléments importés dans le dossier sélectionné du Projet, commentaire et branches mortes de `styleValue`, focus à l'ouverture / fermeture de la liste, `render(importBatch)`, `.s-link` / `.s-check-row` hors du bloc des composants, structure de CLAUDE.md, exceptions de la conversion en texte avalées dans le lot, PSD 16 / 32 bits.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

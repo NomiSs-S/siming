@@ -112,6 +112,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-pill { font-size: 10px; padding: 2px 8px; border-radius: 9px; }
 .s-pill.is-linked { background: var(--accent-soft); color: #BFDBFA; }
 .s-pill.is-detached { background: var(--warn-soft); color: var(--warn); }
+.s-check-row { width: 100%; height: 32px; flex: none; border-radius: 3px; display: flex; align-items: center; gap: 10px; padding: 0 10px; cursor: pointer; }
+.s-check-row:hover { background: var(--bg-hover); }
+.s-check-row input { accent-color: var(--accent); margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+.s-pill.is-done { background: var(--bg-surface); color: var(--text-muted); }
 .s-row-action { display: none; font-size: 11px; font-weight: 600; }
 .s-row-action.is-linked { color: var(--accent-text); }
 .s-row-action.is-detached { color: var(--warn); }
@@ -308,6 +312,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 /* Séquencer : deux barres côte à côte, qui s'empilent quand la place manque */
 .s-bar-pair { display: flex; flex-wrap: wrap; gap: 4px; }
 .s-bar-pair .s-bar { flex: 1 1 120px; }
+
+/* Importer les PSD : liste à cocher à la place de la boîte (dossier, Tout / Rien, lignes, boutons) */
+.s-psd-pane { flex: 1; min-height: 0; }
+.s-psd-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.s-psd-folder { flex: 1; min-width: 0; font-family: var(--mono); font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-psd-picks { display: flex; gap: 2px; }
+.s-link { flex: none; min-width: 32px; height: 30px; padding: 0 8px; border: 0; border-radius: 3px; background: transparent; color: var(--accent-text); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.s-link:hover { background: var(--bg-hover); }
+.s-link:disabled { color: var(--text-muted); cursor: default; background: transparent; }
 
 /* Aide en fiches : en-tête, fiches (picto ou numéro, nom, une phrase, touches), pied */
 .s-help-backdrop { padding: 8px; }

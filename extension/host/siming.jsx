@@ -187,6 +187,24 @@
         return a !== null && b !== null && a.index === b.index;
     };
 
+    /** Identifiant d'une commande de menu d'après son nom (anglais, français : le premier connu), sinon
+     *  fallback (0 par défaut : rien ne sera lancé). `app.executeCommand` ne s'appelle qu'avec un id > 0. */
+    ae.commandId = function (names, fallback) {
+        for (var i = 0; i < names.length; i++) {
+            try {
+                var id = app.findMenuCommandId(names[i]);
+                if (id > 0) return id;
+            } catch (e) { /* nom suivant */ }
+        }
+        return fallback || 0;
+    };
+
+    /** Désélectionne tous les calques de la comp. */
+    ae.deselectLayers = function (comp) {
+        var sel = comp.selectedLayers;
+        for (var i = 0; i < sel.length; i++) sel[i].selected = false;
+    };
+
     /** Calque de la comp portant cet identifiant, ou null. */
     ae.findLayerById = function (comp, id) {
         for (var i = 1; i <= comp.numLayers; i++) {

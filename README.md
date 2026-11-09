@@ -4,12 +4,12 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.4.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.5.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
 | Quick Tools | 1.1.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir (sur la partie visible, masques compris) |
-| Boîte à outils | 1.0.0 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, expressions en keyframes |
+| Boîte à outils | 1.1.0 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, importer les PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.1.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
 
@@ -95,6 +95,29 @@ est cerclé de bleu et **Entrée** le rejoue.
 6. **Afficher la source dans le Projet** (Alt + clic : son fichier dans l'Explorateur / le Finder),
    **Convertir les textes PSD** en texte modifiable (sélection, sinon toute la compo) et
    **Convertir les expressions en keyframes** (une par image, expression désactivée, son texte gardé).
+7. **Importer les PSD** : ouvre la liste des `.psd` de `02_RESSOURCES/02_ASSET` (cherché depuis le dossier du
+   projet en remontant ; « Changer de dossier » pour un autre). Ceux déjà importés
+   sont décochés. Un clic sur « Importer N PSD » : chaque PSD devient une composition (calques
+   rognés) rangée dans `02_ASSET` du panneau Projet, ses **textes** sont convertis en texte
+   modifiable, ses **formes** recréées en calques de forme, et ses calques reçoivent leur **libellé** (règles de
+   l'outil Libellés). Un seul Ctrl+Z défait le lot ; la ligne de statut dit combien de PSD, de
+   textes et de formes (« 3 PSD importés · 12 textes · 8 formes »), et ajoute ce qui a échoué.
+
+Formes recréées : rectangles (tournés ou arrondis à rayons égaux ; à coins inégaux, en tracé à
+l'identique), ellipses et autres formes vectorielles (en tracés), avec remplissage uni et contour centré, ainsi que les styles de calque
+ombre portée, ombre interne, lueur externe, lueur interne, biseautage et estampage, satin,
+incrustation couleur et contour. Tout ce qui ne peut pas être recréé fidèlement **reste un calque
+PSD**, tel qu'After Effects l'a importé, sans message : dégradés (de remplissage ou en incrustation),
+motifs, contours intérieurs ou extérieurs, contours en pointillés ou aux extrémités et jonctions
+non standard, plusieurs tracés avec un contour ou une rotation, soustraction ou intersection de
+formes, calques détourés ou masqués (ou servant de base à un détourage), masque vectoriel inversé
+ou désactivé, remplissage à moins de 100 % avec des styles, réglage de style qu'After Effects ne
+sait pas reproduire : **contour de style** (courbe) autre que linéaire, satin dont le contour n'est
+pas linéaire, biseautage à texture ou à contour, plusieurs styles d'une même sorte (deux ombres…).
+Un rectangle ou une ellipse retouchés point par point dans Photoshop sont recréés en tracé, à
+l'identique. Si After Effects importe un calque à une autre taille que dans le PSD (styles fusionnés
+dans les pixels), la forme n'est pas posée et le statut compte une « forme en erreur ». Les PSD 16 et
+32 bits sont importés, mais leurs formes ne sont pas lues (« 0 forme »).
 
 Alt + clic donne la variante d'un geste ; Entrée rejoue la variante choisie.
 

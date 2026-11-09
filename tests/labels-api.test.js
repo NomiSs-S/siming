@@ -97,4 +97,18 @@ module.exports = function (test) {
         assert.strictEqual(app.undoGroups.length, 2, 'rien à poser : pas de groupe d\'annulation');
         assert.strictEqual(call(sandbox, 'apply', { compId: 999, changes: [{ id: 1, label: 2 }] }).status.level, 'warn');
     });
+
+    test('libellés _core.labelLayers : pose les étiquettes proposées, saute « ne pas changer » et ce qui est déjà bon, compte les changés, sans groupe d\'annulation', () => {
+        const { sandbox } = loadHost();
+        const { comp, L, layer } = labelScene();
+        const core = sandbox.SIMING.getTool('labels')._core;
+        const layers = [L.title, L.shape, L.logo, L.camera].map(layer);
+        L.shape.label = 8;                                    // déjà la bonne couleur
+        const rules = { words: [{ words: 'logo', label: 9 }], types: { text: 2, shape: 8, camera: -1 } };
+        assert.strictEqual(core.labelLayers(layers, rules), 2);
+        assert.deepEqual([L.title, L.shape, L.logo, L.camera].map((s) => s.label), [2, 8, 9, 0]);
+        assert.strictEqual(core.labelLayers(layers, rules), 0, 'rien de plus à changer');
+        assert.strictEqual(core.labelLayers(comp.layers.map((s) => layer(s)), undefined) > 0, true, 'sans règles : celles par défaut');
+        assert.deepEqual(app.undoGroups, []);
+    });
 };

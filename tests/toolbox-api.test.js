@@ -321,7 +321,7 @@ module.exports = function (test) {
         assert.ok(/Aucun calque sélectionné/.test(call('revealSource', {}).status.text));
     });
 
-    test('API convertPsdText : calques texte d\'un PSD convertis un par un (comp entière ou sélection), autres signalés', () => {
+    test('API convertPsdText : calques texte d\'un PSD convertis un par un (comp entière ou sélection), les autres passés sous silence', () => {
         const r = rig();
         const comp = r.comp;
         const psd = (name) => footage(name + '/maquette.psd');
@@ -331,8 +331,9 @@ module.exports = function (test) {
         comp.addLayer('Image', { source: footage('image.png') });
         const { call } = host();
         const st = call('convertPsdText', {});
-        assert.strictEqual(st.status.text, '2 textes Photoshop convertis en texte modifiable · 1 ignoré(s) · Ctrl+Z pour annuler');
-        assert.deepEqual(st.report.skipped, ['Photo : pas un calque texte Photoshop']);
+        assert.strictEqual(st.status.text, '2 textes Photoshop convertis en texte modifiable · Ctrl+Z pour annuler');
+        assert.deepEqual(st.report.skipped, [], 'calques non convertis : pas cités');
+        assert.strictEqual(st.status.level, 'ok');
         assert.deepEqual(app.commands, [3799, 3799, 3799], 'un calque à la fois');
         assert.strictEqual(T1.kind, 'text');
         assert.strictEqual(T2.kind, 'text');
@@ -345,6 +346,10 @@ module.exports = function (test) {
         comp.select(T3);
         assert.strictEqual(call('convertPsdText', {}).status.text, '1 texte Photoshop converti en texte modifiable · Ctrl+Z pour annuler');
         assert.strictEqual(T4.kind, 'av');
+        // Comp entière : le verrouillé n'est pas cité
+        comp.select();
+        assert.deepEqual(call('convertPsdText', {}).report.skipped, []);
+        // Sélectionné : il l'est (geste explicite)
         comp.select(T4);
         const locked = call('convertPsdText', {});
         assert.strictEqual(locked.status.level, 'warn');
@@ -361,6 +366,31 @@ module.exports = function (test) {
         assert.ok(/introuvable dans cette langue/.test(unknown.status.text), unknown.status.text);
         assert.strictEqual(app.commands.length, n);
         assert.strictEqual(T5.kind, 'av');
+    });
+
+    test('API _core.convertTextsIn : convertit les calques PSD donnés (comp du viewer), sans groupe d\'annulation ; verrouillés cités seulement si demandé', () => {
+        const r = rig();
+        const comp = r.comp;
+        const psd = (name) => footage(name + '/maquette.psd');
+        const T1 = comp.addLayer('Titre', { source: psd('Titre'), psdText: 'Mon titre' });
+        const IM = comp.addLayer('Photo', { source: psd('Photo') });
+        const T2 = comp.addLayer('Crédit', { source: psd('Crédit'), psdText: 'Crédit', locked: true });
+        const { sandbox } = host();
+        const core = sandbox.SIMING.getTool('toolbox')._core;
+        const pool = () => comp.layers.map((s) => comp.layer(comp.layers.indexOf(s) + 1));
+        const rep = core.convertTextsIn(comp, pool(), false);
+        assert.deepEqual(JSON.parse(JSON.stringify(rep)), { done: 1, skipped: [] });
+        assert.strictEqual(T1.kind, 'text');
+        assert.strictEqual(IM.kind, 'av');
+        assert.strictEqual(T2.kind, 'av', 'verrouillé : laissé');
+        assert.deepEqual(app.undoGroups, []);
+        assert.deepEqual(comp.selectedLayers, []);
+        assert.deepEqual(JSON.parse(JSON.stringify(core.convertTextsIn(comp, pool(), true))), { done: 0, skipped: ['Crédit : calque verrouillé'] });
+        app.menuNames = {};
+        const n = app.commands.length;
+        assert.deepEqual(JSON.parse(JSON.stringify(core.convertTextsIn(comp, [comp.layer(comp.layers.indexOf(IM) + 1)], false))), { done: 0, skipped: [], missing: true });
+        assert.strictEqual(app.commands.length, n, 'commande introuvable : rien de lancé');
+        assert.deepEqual(JSON.parse(JSON.stringify(core.convertTextsIn(comp, [comp.layer(1)], false))), { done: 0, skipped: [] }, 'aucun calque à convertir : pas de manque signalé');
     });
 
     test('API frame : PNG rendu dans le dossier temporaire, état, copie par system.callSystem, préférence d\'écriture', () => {

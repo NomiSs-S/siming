@@ -159,7 +159,7 @@ En 1.0.0, seuls les composants dont Unparent et le hub ont besoin sont codés
   étiquette, aligner et répartir, boîte à outils, appareil photo (frame), fond, source
   (dossier et flèche), texte (T et curseur), exporter (flèche vers un bac), décliner (deux cadres
   de formats), zone (crochets de la zone de travail), rogner (recadrer l'image), figer (trois keyframes),
-  modes de séquence (seqCascade, seqReverse, seqRandom : calques en escalier), rognerDuree : 54 icônes).
+  modes de séquence (seqCascade, seqReverse, seqRandom : calques en escalier), rognerDuree, importer (flèche vers un bord, « Importer les PSD ») : 55 icônes).
 - Teintes par contexte via CSS : repos `#8A8A8A`, survol `--text`, actif `--accent-text`, blanc sur fond bleu.
 
 ## 8. Textes

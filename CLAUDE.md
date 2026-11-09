@@ -6,7 +6,7 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : 1.4.0** : Quick Tools (outil par défaut), Boîte à outils, Unparent, Libellés, et
+**État : 1.5.0** : Quick Tools (outil par défaut), Boîte à outils (dont Importer les PSD), Unparent, Libellés, et
 Claude Code (serveur MCP local, Réglages › Claude ; spec
 `docs/superpowers/specs/2026-11-06-claude-code-mcp-design.md`)
 (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).

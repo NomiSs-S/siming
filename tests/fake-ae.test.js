@@ -119,6 +119,39 @@ module.exports = function (test) {
         assert.strictEqual(app.project.activeItem, null);
     });
 
+    test('faux AE : importFile fabrique la compo d\'après la recette, range les métrages dans « <nom> Calques » ; openInViewer et addFolder', () => {
+        const { FakeFile, FolderItem } = require('./fake-ae');
+        const sb = createSandbox();
+        const file = new FakeFile('/tmp/x/Fond.psd');
+        const opts = new sb.ImportOptions(file);
+        assert.strictEqual(opts.canImportAs(sb.ImportAsType.COMP_CROPPED_LAYERS), true);
+        assert.strictEqual(new sb.ImportOptions(new FakeFile('/tmp/x/a.png')).canImportAs(sb.ImportAsType.COMP), false);
+        opts.importAs = sb.ImportAsType.COMP_CROPPED_LAYERS;
+        app.importRecipes[file.fsName] = { layers: [{ name: 'A', psdText: 'a' }, { name: 'G', group: { layers: [{ name: 'B' }] } }] };
+        const comp = app.project.importFile(opts);
+        assert.ok(comp instanceof sb.CompItem);
+        assert.strictEqual(comp.name, 'Fond');
+        assert.deepStrictEqual(comp.layers.map((s) => s.name), ['A', 'G']);
+        assert.strictEqual(comp.layers[0].source.name, 'A/Fond.psd');
+        assert.strictEqual(comp.layers[0].source.mainSource.file.name, 'Fond.psd');
+        assert.strictEqual(comp.layers[1].source.layers[0].source.name, 'B/Fond.psd');
+        const calques = app.project.items.filter((it) => it instanceof FolderItem && it.name === 'Fond Calques');
+        assert.strictEqual(calques.length, 1);
+        assert.strictEqual(comp.layers[0].source.parentFolder, calques[0]);
+        assert.strictEqual(comp.parentFolder, null, 'la compo reste à la racine');
+        app.importRecipes[file.fsName] = { throws: 'boom' };
+        assert.throws(() => app.project.importFile(opts), /boom/);
+        // openInViewer rend la compo active ; addFolder crée un dossier à la racine
+        assert.strictEqual(app.project.activeItem, null);
+        comp.openInViewer();
+        assert.strictEqual(app.project.activeItem, comp);
+        assert.deepStrictEqual(app.viewerOpens, [comp.id]);
+        const f = app.project.items.addFolder('Dossier');
+        assert.ok(f instanceof FolderItem && f.parentFolder === null && app.project.items.indexOf(f) >= 0);
+        app.project.items = [];
+        assert.strictEqual(typeof app.project.items.addFolder, 'function', 'après un reset aussi');
+    });
+
     test('bac à sable : $.global est le contexte global', () => {
         const sb = createSandbox();
         vm.runInContext('$.global.X = 42;', sb);

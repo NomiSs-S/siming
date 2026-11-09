@@ -74,6 +74,10 @@ function LayerRef(state, comp) {
         enumerable: true,
     });
     Object.defineProperty(this, 'locked', { get: () => state.locked, set: (v) => { state.locked = !!v; }, enumerable: true });
+    // Visibilité (l'œil), mode de fusion, opacité (propriété de la transformation)
+    Object.defineProperty(this, 'enabled', { get: () => state.enabled !== false, set: (v) => { state.enabled = !!v; }, enumerable: true });
+    Object.defineProperty(this, 'blendingMode', { get: () => state.blendingMode, set: (v) => { editable('blendingMode'); state.blendingMode = Number(v); }, enumerable: true });
+    Object.defineProperty(this, 'opacity', { get: () => this.transform.property('ADBE Opacity'), enumerable: false });
     // Étiquette de couleur : 0 = aucune, 1 à 16 = couleurs des Préférences › Étiquettes
     Object.defineProperty(this, 'label', { get: () => state.label, set: (v) => { state.label = Number(v); }, enumerable: true });
     // Nature : calque nul / de réglage, source (FootageItem, FakeComp) ou null
@@ -103,8 +107,22 @@ LayerRef.prototype.property = function (x) {
     if (x === 'ADBE Mask Parade' || x === 'Masks') return masksOf(st);
     if (x === 1 || x === 'ADBE Transform Group' || x === 'Transform') return new P.GroupRef(st.transform, this._ctx);
     if (x === 2 || x === 'ADBE Effect Parade' || x === 'Effects') return new P.GroupRef(st.effects, this._ctx);
+    if (x === 'ADBE Layer Styles') {
+        if (!st.layerStyles) st.layerStyles = P.makeLayerStyles();
+        return new P.GroupRef(st.layerStyles, this._ctx);
+    }
     if (typeof x === 'number') return null;
     return this.transform.property(x) || this.property('ADBE Effect Parade').property(x);
+};
+
+/** Modes de fusion (énumération BlendingMode d'ExtendScript), sous-ensemble utilisé par SIMING.
+ *  SUBTRACT et DIVIDE manquent exprès : selon la version d'After Effects, l'énumération ne les a pas. */
+const BlendingMode = {
+    NORMAL: 5212, DISSOLVE: 5213, DANCING_DISSOLVE: 5214, DARKEN: 5215, MULTIPLY: 5216, LINEAR_BURN: 5217,
+    COLOR_BURN: 5218, DARKER_COLOR: 5219, LIGHTEN: 5220, SCREEN: 5221, LINEAR_DODGE: 5222, COLOR_DODGE: 5223,
+    LIGHTER_COLOR: 5224, OVERLAY: 5225, SOFT_LIGHT: 5226, HARD_LIGHT: 5227, LINEAR_LIGHT: 5228, VIVID_LIGHT: 5229,
+    PIN_LIGHT: 5230, HARD_MIX: 5231, DIFFERENCE: 5232, EXCLUSION: 5233, HUE: 5234, SATURATION: 5235,
+    COLOR: 5236, LUMINOSITY: 5237,
 };
 
 /** Modes de masque (énumération MaskMode d'ExtendScript). */
@@ -155,6 +173,11 @@ LayerRef.prototype.moveBefore = function (other) {
     const arr = this._comp.layers;
     arr.splice(arr.indexOf(this._state), 1);
     arr.splice(arr.indexOf(other._state), 0, this._state);
+};
+/** Supprime le calque (refusé s'il est verrouillé). */
+LayerRef.prototype.remove = function () {
+    if (this._state.locked) throw new Error('Unable to remove: layer is locked');
+    this._comp.removeLayer(this._state);
 };
 LayerRef.prototype.moveToEnd = function () {
     const arr = this._comp.layers;
@@ -239,15 +262,26 @@ function PlaceholderSource() {}
 /** Source fichier : file (FakeFile), isStill (image fixe). */
 function FileSource(file, isStill) { this.file = file; this.isStill = !!isStill; }
 
+/** item.remove() : retire l'élément du projet, et avec lui ce que contient un dossier ; la compo du viewer se ferme. */
+function removeItem(item) {
+    const items = app.project.items;
+    for (const child of items.filter((it) => it.parentFolder === item)) removeItem(child);
+    const i = items.indexOf(item);
+    if (i < 0) throw new Error('Unable to remove: item is already gone');
+    items.splice(i, 1);
+    if (app.project.activeItem === item) app.project.activeItem = null;
+}
+
 class FolderItem {
     constructor(name, parentFolder) {
         this.id = nextId++;
         this.name = name;
         this.parentFolder = parentFolder || null;
     }
+    remove() { removeItem(this); }
 }
 
-/** Métrage : mainSource (SolidSource | FileSource | PlaceholderSource), hasVideo, hasAudio. */
+/** Métrage : mainSource (SolidSource | FileSource | PlaceholderSource), hasVideo, hasAudio, width / height (opts). */
 class FootageItem {
     constructor(name, mainSource, opts) {
         const o = opts || {};
@@ -259,7 +293,10 @@ class FootageItem {
         this.parentFolder = o.parentFolder || null;
         this.label = 0;
         this.selected = false;   // panneau Projet
+        if (o.width !== undefined) this.width = o.width;     // taille en pixels (calque d'un PSD : sa boîte)
+        if (o.height !== undefined) this.height = o.height;
     }
+    remove() { removeItem(this); }
 }
 
 /** En-tête PNG (signature + bloc IHDR) d'une image w × h : ce que lit le cœur hôte. */
@@ -332,6 +369,7 @@ class FakeComp extends CompItem {
                 id: this.noIds ? undefined : nextId++, parent: null, rect: Object.assign({}, st.rect),
                 transform: P.cloneState(st.transform, null), effects: P.cloneState(st.effects, null),
                 contents: st.contents ? P.cloneState(st.contents, null) : null,
+                layerStyles: st.layerStyles ? P.cloneState(st.layerStyles, null) : undefined,
             });
             map.set(st, n);
             c.layers.push(n);
@@ -347,6 +385,13 @@ class FakeComp extends CompItem {
         fs.writeFileSync(file.fsName, pngHeader(this.width, this.height));
     }
     get numLayers() { return this.layers.length; }
+    remove() { removeItem(this); }
+    /** Ouvre la comp dans le viewer : elle devient l'élément actif, celui sur lequel agit app.executeCommand. */
+    openInViewer() {
+        app.project.activeItem = this;
+        app.viewerOpens.push(this.id);
+        return null;
+    }
     layer(i) {
         if (i < 1 || i > this.layers.length) throw new Error('Layer index out of range: ' + i);
         return refOf(this.layers[i - 1], this);
@@ -374,7 +419,7 @@ class FakeComp extends CompItem {
         return Object.assign(
             {
                 id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1,
-                kind: o.kind || 'av', threeD: !!o.threeD,
+                kind: o.kind || 'av', threeD: !!o.threeD, enabled: true, blendingMode: BlendingMode.NORMAL,
                 transform: P.makeTransform(!!o.threeD), effects: P.makeEffects(),
                 contents: o.kind === 'shape' ? P.makeShapeContents() : null,
                 rect: { top: 0, left: 0, width: 100, height: 100 },
@@ -408,6 +453,13 @@ const SCRIPT_WRITE_KEY = 'Pref_SCRIPTING_FILE_NETWORK_SECURITY';
 
 /** Commandes de menu connues (noms anglais, comme un After Effects en anglais). */
 const MENU_COMMANDS = { 'Convert to Editable Text': 3799, 'Reveal Layer Source in Project': 2517 };
+/** Commandes Calque › Styles de calque : id -> groupe de style (ajouté au calque sélectionné). */
+const STYLE_COMMANDS = {};
+for (const group of Object.keys(P.LAYER_STYLE_DEFS)) {
+    const def = P.LAYER_STYLE_DEFS[group];
+    MENU_COMMANDS[def.menu] = def.id;
+    STYLE_COMMANDS[def.id] = group;
+}
 
 /** Faux app.preferences : getPrefAsString renvoie les 4 octets ARGB sous forme de
  *  caractères, comme After Effects en encodage BINARY. `labels[i]` = étiquette n° i + 1. */
@@ -445,11 +497,94 @@ function makePreferences() {
     };
 }
 
+/** Liste des éléments du projet : un tableau qui sait aussi `addFolder(nom)` (dossier à la racine). */
+function itemList(arr) {
+    Object.defineProperty(arr, 'addFolder', {
+        value(name) { const f = new FolderItem(String(name), null); this.push(f); return f; },
+        enumerable: false, configurable: true,
+    });
+    return arr;
+}
+
+/** Types d'import (ImportAsType) ; valeurs arbitraires, seuls les noms comptent. */
+const ImportAsType = { FOOTAGE: 3612, COMP: 3613, COMP_CROPPED_LAYERS: 3614, PROJECT: 3615 };
+
+/** new ImportOptions(file) : importAs choisit la nature de l'import ; un PSD s'importe en métrage ou en compo. */
+class ImportOptions {
+    constructor(file) {
+        this.file = file || null;
+        this.importAs = ImportAsType.FOOTAGE;
+    }
+    canImportAs(type) {
+        if (type === ImportAsType.FOOTAGE) return !!this.file;
+        if (type === ImportAsType.COMP || type === ImportAsType.COMP_CROPPED_LAYERS) return !!this.file && /\.psd$/i.test(this.file.name);
+        return false;
+    }
+}
+
+/** Taille par défaut d'un métrage de calque PSD importé : la boîte 861 × 205 de « Rectangle 1 » (planche test). */
+const FOOTAGE_SIZE = [861, 205];
+
+/** Recette d'import d'un PSD, par défaut : compo « <nom> » > précompo « <nom> » > Rectangle 1, PourQUOI ??? (texte), Calque 0. */
+function defaultRecipe(base) {
+    return { layers: [{ name: base, group: { layers: [{ name: 'Rectangle 1' }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
+}
+
+/**
+ * app.project.importFile(ImportOptions). En compo (COMP, COMP_CROPPED_LAYERS), fabrique d'après la recette
+ * `app.importRecipes[chemin]` (défaut : defaultRecipe) : une compo « <nom> », un dossier « <nom> Calques » qui
+ * range les métrages (« <calque>/<fichier>.psd », source = le PSD) et les précompos des groupes. Recette :
+ *  { throws: 'message' }  -> After lève cette erreur ;
+ *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size? } :
+ *  group = précompo des calques donnés ; psdText = calque texte du PSD ; from = autre fichier pour le métrage ;
+ *  size = [largeur, hauteur] du métrage (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests).
+ * Les calques sont donnés du haut vers le bas. Renvoie la compo (ou un métrage en import FOOTAGE).
+ */
+function importFile(opts) {
+    if (!opts || !opts.file) throw new Error('Unable to import: no file');
+    const file = opts.file, fileName = file.name, base = fileName.replace(/\.[^.]*$/, '');
+    const recipe = app.importRecipes[file.fsName] || defaultRecipe(base);
+    if (recipe.throws) throw new Error(recipe.throws);
+    if (opts.importAs !== ImportAsType.COMP && opts.importAs !== ImportAsType.COMP_CROPPED_LAYERS) {
+        const f = new FootageItem(fileName, new FileSource(file, true));
+        app.project.items.push(f);
+        return f;
+    }
+    const calques = new FolderItem(base + ' Calques', null);
+    app.project.items.push(calques);
+    const fill = (comp, layers) => {
+        for (const spec of layers) {
+            const extra = {};
+            if (spec.psdText !== undefined) extra.psdText = spec.psdText;
+            if (spec.locked) extra.locked = true;
+            if (spec.group) {
+                const sub = new FakeComp(nextId++, spec.name, { parentFolder: calques });
+                fill(sub, spec.group.layers);
+                app.project.items.push(sub);
+                comp.addLayer(spec.name, Object.assign({ source: sub }, extra));
+            } else {
+                const from = spec.from ? new FakeFile(path.join(path.dirname(file.fsName), spec.from)) : file;
+                const size = spec.size || FOOTAGE_SIZE;
+                const footage = new FootageItem(spec.name + '/' + from.name, new FileSource(from, true), { parentFolder: calques, width: size[0], height: size[1] });
+                app.project.items.push(footage);
+                comp.addLayer(spec.name, Object.assign({ source: footage }, extra));
+            }
+        }
+    };
+    const comp = new FakeComp(nextId++, recipe.comp || base);
+    fill(comp, recipe.layers);
+    app.project.items.push(comp);
+    return comp;
+}
+
 const app = {
     // project.item(i) commence à 1, comme dans ExtendScript
     project: {
         activeItem: null,
-        items: [],
+        _items: itemList([]),
+        get items() { return this._items; },
+        set items(v) { this._items = itemList(v); },
+        importFile,
         get numItems() { return this.items.length; },
         item(i) { return this.items[i - 1]; },
         /** Éléments sélectionnés dans le panneau Projet. */
@@ -462,6 +597,8 @@ const app = {
     undoDepth: 0,
     undoGroups: [],
     commands: [],          // identifiants passés à executeCommand
+    importRecipes: {},     // chemin du PSD -> recette de importFile (voir importFile)
+    viewerOpens: [],       // id des comps ouvertes par openInViewer, dans l'ordre
     menuNames: MENU_COMMANDS,
     beginUndoGroup(name) { this.undoDepth++; this.undoGroups.push(name); },
     endUndoGroup() { this.undoDepth--; },
@@ -472,6 +609,10 @@ const app = {
     executeCommand(id) {
         this.commands.push(id);
         const comp = this.project.activeItem;
+        if (STYLE_COMMANDS[id] && comp && comp.selection) {
+            for (const st of comp.selection) P.addLayerStyle(st, STYLE_COMMANDS[id]);
+            return;
+        }
         if (id !== 3799 || !comp || !comp.selection) return;
         for (const st of comp.selection) {
             if (!st.psdText) continue;
@@ -490,7 +631,11 @@ const app = {
         this.undoDepth = 0;
         this.undoGroups = [];
         this.commands = [];
+        this.importRecipes = {};
+        this.viewerOpens = [];
         this.menuNames = MENU_COMMANDS;
+        FakeFolder.selectResult = null;
+        FakeFolder.selectCalls = [];
     },
 };
 
@@ -540,6 +685,18 @@ class FakeFolder {
     get parent() { return new FakeFolder(path.dirname(this.path)); }
     /** Dossier temporaire du système (Folder.temp), ici un sous-dossier propre aux tests. */
     static get temp() { return new FakeFolder(path.join(require('os').tmpdir(), 'siming-fake-ae')); }
+    /** Folder.selectDialog(prompt) : comme dans ExtendScript, une invite seulement, pas de dossier de
+     *  départ (le dialogue s'ouvre au dernier dossier utilisé). Rend selectResult (FakeFolder ou
+     *  null = annulé) ; l'appel est noté dans selectCalls ({ prompt, start: null }). */
+    static selectDialog(prompt) {
+        FakeFolder.selectCalls.push({ prompt, start: null });
+        return FakeFolder.selectResult;
+    }
+    /** folder.selectDlg(prompt) : dialogue ouvert à ce dossier ; noté ({ prompt, start: this }). */
+    selectDlg(prompt) {
+        FakeFolder.selectCalls.push({ prompt, start: this });
+        return FakeFolder.selectResult;
+    }
     create() { fs.mkdirSync(this.path, { recursive: true }); return true; }
     getFiles(mask) {
         if (!this.exists) return [];
@@ -553,6 +710,9 @@ class FakeFolder {
     }
     toString() { return this.absoluteURI; }
 }
+
+FakeFolder.selectResult = null;
+FakeFolder.selectCalls = [];
 
 // ---------------------------------------------------------------------------
 //  Bac à sable
@@ -577,10 +737,12 @@ function createSandbox() {
         app, CompItem, File: FakeFile, Folder: FakeFolder, alerts: [],
         AVLayer: LayerRef, CameraLayer: CameraLayerRef, LightLayer: LightLayerRef,
         TextLayer: TextLayerRef, ShapeLayer: ShapeLayerRef,
-        FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource,
+        FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource, ImportOptions, ImportAsType,
         KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType,
-        PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType, MaskMode,
+        PropertyValueType: P.PropertyValueType, PropertyType: P.PropertyType, MaskMode, BlendingMode,
     };
+    // new Shape() : tracé de calque de forme / de masque
+    sandbox.Shape = function Shape() { this.vertices = []; this.inTangents = []; this.outTangents = []; this.closed = true; };
     sandbox.alert = (msg) => sandbox.alerts.push(String(msg));
     // system.callSystem : commandes notées, rien n'est lancé
     sandbox.system = { calls: [], callSystem(cmd) { this.calls.push(String(cmd)); return ''; } };
@@ -596,7 +758,7 @@ function createSandbox() {
 }
 
 module.exports = {
-    CompItem, FakeComp, LayerRef, CameraLayerRef, LightLayerRef, TextLayerRef, ShapeLayerRef, app, FakeFile, FakeFolder, createSandbox, runFile,
-    FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource,
+    BlendingMode, CompItem, FakeComp, LayerRef, CameraLayerRef, LightLayerRef, TextLayerRef, ShapeLayerRef, app, FakeFile, FakeFolder, createSandbox, runFile,
+    FootageItem, FolderItem, SolidSource, FileSource, PlaceholderSource, ImportOptions, ImportAsType,
     KeyframeEase: P.KeyframeEase, KeyframeInterpolationType: P.KeyframeInterpolationType, PropertyType: P.PropertyType,
 };

@@ -1,0 +1,423 @@
+/*
+ * SIMING : formes Photoshop (calques vectoriels) en JSON simple, en coordonnées du document.
+ * Ni navigateur ni Node : testé tel quel, sans After Effects.
+ *
+ *   SIMING.psd.shapes(doc) -> Shape[]     doc : le résultat de SIMING.psd.read
+ *
+ * Une entrée par calque vectoriel que l'on sait reproduire fidèlement, dans l'ordre du panneau
+ * Calques (le plus haut d'abord, les enfants d'un groupe à leur place). Un calque qu'on ne sait pas
+ * reproduire est simplement absent : il reste un calque PSD. C'est le cas quand
+ *   - un des blocs vogk, vsms, vscg, vstk, lfx2 est illisible (blocks.unreadable) ;
+ *   - le remplissage est un motif, un dégradé qui n'est ni linéaire ni radial (ou mis à
+ *     l'échelle, décalé, à milieux d'arrêt déplacés, interpolé autrement que « Classique »), ou
+ *     une couleur qui n'est pas RVB ;
+ *   - le contour est en pointillés, translucide, au dégradé ou au motif, de couleur non RVB, ou à
+ *     bouts / jointures autres que plat / onglet ;
+ *   - un sous-tracé a une opération booléenne autre que « combiner » (soustraire, intersecter…) ;
+ *   - le calque est détouré, sert de base à un détourage (calque juste sous un calque détouré) ou
+ *     porte un masque de calque ;
+ *   - le tracé est inversé ou désactivé (blocks.vsmsFlags), ou son remplissage initial est « tous
+ *     les pixels » ;
+ *   - le mode de fusion du calque est inconnu ;
+ *   - le calque a des blocs d'effets lmfx ou lfxs (effets multiples, non décodés) ;
+ *   - l'opacité du fond est inférieure à 100 % et des styles sont actifs ;
+ *   - SIMING.psd.styles rend null (style de calque non reproductible).
+ *
+ * Shape = { match: { name, nth }, box, opacity (0-100), blend, hidden, fillOpacity, paths, fill, stroke, styles }
+ *   match.nth   rang (0, 1…) parmi les calques du même nom, groupes exclus (un groupe devient un
+ *               précomp côté After), parcours haut -> bas en profondeur
+ *   fillOpacity opacité du fond (0-100, « Fond » de Photoshop), 100 si absente
+ *   box         boîte de pixels du calque (sert au décalage côté hôte)
+ *   blend       normal, multiply, screen, overlay, colorDodge… (mode inconnu : calque laissé en PSD)
+ *   SubPath     { type: 'rect', center, size, rotation (degrés), roundness }
+ *               { type: 'ellipse', center, size, rotation }
+ *               { type: 'path', vertices, inTangents, outTangents (relatives au sommet), closed }
+ *   Fill        { type: 'solid', color [r, g, b] (0-1) }
+ *               { type: 'gradient', kind: 'linear' | 'radial', angle, stops [{ pos, color }],
+ *                 opacityStops [{ pos, opacity (0-1) }] }   pos de 0 à 1, dans l'ordre croissant
+ *   Stroke      { width, color, align: 'center' | 'inside' | 'outside', miterLimit } ; null si coupé
+ *   styles      voir SIMING.psd.styles ; un style en lumière globale (useGlobalLight) reçoit l'angle (et le
+ *               biseautage l'altitude) du document : doc.globalAngle, doc.globalAltitude
+ *
+ * Rectangle et ellipse : on ne croit la « forme d'origine » (vogk) que si ses coins (déjà
+ * transformés par Photoshop) forment un rectangle et que CHAQUE nœud du tracé réel (vsms) est, à
+ * 0,5 px près, là où cette forme le met, poignées comprises, dans l'ordre du contour :
+ *   - rectangle : 4 nœuds aux coins, poignées sur le nœud ;
+ *   - rectangle arrondi (rayon r) : 8 nœuds à r du coin le long de chaque côté, une poignée vers
+ *     le coin (à r × 0,5523), l'autre sur le nœud ; 4 nœuds aux coins si r = 0 ;
+ *   - ellipse : 4 nœuds au milieu des côtés de la boîte, poignées le long du côté.
+ * Une origine marquée keyShapeInvalidated n'est jamais crue. Origines et sous-tracés vont par
+ * paires d'après keyOriginIndex quand chaque origine en a un (sinon dans l'ordre), et seulement
+ * s'il y a autant d'origines que de sous-tracés. Sinon, ou pour tout autre type (polygone, ligne,
+ * forme personnalisée), le sous-tracé est donné tel quel, nœud par nœud : c'est toujours exact.
+ * Un rectangle arrondi n'est un rect que si ses quatre rayons sont égaux. Une ellipse tournée,
+ * dont Photoshop ne donne pas de coins, est aussi donnée en tracé.
+ */
+(function (global) {
+    'use strict';
+
+    const SIMING = global.SIMING = global.SIMING || {};
+    const GRADIENT_SCALE = 4096;      // positions d'un dégradé : 0 à 4096
+    const BOX_TOLERANCE = 0.5;        // px : écart toléré entre la forme d'origine et les nœuds
+    const EPSILON = 1e-6;
+    const KAPPA = 0.5522847498;       // poignée d'un quart de cercle en Bézier, en fraction du rayon
+
+    const ORIGIN_RECT = 1;
+    const ORIGIN_ROUNDED_RECT = 2;
+    const ORIGIN_ELLIPSE = 5;
+
+    // Modes de fusion d'un calque : clé de 4 lettres -> nom (même vocabulaire que les styles).
+    const BLEND_MODES = {
+        'norm': 'normal', 'diss': 'dissolve', 'dark': 'darken', 'mul ': 'multiply', 'idiv': 'colorBurn',
+        'lbrn': 'linearBurn', 'dkCl': 'darkerColor', 'lite': 'lighten', 'scrn': 'screen', 'div ': 'colorDodge',
+        'lddg': 'linearDodge', 'lgCl': 'lighterColor', 'over': 'overlay', 'sLit': 'softLight',
+        'hLit': 'hardLight', 'vLit': 'vividLight', 'lLit': 'linearLight', 'pLit': 'pinLight',
+        'hMix': 'hardMix', 'diff': 'difference', 'smud': 'exclusion', 'fsub': 'subtract', 'fdiv': 'divide',
+        'hue ': 'hue', 'sat ': 'saturation', 'colr': 'color', 'lum ': 'luminosity',
+    };
+    const STROKE_ALIGNMENTS = {
+        strokeStyleAlignCenter: 'center', strokeStyleAlignInside: 'inside', strokeStyleAlignOutside: 'outside',
+    };
+    const GRADIENT_KINDS = { 'Lnr ': 'linear', 'Rdl ': 'radial' };
+
+    /** Valeur numérique d'un champ : nombre natif ou { unit, v }. */
+    const num = (u, fallback) => {
+        if (u === undefined || u === null) return fallback;
+        const v = typeof u === 'object' ? u.v : u;
+        return typeof v === 'number' ? v : fallback;
+    };
+    const clamp01 = (n) => Math.min(1, Math.max(0, n));
+    const enumValue = (e) => (e && typeof e === 'object' ? e.v : undefined);
+
+    /** Couleur RGBC -> [r, g, b] (0-1), null si elle n'est pas RVB : voir SIMING.psd.color (styles.js). */
+    const color = (c) => SIMING.psd.color(c);
+
+    // ---- Remplissage et contour ----
+
+    /** Dégradé (GdFl) ; null s'il n'est pas reproductible. */
+    function gradientFill(d) {
+        const kind = GRADIENT_KINDS[enumValue(d.Type)];
+        const g = d.Grad;
+        if (!kind || !g || !Array.isArray(g.Clrs) || g.Clrs.length === 0) return null;
+        if (d['Scl '] !== undefined && Math.abs(num(d['Scl '], 100) - 100) > 0.01) return null;
+        // Décalage du dégradé (Ofst : point en %) : After n'a pas d'équivalent sur le remplissage.
+        if (d.Ofst && (Math.abs(num(d.Ofst.Hrzn, 0)) > EPSILON || Math.abs(num(d.Ofst.Vrtc, 0)) > EPSILON)) return null;
+        // Interpolation : la rampe d'After mélange les couleurs linéairement dans l'espace de la
+        // composition, comme la méthode « Classique » (Smoo) de Photoshop, la seule que l'on
+        // reproduit. Perceptuel (Perc) et Linéaire (Lnr ) donnent d'autres dégradés : calque PSD.
+        const method = enumValue(d.gradientsInterpolationMethod);
+        if (method !== undefined && method !== 'Smoo') return null;
+        // Milieu d'un arrêt (Mdpn, 50 par défaut) : After ne sait pas déplacer le milieu d'un arrêt.
+        const stopsAll = g.Clrs.concat(Array.isArray(g.Trns) ? g.Trns : []);
+        if (stopsAll.some((s) => Math.abs(num(s.Mdpn, 50) - 50) > 0.01)) return null;
+        const stops = [];
+        for (const s of g.Clrs) {
+            const type = enumValue(s.Type);
+            const c = color(s['Clr ']);
+            if (!c || (type !== undefined && type !== 'UsrS')) return null;   // couleur de premier plan, nuancier…
+            stops.push({ pos: clamp01(num(s.Lctn, 0) / GRADIENT_SCALE), color: c });
+        }
+        const opacityStops = (Array.isArray(g.Trns) ? g.Trns : []).map((s) => ({
+            pos: clamp01(num(s.Lctn, 0) / GRADIENT_SCALE),
+            opacity: clamp01(num(s.Opct, 100) / 100),
+        }));
+        if (d.Rvrs === true) {
+            for (const s of stops) s.pos = 1 - s.pos;
+            for (const s of opacityStops) s.pos = 1 - s.pos;
+            stops.reverse();
+            opacityStops.reverse();
+        }
+        return { type: 'gradient', kind, angle: num(d.Angl, 0), stops, opacityStops };
+    }
+
+    /** Remplissage du calque (bloc vscg) ; null = pas reproductible (le calque reste en PSD). */
+    function readFill(blocks) {
+        if (blocks.vscgKind === 'SoCo') {
+            const c = blocks.vscg && color(blocks.vscg['Clr ']);
+            return c ? { type: 'solid', color: c } : null;
+        }
+        if (blocks.vscgKind === 'GdFl') return blocks.vscg ? gradientFill(blocks.vscg) : null;
+        return null;
+    }
+
+    /** Contour (bloc vstk, `strokeEnabled` vrai) ; null = pas reproductible. */
+    function readStroke(vstk) {
+        const content = vstk.strokeStyleContent;
+        const c = content && content._class === 'solidColorLayer' ? color(content['Clr ']) : null;
+        const align = STROKE_ALIGNMENTS[enumValue(vstk.strokeStyleLineAlignment)];
+        const dashes = vstk.strokeStyleLineDashSet;
+        const width = vstk.strokeStyleLineWidth;
+        if (!c || !align || (Array.isArray(dashes) && dashes.length > 0)) return null;
+        // Bouts et jointures : Stroke ne les exprime pas, seuls les bouts plats et jointures à onglet
+        // (valeurs par défaut) sont fidèles.
+        const cap = enumValue(vstk.strokeStyleLineCapType);
+        const join = enumValue(vstk.strokeStyleLineJoinType);
+        if ((cap !== undefined && cap !== 'strokeStyleButtCap') || (join !== undefined && join !== 'strokeStyleMiterJoin')) return null;
+        if (!width || width.unit !== '#Pxl') return null;
+        if (num(vstk.strokeStyleOpacity, 100) !== 100) return null;
+        const mode = enumValue(vstk.strokeStyleBlendMode);
+        if (mode !== undefined && mode !== 'Nrml' && mode !== 'normal') return null;
+        return { width: width.v, color: c, align, miterLimit: num(vstk.strokeStyleMiterLimit, 100) };
+    }
+
+    // ---- Tracés ----
+
+    /** Découpe les enregistrements vsms en sous-tracés { closed, knots } (type 0 fermé, 3 ouvert). */
+    function splitSubpaths(records) {
+        const out = [];
+        for (const r of records) {
+            if (r.type === 0 || r.type === 3) out.push({ closed: r.type === 0, knots: [] });
+            else if (r.r && out.length > 0) out[out.length - 1].knots.push(r.r);
+        }
+        return out.filter((s) => s.knots.length > 0);
+    }
+
+    /** Sous-tracé brut -> chemin ; r = [y, x] avant, ancre, après, en fractions du document. */
+    function pathOf(sub, width, height) {
+        const vertices = [], inTangents = [], outTangents = [];
+        for (const r of sub.knots) {
+            const anchor = [r[3] * width, r[2] * height];
+            vertices.push(anchor);
+            inTangents.push([r[1] * width - anchor[0], r[0] * height - anchor[1]]);
+            outTangents.push([r[5] * width - anchor[0], r[4] * height - anchor[1]]);
+        }
+        return { type: 'path', vertices, inTangents, outTangents, closed: sub.closed };
+    }
+
+    const close = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= BOX_TOLERANCE;
+    /** Point à la distance d de `from`, vers `to`. */
+    const toward = (from, to, d) => {
+        const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
+        return [from[0] + (to[0] - from[0]) * d / len, from[1] + (to[1] - from[1]) * d / len];
+    };
+
+    /**
+     * Nœuds attendus d'une forme d'origine, dans l'ordre du contour A -> B -> C -> D :
+     * [{ anchor, before, after }] (poignées en coordonnées du document).
+     */
+    function rectKnots(c) {
+        return c.map((p) => ({ anchor: p, before: p, after: p }));
+    }
+    function roundedKnots(c, r) {
+        const out = [];
+        for (let i = 0; i < 4; i++) {
+            const a = c[i], b = c[(i + 1) % 4];
+            const p = toward(a, b, r), q = toward(b, a, r);
+            out.push({ anchor: p, before: toward(p, a, r * KAPPA), after: p });
+            out.push({ anchor: q, before: q, after: toward(q, b, r * KAPPA) });
+        }
+        return out;
+    }
+    function ellipseKnots(c) {
+        const out = [];
+        for (let i = 0; i < 4; i++) {
+            const a = c[i], b = c[(i + 1) % 4];
+            const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+            const half = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+            out.push({ anchor: m, before: toward(m, a, half * KAPPA), after: toward(m, b, half * KAPPA) });
+        }
+        return out;
+    }
+
+    /**
+     * Les nœuds réels (r = [y, x] avant, ancre, après, en fractions du document) sont-ils exactement
+     * les nœuds attendus, dans l'ordre du contour (à partir de n'importe lequel, dans un sens ou dans
+     * l'autre ; à rebours, avant et après s'échangent) ?
+     */
+    function knotsMatch(knots, expected, width, height) {
+        const n = expected.length;
+        if (knots.length !== n) return false;
+        const pts = knots.map((r) => ({
+            before: [r[1] * width, r[0] * height], anchor: [r[3] * width, r[2] * height], after: [r[5] * width, r[4] * height],
+        }));
+        const start = expected.findIndex((e) => close(e.anchor, pts[0].anchor));
+        if (start < 0) return false;
+        for (const dir of [1, -1]) {
+            const ok = pts.every((p, i) => {
+                const e = expected[(start + dir * i + n * n) % n];
+                const before = dir === 1 ? e.before : e.after, after = dir === 1 ? e.after : e.before;
+                return close(p.anchor, e.anchor) && close(p.before, before) && close(p.after, after);
+            });
+            if (ok) return true;
+        }
+        return false;
+    }
+
+    /** Coins A B C D (déjà transformés) -> { center, size, rotation } ; null si ce n'est pas un rectangle. */
+    function cornersGeometry(box) {
+        if (!box) return null;
+        const pt = (k) => (box[k] ? [num(box[k].Hrzn), num(box[k].Vrtc)] : null);
+        const a = pt('rectangleCornerA'), b = pt('rectangleCornerB'), c = pt('rectangleCornerC'), d = pt('rectangleCornerD');
+        if (![a, b, c, d].every((p) => p && isFinite(p[0]) && isFinite(p[1]))) return null;
+        const ab = [b[0] - a[0], b[1] - a[1]], bc = [c[0] - b[0], c[1] - b[1]];
+        const width = Math.hypot(ab[0], ab[1]), height = Math.hypot(bc[0], bc[1]);
+        if (width < EPSILON || height < EPSILON) return null;
+        if (Math.abs(ab[0] * bc[0] + ab[1] * bc[1]) > 1e-3 * width * height) return null;        // pas d'angle droit
+        if (Math.hypot(a[0] + c[0] - b[0] - d[0], a[1] + c[1] - b[1] - d[1]) > BOX_TOLERANCE) return null;   // pas un parallélogramme
+        return {
+            center: [(a[0] + b[0] + c[0] + d[0]) / 4, (a[1] + b[1] + c[1] + d[1]) / 4],
+            size: [width, height],
+            rotation: Math.atan2(ab[1], ab[0]) * 180 / Math.PI,
+            corners: [a, b, c, d],
+        };
+    }
+
+    /** Boîte d'une ellipse sans coins (keyOriginShapeBBox), tournée par Trnf = pas reproductible. */
+    function bboxGeometry(origin) {
+        const bb = origin.keyOriginShapeBBox;
+        const t = origin.Trnf;
+        if (!bb) return null;
+        if (t && (Math.abs(num(t.xy, 0)) > EPSILON || Math.abs(num(t.yx, 0)) > EPSILON)) return null;
+        const left = num(bb.Left), top = num(bb['Top ']), right = num(bb.Rght), bottom = num(bb.Btom);
+        if (![left, top, right, bottom].every(isFinite) || right - left < EPSILON || bottom - top < EPSILON) return null;
+        return {
+            center: [(left + right) / 2, (top + bottom) / 2],
+            size: [right - left, bottom - top],
+            rotation: 0,
+            corners: [[left, top], [right, top], [right, bottom], [left, bottom]],
+        };
+    }
+
+    /** Forme d'origine d'un sous-tracé (rect, ellipse) si on peut la croire ; sinon null. */
+    function originPath(origin, sub, width, height) {
+        if (!origin || origin.keyShapeInvalidated === true) return null;
+        const type = origin.keyOriginType;
+        if (type !== ORIGIN_RECT && type !== ORIGIN_ROUNDED_RECT && type !== ORIGIN_ELLIPSE) return null;
+        const geo = cornersGeometry(origin.keyOriginBoxCorners) || (type === ORIGIN_ELLIPSE ? bboxGeometry(origin) : null);
+        if (!geo) return null;
+        let rotation = geo.rotation;
+        if (rotation <= -180 + EPSILON) rotation += 360;
+        if (type === ORIGIN_ELLIPSE) {
+            if (!knotsMatch(sub.knots, ellipseKnots(geo.corners), width, height)) return null;
+            return { type: 'ellipse', center: geo.center, size: geo.size, rotation };
+        }
+        let roundness = 0;
+        if (type === ORIGIN_ROUNDED_RECT) {
+            const r = origin.keyOriginRRectRadii;
+            const radii = r ? [num(r.topLeft), num(r.topRight), num(r.bottomRight), num(r.bottomLeft)] : [];
+            if (radii.length !== 4 || !radii.every(isFinite) || radii.some((v) => Math.abs(v - radii[0]) > 0.01)) return null;
+            roundness = radii[0];
+            if (roundness < 0 || roundness * 2 > Math.min(geo.size[0], geo.size[1]) + EPSILON) return null;
+        }
+        const expected = roundness > EPSILON ? roundedKnots(geo.corners, roundness) : rectKnots(geo.corners);
+        if (!knotsMatch(sub.knots, expected, width, height)) return null;
+        return { type: 'rect', center: geo.center, size: geo.size, rotation, roundness };
+    }
+
+    /**
+     * Origine de chaque sous-tracé (ou null) : autant d'origines que de sous-tracés, appariées par
+     * keyOriginIndex si chacune en a un (indices tous différents, dans les bornes), sinon dans l'ordre.
+     */
+    function pairOrigins(origins, count) {
+        if (origins.length !== count) return [];
+        const indexes = origins.map((o) => (o && typeof o.keyOriginIndex === 'number' ? o.keyOriginIndex : null));
+        if (indexes.some((i) => i === null)) return origins;
+        const out = [];
+        for (let k = 0; k < origins.length; k++) {
+            const i = indexes[k];
+            if (i < 0 || i >= count || Math.floor(i) !== i || out[i] !== undefined) return [];
+            out[i] = origins[k];
+        }
+        return out;
+    }
+
+    /** Sous-tracés du calque ; une origine n'est utilisée que s'il y en a autant que de sous-tracés. */
+    function readPaths(blocks, width, height) {
+        const subs = splitSubpaths(blocks.vsms);
+        const origins = pairOrigins(blocks.vogk && Array.isArray(blocks.vogk.keyDescriptorList) ? blocks.vogk.keyDescriptorList : [], subs.length);
+        return subs.map((sub, i) => originPath(origins[i], sub, width, height) || pathOf(sub, width, height));
+    }
+
+    // ---- Calque ----
+
+    /** Styles en lumière globale : angle (et altitude du biseautage) pris dans le document, quand il les donne. */
+    function resolveGlobalLight(list, doc) {
+        const hasAngle = typeof doc.globalAngle === 'number', hasAltitude = typeof doc.globalAltitude === 'number';
+        for (const style of list) {
+            if (style.useGlobalLight !== true) continue;
+            if (hasAngle) style.angle = doc.globalAngle;
+            if (hasAltitude && style.kind === 'bevelEmboss') style.altitude = doc.globalAltitude;
+        }
+        return list;
+    }
+
+    const SKIPPED_IF_UNREADABLE = ['vogk', 'vsms', 'vscg', 'vstk', 'lfx2'];
+    const PATH_INVERTED = 1, PATH_DISABLED = 4;     // drapeaux du tracé (vsms, vmsk)
+
+    /** Forme d'un calque ; null si le calque n'est pas une forme, ou pas reproductible. */
+    function shapeOf(layer, nth, doc, styles) {
+        const blocks = layer.blocks;
+        if (!blocks || !blocks.vogk || !Array.isArray(blocks.vsms)) return null;
+        const unreadable = Array.isArray(blocks.unreadable) ? blocks.unreadable : [];
+        if (SKIPPED_IF_UNREADABLE.some((k) => unreadable.indexOf(k) >= 0)) return null;
+        if (blocks.vscgKind === 'PtFl') return null;
+        // Détourage et masque de calque : la forme recréée n'en tiendrait pas compte.
+        if (layer.clipped === true || layer.masked === true) return null;
+        // Tracé inversé ou désactivé, remplissage initial « tous les pixels » : une tout autre forme.
+        const flags = typeof blocks.vsmsFlags === 'number' ? blocks.vsmsFlags : 0;
+        if ((flags & (PATH_INVERTED | PATH_DISABLED)) !== 0) return null;
+        if (blocks.vsms.some((r) => r.type === 8 && r.fill !== 0)) return null;
+        // Effets multiples (lmfx, lfxs) : non décodés, on ne sait pas ce qu'ils ajoutent à lfx2.
+        if (blocks.lmfx || blocks.lfxs) return null;
+        if (!Object.prototype.hasOwnProperty.call(BLEND_MODES, layer.blend)) return null;
+        // Opération booléenne de chaque sous-tracé : seul « combiner » (1) est une union fidèle.
+        if (blocks.vsms.some((r) => (r.type === 0 || r.type === 3) && r.op !== 1)) return null;
+
+        const list = styles(blocks.lfx2);
+        if (list === null) return null;
+
+        const vstk = blocks.vstk;
+        const fillEnabled = !vstk || vstk.fillEnabled !== false;
+        const fill = fillEnabled ? readFill(blocks) : null;
+        if (fillEnabled && !fill) return null;
+        const stroke = vstk && vstk.strokeEnabled === true ? readStroke(vstk) : null;
+        if (vstk && vstk.strokeEnabled === true && !stroke) return null;
+
+        // Opacité du fond (iOpa) : elle n'atténue pas les styles, ce que la forme recréée ne sait
+        // pas séparer. Sans style actif, elle est simplement reportée dans fillOpacity.
+        const fillOpacity = blocks.iOpa === undefined ? 100 : blocks.iOpa / 255 * 100;
+        if (fillOpacity < 100 - EPSILON && list.length > 0) return null;
+
+        const paths = readPaths(blocks, doc.width, doc.height);
+        if (paths.length === 0) return null;
+        return {
+            match: { name: layer.name, nth },
+            box: { left: layer.box.left, top: layer.box.top, right: layer.box.right, bottom: layer.box.bottom },
+            opacity: layer.opacity / 255 * 100,
+            blend: BLEND_MODES[layer.blend],
+            hidden: layer.hidden === true,
+            fillOpacity,
+            paths,
+            fill,
+            stroke,
+            styles: resolveGlobalLight(list, doc),
+        };
+    }
+
+    function shapes(doc) {
+        const styles = SIMING.psd && SIMING.psd.styles;
+        if (typeof styles !== 'function' || typeof SIMING.psd.color !== 'function') throw new Error('styles.js doit être chargé avant SIMING.psd.shapes');
+        const counts = Object.create(null);   // sans prototype : un calque peut s'appeler « constructor »
+        const out = [];
+        const walk = (layers) => {
+            layers.forEach((layer, i) => {
+                if (layer.kind !== 'group') {
+                    // Seuls les calques comptent : un groupe devient un précomp, que l'hôte ne cherche pas.
+                    const nth = counts[layer.name] || 0;
+                    counts[layer.name] = nth + 1;
+                    // Base d'un détourage (juste sous un calque détouré, l'ordre étant haut -> bas) : la
+                    // remplacer changerait ce que détourent les calques au-dessus. Son rang compte quand même.
+                    const isBase = layer.clipped !== true && i > 0 && layers[i - 1].clipped === true;
+                    const shape = isBase ? null : shapeOf(layer, nth, doc, styles);
+                    if (shape) out.push(shape);
+                }
+                if (layer.children) walk(layer.children);
+            });
+        };
+        walk(doc.layers);
+        return out;
+    }
+
+    SIMING.psd = Object.assign(SIMING.psd || {}, { shapes });
+    if (typeof module !== 'undefined' && module.exports) module.exports = shapes;
+})(typeof window !== 'undefined' ? window : globalThis);

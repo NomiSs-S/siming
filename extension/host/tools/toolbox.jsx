@@ -294,27 +294,14 @@
         }
     }
 
-    /** Identifiant d'une commande de menu d'après son nom (anglais, français), sinon fallback. */
-    function commandId(names, fallback) {
-        for (var i = 0; i < names.length; i++) {
-            try {
-                var id = app.findMenuCommandId(names[i]);
-                if (id > 0) return id;
-            } catch (e) { /* nom suivant */ }
-        }
-        return fallback || 0;
-    }
+    var commandId = ae.commandId;          // partagés dans SIMING.ae (siming.jsx)
+    var deselectLayers = ae.deselectLayers;
 
     // Noms de menus : anglais, français (libellé complet ou du sous-menu). Aucun identifiant numérique
     // de repli : non vérifié, il lancerait n'importe quelle commande.
     var REVEAL_NAMES  = ['Reveal Layer Source in Project', 'Layer Source in Project',
                          'Afficher la source du calque dans le projet', 'Source du calque dans le projet'];
     var CONVERT_NAMES = ['Convert to Editable Text', 'Convertir en texte modifiable', 'Convertir en texte éditable'];
-
-    function deselectLayers(comp) {
-        var sel = comp.selectedLayers;
-        for (var i = 0; i < sel.length; i++) sel[i].selected = false;
-    }
 
     function isPsdLayer(layer) {
         if (layer instanceof TextLayer) return false;
@@ -342,6 +329,50 @@
         var n = 0;
         for (var i = 1; i <= comp.numLayers; i++) if (comp.layer(i) instanceof TextLayer) n++;
         return n;
+    }
+
+    /** Calques Photoshop à convertir parmi layers : { todo: [{ index, name }] du bas vers le haut (les index
+     *  restent justes), skipped }. Un calque verrouillé n'est cité que si reportLocked (il était sélectionné). */
+    function psdTextTargets(layers, reportLocked) {
+        var todo = [], skipped = [];
+        for (var i = 0; i < layers.length; i++) {
+            if (!isPsdLayer(layers[i])) continue;
+            if (layers[i].locked) { if (reportLocked) skipped.push(layers[i].name + ' : calque verrouillé'); }
+            else todo.push({ index: layers[i].index, name: layers[i].name });
+        }
+        todo.sort(function (a, b) { return b.index - a.index; });
+        return { todo: todo, skipped: skipped };
+    }
+
+    /**
+     * Convertit en texte modifiable les calques texte d'un Photoshop importé parmi layers (calques de comp) :
+     * un calque à la fois (la commande d'AE refuse une sélection mêlée), converti si un calque texte est apparu.
+     * app.executeCommand agit sur la composition du viewer : comp doit y être ouverte (comp.openInViewer()).
+     * N'ouvre pas de groupe d'annulation (l'appelant le fait). Commande introuvable (autre langue d'AE) : rien
+     * n'est lancé et rep.missing vaut true (s'il y avait des calques à convertir). Renvoie { done, skipped, missing? }.
+     */
+    function convertTextsIn(comp, layers, reportLocked) {
+        var targets = psdTextTargets(layers, reportLocked), todo = targets.todo;
+        var rep = { done: 0, skipped: targets.skipped };
+        var id = todo.length ? commandId(CONVERT_NAMES, 0) : 0;
+        if (!id) {
+            if (todo.length) rep.missing = true;
+            return rep;
+        }
+        for (var t = 0; t < todo.length; t++) {
+            deselectLayers(comp);
+            comp.layer(todo[t].index).selected = true;
+            var before = countText(comp);
+            try {
+                app.executeCommand(id);
+            } catch (e) {
+                rep.skipped.push(todo[t].name + ' : ' + e.message);
+                continue;
+            }
+            if (countText(comp) > before) rep.done++;
+        }
+        deselectLayers(comp);
+        return rep;
     }
 
     /** Fichier sur disque de la source d'un calque (métrage), ou null (texte, forme, solide, précompo). */
@@ -1142,43 +1173,22 @@
 
         /** Convertit en texte modifiable les calques texte d'un Photoshop importé : ceux de la
          *  sélection, sinon toute la comp. Un calque à la fois (la commande d'AE refuse une
-         *  sélection mêlée) ; converti si un calque texte est apparu. */
+         *  sélection mêlée) ; converti si un calque texte est apparu. Les calques non convertis
+         *  (images, formes) ne sont pas cités ; un calque verrouillé l'est seulement s'il était sélectionné. */
         convertPsdText: function () {
             var comp = ae.getActiveComp();
             if (!comp) return reply(null, null, MSG_NO_COMP, 'error');
             var sel = comp.selectedLayers, fromSel = sel.length > 0, pool = [], i;
             if (fromSel) pool = sel;
             else for (i = 1; i <= comp.numLayers; i++) pool.push(comp.layer(i));
-            var todo = [], skipped = [];
-            for (i = 0; i < pool.length; i++) {
-                if (!isPsdLayer(pool[i])) continue;
-                if (pool[i].locked) skipped.push(pool[i].name + ' : calque verrouillé');
-                else todo.push({ index: pool[i].index, name: pool[i].name });
+            var targets = psdTextTargets(pool, fromSel);
+            if (!targets.todo.length) {
+                return warn(comp, 'Aucun calque Photoshop ' + (fromSel ? 'dans la sélection' : 'dans la composition'), targets.skipped);
             }
-            if (!todo.length) {
-                return warn(comp, 'Aucun calque Photoshop ' + (fromSel ? 'dans la sélection' : 'dans la composition'), skipped);
-            }
-            todo.sort(function (a, b) { return b.index - a.index; });   // du bas vers le haut : les index restent justes
-            var id = commandId(CONVERT_NAMES, 0);
-            if (!id) return warn(comp, 'Commande « Convertir en texte modifiable » introuvable dans cette langue d\'After Effects : utilise Calque › Convertir en texte modifiable');
-            var rep = { done: 0, skipped: skipped }, made = 0;
-            ae.undo(TOOL_NAME + ' : textes Photoshop', function () {
-                for (var t = 0; t < todo.length; t++) {
-                    deselectLayers(comp);
-                    comp.layer(todo[t].index).selected = true;
-                    var before = countText(comp);
-                    try {
-                        app.executeCommand(id);
-                    } catch (e) {
-                        rep.skipped.push(todo[t].name + ' : ' + e.message);
-                        continue;
-                    }
-                    if (countText(comp) > before) { rep.done++; made++; }
-                    else rep.skipped.push(todo[t].name + ' : pas un calque texte Photoshop');
-                }
-                deselectLayers(comp);
-            });
-            return result(comp, S.plural(made, 'texte Photoshop converti', 'textes Photoshop convertis') + ' en texte modifiable', rep);
+            if (!commandId(CONVERT_NAMES, 0)) return warn(comp, 'Commande « Convertir en texte modifiable » introuvable dans cette langue d\'After Effects : utilise Calque › Convertir en texte modifiable');
+            var rep;
+            ae.undo(TOOL_NAME + ' : textes Photoshop', function () { rep = convertTextsIn(comp, pool, fromSel); });
+            return result(comp, S.plural(rep.done, 'texte Photoshop converti', 'textes Photoshop convertis') + ' en texte modifiable', rep);
         }
     };
 
@@ -1205,7 +1215,8 @@
         writeKey:         writeKey,
         moveKeys:         moveKeys,
         commandId:        commandId,
-        writeAllowed:     writeAllowed
+        writeAllowed:     writeAllowed,
+        convertTextsIn:   convertTextsIn
     };
 
     S.registerTool('toolbox', api);

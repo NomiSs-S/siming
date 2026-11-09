@@ -159,3 +159,44 @@ Il faut Claude Code installé (`claude` dans un terminal). Projet de test : la c
 - [ ] Port pris : avant de lancer AE, `python3 -m http.server 47821 --bind 127.0.0.1` ; onglet Claude : pastille rouge « Port 47821 déjà pris… » et bouton **Changer de port** ; un clic : nouveau port, nouvelle commande, service actif.
 - [ ] Sécurité : `curl -i -X POST http://127.0.0.1:47821/mcp -d "{}"` (sans jeton) : 403 ; depuis un autre ordinateur du réseau : connexion impossible.
 - [ ] Panneaux Unparent ouverts pendant que Claude agit : rien ne casse (le service recharge `siming.jsx` à son démarrage, comme chaque panneau).
+
+## Importer les PSD (Boîte à outils 1.1.0)
+
+À faire sur une **copie** d'un projet client de référence, `PROJET_CLIENT` (`02_RESSOURCES/02_ASSET` avec 7 planches ; jamais l'original : le geste ajoute des compositions et des calques). Il faut un After Effects où l'on a le droit d'écrire dans le projet. Touche 2 : la Boîte à outils s'affiche ; le geste est dans la section Calques, aide (point d'interrogation) : fiche « Importer les PSD ».
+
+Tests automatiques sur une planche réelle : `SIMING_PSD_SAMPLES=<dossier contenant 7.psd> node tests/run.js` ; sans cette variable, ces tests sont sautés.
+
+**Liste**
+- [ ] Clic sur « Importer les PSD » : la boîte est remplacée par la liste (titre, dossier, « Changer de dossier », Tout / Rien, bouton « Importer N PSD », Annuler). Dossier montré = `02_RESSOURCES/02_ASSET` trouvé depuis le `.aep` ; **7 PSD** listés dans l'ordre naturel (`1.psd`, `2.psd`, … `7.psd`). Ceux déjà dans le projet : décochés, pastille « déjà importé ». Projet jamais enregistré, ou dossier introuvable : liste vide et statut « … choisis le dossier des PSD » (info / orange), « Changer de dossier » disponible.
+- [ ] Échap, Annuler : la boîte revient, statut « Import des PSD annulé ». « Changer de dossier » : la boîte de dialogue s'ouvre sur le dossier courant (`selectDlg`) ; choisir un autre dossier le liste ; Annuler dans la boîte de dialogue ne change rien. « Importer 0 PSD » : bouton inactif.
+
+**Import de `7.psd` seul** (les autres décochés)
+- [ ] Statut « 1 PSD importé · t texte(s) · f forme(s) · Ctrl+Z pour annuler », sans mention des refus voulus. Compo et dossier « 7 Calques » rangés dans `02_ASSET` du panneau Projet, pas à la racine. **Noter** où `importFile` les met d'abord (racine, ou dossier sélectionné dans le Projet) : l'import ne déplace que ce qui arrive à la racine.
+- [ ] « Rectangle » recréé en calque de forme : coin arrondi **59**, lueur externe présente et réglée. Il recouvre **exactement** l'original : alterner Ctrl+Z / Ctrl+Maj+Z et comparer (même boîte, au pixel, rien ne saute). La **taille de la lueur externe** est celle de Photoshop (les pixels sont multipliés par l'échelle des effets du PSD, 416,67 %) : comparer à l'œil avec le PSD ouvert dans Photoshop.
+- [ ] Textes convertis en calques texte modifiables (police, contenu) ; libellés posés (texte jaune, forme bleue…, selon les règles de l'outil Libellés).
+- [ ] **Annulation** : un seul Ctrl+Z défait tout (compo, dossiers, formes, textes, libellés). Sinon, **consigner** qu'il en faut deux (les conversions, puis l'import) : repli prévu par la spec, à indiquer dans le statut.
+- [ ] Après coup : une compo ouverte dans un onglet de la Timeline par compo traitée (précompos de groupes comprises) ; la compo qui était active au départ est rouverte. **Noter** si c'est gênant.
+- [ ] **Styles de calque modifiables ou fusionnés** à l'import (`ImportOptions` ne propose pas ce choix) : les styles du PSD arrivent-ils sur les calques d'image importés (modifiables dans la timeline) ou cuits dans les pixels ? **Consigner** : de là vient le risque de doublon (style PSD + style recréé).
+
+**Noms de menu et propriétés des styles (à vérifier, tout est dans `STYLE_TABLE`, en tête de `host/tools/psdimport.jsx`)**
+- [ ] After Effects en **anglais** puis en **français** : chaque style est ajouté par son nom de menu (Calque › Styles de calque) ; noter ceux qui manquent. Ombre portée, ombre interne, lueur externe, lueur interne, biseautage et estampage, satin, incrustation couleur, contour : trouvés ? Une forme qui échoue à cause d'un nom de menu est comptée « forme(s) en erreur » dans le statut.
+- [ ] matchNames des groupes et des propriétés de style (`dropShadow/…`, `outerGlow/…`, `bevelEmboss/…`, `chromeFX` pour le satin, `solidFill`, `frameFX`) : valeurs bien écrites, aucune propriété qui manque. Énumérations : technique de lueur (1 plus doux, 2 précis), source de lueur interne (1 centre, 2 bord), biseautage (style 1 à 5, technique 1 à 3, direction 1 haut / 2 bas), position du contour (1 extérieur, 2 intérieur, 3 centré), mode de fusion (`BlendingMode`), cases à cocher 1 / 0, couleurs `[r, g, b, 1]` : comparer chaque réglage à l'original dans Photoshop.
+- [ ] Lumière globale : l'angle et l'altitude de l'ombre recréée sont ceux du document PSD (planche test : 90° et 30°), « utiliser l'angle global » décoché.
+- [ ] Commande appelée par `app.executeCommand` (styles de calque, conversion en texte) : elle agit bien sur la **compo ouverte dans le viewer** (la compo traitée est ouverte avant). Noter si un style atterrit sur un calque d'une autre compo.
+- [ ] After en français : la commande « Convertir en texte modifiable » est trouvée par son nom. Sinon, le statut dit « textes non convertis (commande introuvable dans cette langue d'After Effects) » : le noter.
+
+**Planche test** (`tests/fixtures/psd/planche-test.psd`, 1920 × 1080)
+- [ ] Le carré tourné à 45° est recréé en forme (rotation autour de son centre, mêmes sommets que l'original).
+- [ ] Les deux rectangles de « Rectangle 3 » (dans « Groupe 1 ») : recréés tous les deux, au bon rang parmi les homonymes, aucun ne remplace l'autre.
+- [ ] L'**ellipse en dégradé** reste un calque PSD (non recréée) ; noter si `setValue` sur `ADBE Vector Grad Colors` d'un remplissage en dégradé est vraiment impossible par script (sinon, piste : recréer les dégradés). Rectangle arrondi, polygone : recréés. Texte « PourQUOI ??? » : converti. Aucun refus voulu (dégradé…) n'apparaît dans le statut.
+- [ ] **Satin** : un calque à satin, contour du satin réglé sur « Linéaire » dans Photoshop : recréé ; comparer le satin d'After à celui de Photoshop (même rendu ?). **Consigner** quel contour le satin d'After reproduit : tant que ce n'est pas vérifié, un satin au contour par défaut de Photoshop (non linéaire) reste un calque PSD.
+- [ ] **Deux ombres portées** sur un même calque (effets multiples, bloc `lmfx`) : le calque reste en PSD, sans message.
+- [ ] **Taille du métrage** : si After fusionne les styles dans les pixels du calque importé (métrage plus grand que la boîte du PSD), la forme n'est pas posée et le statut dit « 1 forme en erreur » : le noter, c'est le signe que les styles arrivent cuits.
+- [ ] **Compo active** : pendant l'import, cliquer dans un autre panneau ou verrouiller le visualiseur ; si la compo traitée n'est pas devenue la compo active, le PSD est compté « illisible » et rien n'est lancé sur une autre compo (vérifier que la compo de départ n'a pas bougé).
+- [ ] Autres refus voulus : un calque détouré ou masqué, la base d'un détourage, un rectangle dont un point a été déplacé à la main (recréé en tracé), un contour intérieur / extérieur, un remplissage à moins de 100 % avec style : calque PSD laissé tel quel, ni message ni forme en erreur.
+
+**Lot et erreurs**
+- [ ] Les 7 PSD d'un coup : statut « 7 PSD importés · … » (pluriels corrects), un seul Ctrl+Z (ou deux : consigner), durée raisonnable ; progression « Lecture des PSD… (3 / 7) » puis « Import des PSD… » visible. Réimporter `7.psd` : seconde copie (jamais de remplacement), la liste le marque « déjà importé » mais le laisse cochable.
+- [ ] Un fichier `.psd` illisible (renommer un `.txt`, ou tronquer un PSD) dans le lot : les autres sont importés, statut orange « · 1 PSD illisible » (« 2 PSD illisibles » au pluriel), rien de ce PSD ne reste dans le projet.
+- [ ] Un calque verrouillé recréé en forme : le nouveau calque est aussi verrouillé, l'original a disparu.
+- [ ] Panneau isolé « SIMING – Boîte à outils » : la liste tient à 200 px de large, le dernier nom ne déborde pas.

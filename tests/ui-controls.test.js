@@ -426,4 +426,47 @@ module.exports = function (test) {
         assert.deepEqual(Array.from(head.querySelectorAll('.s-icon-btn')).map((b) => b.getAttribute('data-role')), ['help', 'open-standalone']);
         assert.strictEqual(head.querySelector('[data-role=open-standalone] rect').getAttribute('height'), '9', 'fenêtre et barre de titre');
     });
+
+    test('checkList : lignes à cocher, pastille, cochées renvoyées dans l\'ordre, Tout / Rien, onChange, vide', () => {
+        const { ui, doc } = setup();
+        const seen = [];
+        const list = ui.checkList({ role: 'psd-list', emptyText: 'Aucun PSD', onChange: (keys) => seen.push(keys) });
+        doc.body.append(list);   // jsdom ne notifie une case que dans le document
+        assert.strictEqual(list.getAttribute('data-role'), 'psd-list');
+        assert.strictEqual(list.querySelector('.s-empty').textContent, 'Aucun PSD', 'vide avant les lignes');
+        assert.deepEqual(list.checked(), []);
+        list.setRows([
+            { key: 'a.psd', name: 'a.psd', checked: true, title: 'C:/a.psd' },
+            { key: 'b.psd', name: '<i>b.psd</i>', pill: 'déjà importé', tone: 'done', checked: false },
+            { key: 'c.psd', name: 'c.psd', checked: true },
+        ]);
+        const rows = Array.from(list.querySelectorAll('.s-check-row'));
+        assert.strictEqual(rows.length, 3);
+        assert.strictEqual(rows[0].tagName, 'LABEL', 'ligne entière cliquable');
+        assert.strictEqual(rows[0].title, 'C:/a.psd');
+        assert.strictEqual(rows[1].querySelector('.s-row-name').textContent, '<i>b.psd</i>');
+        assert.strictEqual(rows[1].querySelector('i'), null);
+        assert.strictEqual(rows[1].querySelector('.s-pill').textContent, 'déjà importé');
+        assert.ok(rows[1].querySelector('.s-pill').classList.contains('is-done'));
+        assert.strictEqual(rows[0].querySelector('.s-pill'), null, 'pas de pastille sans texte');
+        assert.deepEqual(rows.map((r) => r.querySelector('input').checked), [true, false, true]);
+        assert.deepEqual(rows.map((r) => r.getAttribute('data-key')), ['a.psd', 'b.psd', 'c.psd']);
+        assert.deepEqual(list.checked(), ['a.psd', 'c.psd']);
+        assert.deepEqual(seen, [], 'setRows ne notifie pas');
+        rows[1].querySelector('input').click();
+        assert.deepEqual(seen, [['a.psd', 'b.psd', 'c.psd']]);
+        rows[0].querySelector('input').click();
+        assert.deepEqual(list.checked(), ['b.psd', 'c.psd']);
+        assert.deepEqual(seen[1], ['b.psd', 'c.psd']);
+        list.setAll(false);
+        assert.deepEqual(list.checked(), []);
+        assert.deepEqual(seen[2], []);
+        list.setAll(true);
+        assert.deepEqual(list.checked(), ['a.psd', 'b.psd', 'c.psd']);
+        assert.deepEqual(seen[3], ['a.psd', 'b.psd', 'c.psd']);
+        list.setRows([]);
+        assert.strictEqual(list.querySelector('.s-empty').textContent, 'Aucun PSD');
+        assert.deepEqual(list.checked(), []);
+        assert.strictEqual(ui.checkList({}).querySelector('.s-empty').textContent, 'Rien à afficher');
+    });
 };

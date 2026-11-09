@@ -342,6 +342,24 @@
                       n === 0 ? 'ok' : 'info');
     }
 
+    /**
+     * Pose sur ces calques l'étiquette que proposent les règles (même analyse que analyze : collect), sans
+     * toucher à ceux dont la règle dit « ne pas changer » ni à ceux qui l'ont déjà. N'ouvre pas de groupe
+     * d'annulation (l'appelant le fait). Renvoie le nombre de calques changés.
+     */
+    function labelLayers(layers, rules) {
+        var entries = collect(layers, compileRules(rules)), done = 0;
+        for (var i = 0; i < entries.length; i++) {
+            var e = entries[i];
+            if (e.proposed === KEEP || e.proposed === e.current) continue;
+            try {
+                layers[i].label = e.proposed;
+                done++;
+            } catch (err) { /* calque qui refuse son étiquette : sauté */ }
+        }
+        return done;
+    }
+
     function scopeOf(args) {
         return (args && args.scope === 'comp') ? 'comp' : 'selection';
     }
@@ -436,7 +454,8 @@
         layerType:      layerType,
         layerInfo:      layerInfo,
         autoTextName:   autoTextName,
-        palette:        palette
+        palette:        palette,
+        labelLayers:    labelLayers
     };
 
     S.registerTool('labels', api);

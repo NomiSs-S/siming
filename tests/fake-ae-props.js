@@ -99,17 +99,72 @@ const VECTOR_PARENTS = ['ADBE Root Vectors Group', 'ADBE Vectors Group'];
 const VECTOR_ITEMS = {
     'ADBE Vector Group': () => makeGroupState({ name: 'Group 1', matchName: 'ADBE Vector Group' }, [
         makeGroupState({ name: 'Contents', matchName: 'ADBE Vectors Group', indexed: true }, []),
-        makeGroupState({ name: 'Transform', matchName: 'ADBE Vector Transform Group' }, []),
+        makeGroupState({ name: 'Transform', matchName: 'ADBE Vector Transform Group' }, [
+            makePropState({ name: 'Anchor Point', matchName: 'ADBE Vector Anchor', value: [0, 0], spatial: true }),
+            makePropState({ name: 'Position', matchName: 'ADBE Vector Position', value: [0, 0], spatial: true }),
+            makePropState({ name: 'Scale', matchName: 'ADBE Vector Scale', value: [100, 100] }),
+            makePropState({ name: 'Skew', matchName: 'ADBE Vector Skew', value: 0 }),
+            makePropState({ name: 'Skew Axis', matchName: 'ADBE Vector Skew Axis', value: 0 }),
+            makePropState({ name: 'Rotation', matchName: 'ADBE Vector Rotation', value: 0 }),
+            makePropState({ name: 'Opacity', matchName: 'ADBE Vector Group Opacity', value: 100 }),
+        ]),
     ]),
     'ADBE Vector Shape - Rect': () => makeGroupState({ name: 'Rectangle Path 1', matchName: 'ADBE Vector Shape - Rect' }, [
         makePropState({ name: 'Size', matchName: 'ADBE Vector Rect Size', value: [100, 100] }),
         makePropState({ name: 'Position', matchName: 'ADBE Vector Rect Position', value: [0, 0], spatial: true }),
         makePropState({ name: 'Roundness', matchName: 'ADBE Vector Rect Roundness', value: 0 }),
     ]),
+    'ADBE Vector Shape - Ellipse': () => makeGroupState({ name: 'Ellipse Path 1', matchName: 'ADBE Vector Shape - Ellipse' }, [
+        makePropState({ name: 'Size', matchName: 'ADBE Vector Ellipse Size', value: [100, 100] }),
+        makePropState({ name: 'Position', matchName: 'ADBE Vector Ellipse Position', value: [0, 0], spatial: true }),
+    ]),
+    // Tracé libre : sa propriété « ADBE Vector Shape » porte un objet Shape (vertices, inTangents, outTangents, closed)
+    'ADBE Vector Shape - Group': () => makeGroupState({ name: 'Path 1', matchName: 'ADBE Vector Shape - Group' }, [
+        makePropState({ name: 'Path', matchName: 'ADBE Vector Shape', value: { vertices: [], inTangents: [], outTangents: [], closed: true } }),
+    ]),
     'ADBE Vector Graphic - Fill': () => makeGroupState({ name: 'Fill 1', matchName: 'ADBE Vector Graphic - Fill' }, [
         makePropState({ name: 'Color', matchName: 'ADBE Vector Fill Color', value: [1, 0, 0, 1] }),
+        makePropState({ name: 'Opacity', matchName: 'ADBE Vector Fill Opacity', value: 100 }),
+    ]),
+    'ADBE Vector Graphic - Stroke': () => makeGroupState({ name: 'Stroke 1', matchName: 'ADBE Vector Graphic - Stroke' }, [
+        makePropState({ name: 'Color', matchName: 'ADBE Vector Stroke Color', value: [1, 1, 1, 1] }),
+        makePropState({ name: 'Opacity', matchName: 'ADBE Vector Stroke Opacity', value: 100 }),
+        makePropState({ name: 'Stroke Width', matchName: 'ADBE Vector Stroke Width', value: 2 }),
+        makePropState({ name: 'Miter Limit', matchName: 'ADBE Vector Stroke Miter Limit', value: 4 }),
     ]),
 };
+
+/** Styles de calque (groupe « ADBE Layer Styles ») : menu anglais, matchName du groupe et de ses propriétés
+ *  (« groupe/propriété »). Un style n'apparaît qu'après sa commande de menu. Noms non vérifiés dans After. */
+const LAYER_STYLE_DEFS = {
+    dropShadow:   { menu: 'Drop Shadow',          id: 9101, props: ['mode2', 'color', 'opacity', 'useGlobalAngle', 'localLightingAngle', 'distance', 'chokeMatte', 'blur', 'noise', 'layerConceals'] },
+    innerShadow:  { menu: 'Inner Shadow',         id: 9102, props: ['mode2', 'color', 'opacity', 'useGlobalAngle', 'localLightingAngle', 'distance', 'chokeMatte', 'blur', 'noise'] },
+    outerGlow:    { menu: 'Outer Glow',           id: 9103, props: ['mode2', 'color', 'opacity', 'noise', 'glowTechnique', 'chokeMatte', 'blur', 'inputRange', 'shadingNoise'] },
+    innerGlow:    { menu: 'Inner Glow',           id: 9104, props: ['mode2', 'color', 'opacity', 'noise', 'glowTechnique', 'innerGlowSource', 'chokeMatte', 'blur', 'inputRange', 'shadingNoise'] },
+    bevelEmboss:  { menu: 'Bevel and Emboss',     id: 9105, props: ['bevelStyle', 'bevelTechnique', 'bevelDirection', 'highlightMode', 'highlightColor', 'highlightOpacity', 'shadowMode', 'shadowColor', 'shadowOpacity', 'useGlobalAngle', 'localLightingAngle', 'localLightingAltitude', 'strengthRatio', 'blur', 'softness'] },
+    chromeFX:     { menu: 'Satin',                id: 9106, props: ['mode2', 'color', 'opacity', 'localLightingAngle', 'distance', 'blur', 'invert'] },
+    solidFill:    { menu: 'Color Overlay',        id: 9107, props: ['mode2', 'color', 'opacity'] },
+    gradientFill: { menu: 'Gradient Overlay',     id: 9108, props: ['mode2', 'opacity'] },
+    frameFX:      { menu: 'Stroke',               id: 9109, props: ['mode2', 'color', 'opacity', 'size', 'style'] },
+};
+
+function makeLayerStyles() {
+    return makeGroupState({ name: 'Layer Styles', matchName: 'ADBE Layer Styles' }, []);
+}
+
+/** Ajoute le style (groupe) au groupe Styles de calque d'un état de calque, une seule fois. */
+function addLayerStyle(layerState, group) {
+    const def = LAYER_STYLE_DEFS[group];
+    if (!layerState.layerStyles) layerState.layerStyles = makeLayerStyles();
+    const root = layerState.layerStyles;
+    if (root.children.some((c) => c.matchName === group)) return;
+    const colorLike = /color$/i;
+    const g = makeGroupState({ name: def.menu, matchName: group }, def.props.map((p) => makePropState({
+        name: p, matchName: group + '/' + p, value: colorLike.test(p) ? [0, 0, 0, 1] : 0,
+    })));
+    g.parent = root;
+    root.children.push(g);
+}
 
 /** Toutes les propriétés (états) d'un groupe, cachées comprises. */
 function allProps(g, out) {
@@ -392,7 +447,8 @@ class GroupRef {
         return s ? refFor(s, this._ctx) : null;
     }
     /** Groupe Effets : ajoute un effet par matchName. Contenus d'un calque de forme
-     *  (« ADBE Root Vectors Group », « ADBE Vectors Group ») : groupe, rectangle, fond. */
+     *  (« ADBE Root Vectors Group », « ADBE Vectors Group ») : groupe, rectangle, ellipse, tracé,
+     *  contour, fond. */
     addProperty(matchName) {
         if (this._ctx.layerState.locked) throw new Error('Unable to add property: layer is locked');
         let item;
@@ -440,5 +496,5 @@ function selectedStates(root) {
 module.exports = {
     KeyframeInterpolationType, PropertyValueType, PropertyType, KeyframeEase,
     PropertyRef, GroupRef, refFor, makePropState, makeGroupState, makeTransform, makeEffects,
-    makeElasticController, makeSliderControl, makeShapeContents, allProps, selectedStates, visibleChildren, cloneState,
+    makeElasticController, makeSliderControl, makeShapeContents, makeLayerStyles, addLayerStyle, LAYER_STYLE_DEFS, allProps, selectedStates, visibleChildren, cloneState,
 };

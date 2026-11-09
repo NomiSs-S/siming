@@ -6,6 +6,9 @@
  * Alt + clic donne la variante d'un geste (montrer le fichier, dupliquer au lieu de modifier) ;
  * Entrée rejoue la variante choisie. La comp active (format, couleur de fond) est relue à
  * chaque geste et quand le pointeur entre dans la vue.
+ * Importer les PSD ouvre une liste à cocher qui remplace le contenu de la boîte (son bouton
+ * principal est alors le seul à l'écran) ; Échap ou Annuler rend la boîte. Les PSD sont lus ici
+ * (Node du panneau), l'import se fait en un seul appel à l'hôte (outil psdimport).
  */
 (function (global) {
     'use strict';
@@ -45,6 +48,7 @@
                 { icon: 'source', name: 'Afficher la source', text: 'Dans le panneau Projet.', keys: [{ k: ['Alt', 'clic'], t: 'son fichier sur le disque' }] },
                 { icon: 'texte', name: 'Textes PSD', text: 'Ils deviennent modifiables (sélection, sinon toute la compo).' },
                 { icon: 'figer', name: 'Expressions en keyframes', text: 'Une keyframe par image, l\'expression est désactivée.' },
+                { icon: 'importer', name: 'Importer les PSD', text: 'Les .psd de 02_RESSOURCES/02_ASSET ; ceux déjà importés sont décochés. Textes convertis, formes recréées, libellés posés.' },
             ] },
         ],
         footer: 'Le dernier geste est cerclé de bleu : Entrée le rejoue.',
@@ -60,6 +64,14 @@
     const POLL_MAX = 170;   // environ 20 s pour rendre une frame lourde
 
     const wait = (ms) => new Promise((resolve) => global.setTimeout(resolve, ms));
+    /** Laisse le panneau peindre une image (le statut qu'on vient d'écrire) avant une longue tâche. */
+    const painted = () => new Promise((resolve) => {
+        if (typeof global.requestAnimationFrame === 'function') global.requestAnimationFrame(() => global.setTimeout(resolve, 0));
+        else global.setTimeout(resolve, 0);
+    });
+    /** fs.readFile en promesse (Node du panneau, sans bloquer l'interface pendant un gros PSD). */
+    const readFile = (fs, p) => new Promise((resolve, reject) => fs.readFile(p, (e, buf) => (e ? reject(e) : resolve(buf))));
+    const PSD_NO_NODE = 'Lecture des PSD impossible : Node n\'est pas activé dans ce panneau';
     const roleOf = (id) => 'format-' + id.replace(':', 'x');
 
     function mount(view, ctx) {
@@ -67,6 +79,8 @@
         let comp = null;    // { id, name, width, height, format, bg } de la comp active
         let busy = null;
         let last = null;    // { el, replay } : dernier geste, rejoué par Entrée
+        let psd = null;     // { pane, list, folder, primary } tant que la liste des PSD remplace la vue
+        let psdFolder = null;   // dernier dossier de PSD connu de l'hôte (rouvert au geste suivant)
         const settings = ctx.settings;
         const keys = ctx.keys || SIMING.keys;
         const pref = (key, fallback) => {
@@ -82,8 +96,10 @@
 
         const focusRoot = view.closest('.s-view') || view;
         const group = (ctx.meta && ctx.meta.name) || 'Boîte à outils';
-        const action = (id, label, run, defaultKey) => keys.register({
-            id: 'toolbox.' + id, label, group, defaultKey: defaultKey || null, run, when: () => !focusRoot.hidden,
+        /** Action du registre ; sauf `when`, indisponible tant que la liste des PSD est affichée. */
+        const action = (id, label, run, defaultKey, when) => keys.register({
+            id: 'toolbox.' + id, label, group, defaultKey: defaultKey || null, run,
+            when: when || (() => !focusRoot.hidden && !psd),
         });
 
         /** Lance un geste et s'en souvient : el est cerclé, replay le relance (Entrée). */
@@ -195,6 +211,8 @@
             () => run('revealSource', {}),
             { hint: 'son fichier dans l\'Explorateur / le Finder', title: 'Montrer le fichier source dans l\'Explorateur / le Finder', replay: () => task(revealFile) });
         const psdBtn = actionButton('psd-text', 'texte', 'Convertir les textes PSD en texte modifiable', 'Convertir en texte modifiable les textes d\'un Photoshop importé (sélection, sinon toute la composition)', () => run('convertPsdText', {}));
+        const importBtn = actionButton('psd-import', 'importer', 'Importer les PSD', 'Importer des PSD en compositions : une liste à cocher, formes, textes et libellés recréés',
+            () => task(openPsdList));
         const bakeBtn = actionButton('bake', 'figer', 'Convertir les expressions en keyframes', 'Remplacer les expressions des propriétés sélectionnées (ou des calques sélectionnés) par une keyframe à chaque image', () => run('bakeExpressions', {}));
 
         view.append(
@@ -211,14 +229,17 @@
             h('div', { class: 's-stack', 'data-role': 'work-section' }, labelRow('Zone de travail'),
                 h('div', { class: 's-actions' }, workSel, workTrim, cropBtn)),
             h('div', { class: 's-stack', 'data-role': 'layers-section' }, labelRow('Calques'),
-                h('div', { class: 's-actions is-list' }, revealBtn, psdBtn, bakeBtn)));
+                h('div', { class: 's-actions is-list' }, revealBtn, psdBtn, bakeBtn, importBtn)));
+        const sections = Array.from(view.children);   // le contenu de la boîte, caché sous la liste des PSD
 
         // --- Appels à l'hôte -------------------------------------------------------------
         const call = (fn, args) => ctx.bridge.call('toolbox', fn, args || {});
+        const psdCall = (fn, args) => ctx.bridge.call('psdimport', fn, args || {});
 
         function setBusy(on) {
             view.classList.toggle('is-busy', on);
-            view.querySelectorAll('button').forEach((b) => { b.disabled = on; });
+            view.querySelectorAll('button, .s-check-row input').forEach((b) => { b.disabled = on; });
+            syncPsd();
         }
 
         /** Une seule tâche à la fois, commandes désactivées pendant ce temps. */
@@ -233,6 +254,102 @@
 
         function run(fn, args) {
             return task(() => call(fn, args).then(render));
+        }
+
+        // --- Importer les PSD : la liste remplace le contenu de la boîte, puis le rend ----------
+        /** Règles de l'outil Libellés (réglage JSON) ; null si absentes ou illisibles : l'hôte prend les siennes. */
+        function labelRules() {
+            try {
+                const r = JSON.parse(settings.get('labels.rules', ''));
+                return (r && typeof r === 'object') ? r : null;
+            } catch (e) { return null; }
+        }
+
+        /** Bouton principal : « Importer N PSD », inactif à 0 ou pendant une tâche. */
+        function syncPsd() {
+            if (!psd) return;
+            const n = psd.list.checked().length;
+            psd.primary.set({ label: 'Importer ' + n + ' PSD', enabled: n > 0 && !view.classList.contains('is-busy') });
+        }
+
+        const PSD_EMPTY = 'Aucun PSD dans ce dossier';
+        const PSD_NO_FOLDER = 'Aucun dossier : choisis-le avec « Changer de dossier »';
+
+        function buildPsdPane() {
+            const list = ui.checkList({ role: 'psd-list', emptyText: PSD_EMPTY, onChange: syncPsd });
+            const folder = h('span', { class: 's-psd-folder', 'data-role': 'psd-folder' });
+            const link = (role, label, onclick) => h('button', { class: 's-link', type: 'button', 'data-role': role, text: label, onclick });
+            const primary = ui.primaryButton({ label: 'Importer 0 PSD', onClick: () => task(importChecked) });
+            const pane = h('div', { class: 's-stack s-psd-pane', 'data-role': 'psd-pane' },
+                ui.sectionTitle('Importer les PSD'),
+                h('div', { class: 's-psd-bar' }, folder, link('psd-change-folder', 'Changer de dossier', () => task(changePsdFolder))),
+                h('div', { class: 's-psd-bar' }, h('span', { class: 's-hint', text: 'Cocher' }),
+                    h('span', { class: 's-psd-picks' }, link('psd-all', 'Tout', () => list.setAll(true)), link('psd-none', 'Rien', () => list.setAll(false)))),
+                list, primary,
+                ui.button({ label: 'Annuler', role: 'psd-cancel', onClick: () => { if (!busy) cancelPsd(); } }));
+            psd = { pane, list, folder, primary };
+            sections.forEach((e) => { e.hidden = true; });
+            view.append(pane);
+        }
+
+        /** Montre la réponse de psdimport.list dans la liste (ouverte au besoin). */
+        function showPsd(l) {
+            psdFolder = l.folder;
+            if (!psd) buildPsdPane();
+            psd.folder.textContent = l.folder || 'Aucun dossier';
+            psd.folder.title = l.folder || '';
+            psd.list.setRows(l.files.map((f) => ({
+                key: f.path, name: f.name, title: f.path, checked: !f.imported, pill: f.imported ? 'déjà importé' : '', tone: 'done',
+            })), l.folder ? PSD_EMPTY : PSD_NO_FOLDER);
+            syncPsd();
+            ctx.status.set(l.status.text, l.status.level);
+        }
+
+        function closePsd() {
+            if (!psd) return;
+            psd.pane.remove();
+            psd = null;
+            sections.forEach((e) => { e.hidden = false; });
+        }
+
+        function cancelPsd() {
+            closePsd();
+            ctx.status.set('Import des PSD annulé', 'info');
+        }
+        action('psd-cancel', 'Annuler l\'import des PSD', () => { if (!busy) cancelPsd(); }, 'Escape', () => !focusRoot.hidden && !!psd);
+
+        async function openPsdList() {
+            showPsd(await psdCall('list', psdFolder ? { folder: psdFolder } : {}));
+        }
+
+        async function changePsdFolder() {
+            const r = await psdCall('pickFolder', psdFolder ? { from: psdFolder } : {});
+            if (!r.folder) return;
+            showPsd(await psdCall('list', { folder: r.folder }));
+        }
+
+        /** Lit les PSD cochés un par un (Node du panneau), puis les importe d'un seul appel à l'hôte. */
+        async function importChecked() {
+            const paths = psd.list.checked();
+            if (!paths.length) return;
+            let fs = null;
+            try { const req = SIMING.nodeRequire(); fs = req ? req('fs') : null; } catch (e) { fs = null; }
+            if (!fs) { ctx.status.set(PSD_NO_NODE, 'error'); return; }
+            const items = [];
+            for (let i = 0; i < paths.length; i++) {
+                ctx.status.set('Lecture des PSD… (' + (i + 1) + ' / ' + paths.length + ')', 'info');
+                await painted();   // la progression s'affiche avant la lecture (un PSD peut peser 100 Mo)
+                try {
+                    items.push({ path: paths[i], shapes: SIMING.psd.shapes(SIMING.psd.read(await readFile(fs, paths[i]))) });
+                } catch (e) {
+                    items.push({ path: paths[i], error: e.message });
+                }
+            }
+            ctx.status.set('Import des PSD…', 'info');
+            await painted();
+            const r = await psdCall('importBatch', { items, rules: labelRules() });
+            closePsd();
+            render(r);
         }
 
         /** Lance un programme du système par le Node du panneau ; sans Node, hostFallback() demande

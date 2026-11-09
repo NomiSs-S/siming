@@ -5,9 +5,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { loadHost, makeDom, hostEvalScript, app } = require('./helpers');
-const { FakeComp } = require('./fake-ae');
+const { FakeComp, FakeFile, FakeFolder, FootageItem, FileSource } = require('./fake-ae');
 
-const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/bridge.js', 'js/keys.js', 'tools/toolbox.js'];
+const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/bridge.js', 'js/psd/reader.js', 'js/psd/styles.js', 'js/psd/shapes.js', 'js/keys.js', 'tools/toolbox.js'];
 
 /** Comp « Rig » active (1920 × 1080) : A, B, C (100 × 100) en [100, 100], [500, 300], [900, 900]. */
 function rig() {
@@ -23,17 +23,28 @@ function rig() {
     return { comp, A, B, C };
 }
 
-/** opts.node : faux module child_process exposé par un faux cep_node (Node de CEP). */
+/** opts.node : faux module child_process exposé par un faux cep_node (Node de CEP) ; opts.modules : autres
+ *  modules Node (fs…), lus à l'appel ; opts.batch : réponse d'importBatch (appel intercepté, ses arguments sont dans batches). */
 async function setup(opts) {
     opts = opts || {};
     const s = rig();
     if (opts.prepare) opts.prepare(s);
     const { sandbox } = loadHost();
     const win = makeDom(SCRIPTS);
-    if (opts.node) win.cep_node = { require: (name) => (name === 'child_process' ? opts.node : null) };
+    if (opts.node || opts.modules) win.cep_node = { require: (name) => (name === 'child_process' && opts.node) || (opts.modules && opts.modules[name]) || null };
     const counter = { calls: 0 };
     const bridge = win.SIMING.createBridge(hostEvalScript(sandbox, counter));
     const status = win.SIMING.ui.statusLine();
+    const said = [];   // tous les messages de statut
+    const setStatus = status.set;
+    status.set = (message, level) => { said.push(message); setStatus(message, level); };
+    const batches = [];
+    const call = bridge.call;
+    bridge.call = (tool, fn, args) => {
+        if (tool !== 'psdimport' || fn !== 'importBatch') return call(tool, fn, args);
+        batches.push(args);
+        return Promise.resolve(opts.batch || { imported: [], status: { text: 'importé', level: 'ok' } });
+    };
     const section = win.document.createElement('section');
     section.className = 's-view';
     section.tabIndex = -1;
@@ -56,7 +67,7 @@ async function setup(opts) {
         await api.idle();
     };
     const key = async (init, target) => { (target || win.document).dispatchEvent(new win.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init))); await api.idle(); };
-    return { s, win, view, section, api, status, counter, keys, sandbox, $, $$, click, key };
+    return { s, win, view, section, api, status, said, batches, counter, keys, sandbox, $, $$, click, key };
 }
 
 module.exports = function (test) {
@@ -72,7 +83,7 @@ module.exports = function (test) {
         assert.strictEqual(t.$('[data-role=format-section] .s-label-hint').textContent, '1920 × 1080');
         assert.ok(t.$('[data-role=bg-color]').classList.contains('is-auto'), 'fond : couleur de la comp par défaut');
         const ids = t.keys.actions().filter((a) => a.group === 'Boîte à outils').map((a) => a.id);
-        assert.strictEqual(ids.length, 23, ids.join(' '));
+        assert.strictEqual(ids.length, 25, ids.join(' '));
         assert.ok(ids.includes('toolbox.frame-export-alt') && ids.includes('toolbox.reveal-alt') && ids.includes('toolbox.format-9x16-copy'), 'variantes Alt aussi dans le registre');
         assert.deepEqual(t.keys.binding('toolbox.replay'), { code: 'Enter', label: 'Entrée', user: false });
         assert.strictEqual(t.keys.binding('toolbox.frame'), null, 'sans touche par défaut');
@@ -258,5 +269,206 @@ module.exports = function (test) {
         await t.api.idle();
         assert.strictEqual(t.counter.calls, before + 1, 'second clic ignoré pendant l\'appel');
         assert.strictEqual(t.$('[data-role=null]').disabled, false, 'commandes réactivées');
+    });
+
+    /** Dossier réel PROJ/02_RESSOURCES/02_ASSET/{1.psd, 2.psd} + projet ; 2.psd est déjà un métrage du projet. */
+    function psdTree() {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-vue-psd-'));
+        const asset = path.join(root, 'PROJ', '02_RESSOURCES', '02_ASSET');
+        const projet = path.join(root, 'PROJ', '03_PROJET');
+        fs.mkdirSync(asset, { recursive: true });
+        fs.mkdirSync(projet, { recursive: true });
+        for (const n of ['1.psd', '2.psd']) fs.writeFileSync(path.join(asset, n), 'x');
+        fs.writeFileSync(path.join(projet, 'p.aep'), 'x');
+        app.project.file = new FakeFile(path.join(projet, 'p.aep'));
+        app.project.items.push(new FootageItem('Fond/2.psd', new FileSource(new FakeFile(path.join(asset, '2.psd')), true)));
+        return { root, asset, p1: path.join(asset, '1.psd'), p2: path.join(asset, '2.psd'), cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+    }
+
+    /** Faux fs (lecture asynchrone seulement, comme le veut la vue) + faux lecteur : read(buffer) rend { file },
+     *  shapes(doc) rend [{ from: file }]. */
+    function fakePsd(win, failOn) {
+        const reads = [];
+        const fsx = { readFile: (p, cb) => { reads.push(p); setTimeout(() => cb(null, Buffer.from(p)), 0); } };
+        win.SIMING.psd.read = (buf) => { if (failOn && String(buf) === failOn) throw new Error('PSD tronqué'); return { file: String(buf) }; };
+        win.SIMING.psd.shapes = (doc) => [{ from: doc.file }];
+        return { fsx, reads };
+    }
+
+    test('vue boîte à outils : Importer les PSD remplace la vue par la liste (2.psd décochée, déjà importé), Tout, un seul appel d\'import', async () => {
+        const tree = psdTree();
+        try {
+            const holder = {};
+            const t = await setup({ modules: holder, batch: { imported: [{ name: '1', compId: 1 }, { name: '2', compId: 2 }], status: { text: '2 PSD importés · 0 textes · 0 formes · Ctrl+Z pour annuler', level: 'ok' } } });
+            const psd = fakePsd(t.win);
+            holder.fs = psd.fsx;
+            t.win.localStorage.setItem('siming.labels.rules', JSON.stringify({ words: [], types: { shape: 5 } }));
+            const sectionsBefore = t.$$('.s-stack').length;
+            assert.ok(t.$('[data-role=layers-section] [data-role=psd-import]'), 'bouton dans la section Calques');
+            assert.strictEqual(t.$('[data-role=psd-import] .s-action-label').textContent, 'Importer les PSD');
+            assert.strictEqual(t.$('[data-role=psd-import] svg path').getAttribute('d'), t.win.SIMING.ICONS.importer[0].path);
+            await t.click(t.$('[data-role=psd-import]'));
+            assert.ok(t.$('[data-role=psd-pane]'));
+            assert.ok(t.$$('.s-stack').filter((e) => e.getAttribute('data-role') !== 'psd-pane').every((e) => e.hidden), 'le contenu de la boîte est caché');
+            assert.strictEqual(t.$('[data-role=psd-folder]').textContent, tree.asset);
+            assert.deepEqual(t.$$('[data-role=psd-list] .s-check-row').map((r) => r.querySelector('.s-row-name').textContent), ['1.psd', '2.psd']);
+            assert.deepEqual(t.$$('[data-role=psd-list] input').map((i) => i.checked), [true, false]);
+            assert.strictEqual(t.$$('[data-role=psd-list] .s-check-row')[1].querySelector('.s-pill').textContent, 'déjà importé');
+            assert.strictEqual(t.$$('[data-role=psd-list] .s-pill').length, 1);
+            assert.strictEqual(t.status.text, '2 PSD trouvés');
+            assert.strictEqual(t.$$('.s-btn-primary').length, 1, 'un seul bouton principal à l\'écran');
+            assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 1 PSD');
+            assert.strictEqual(t.$('[data-role=primary]').disabled, false);
+            assert.strictEqual(t.$('[data-role=psd-cancel]').textContent, 'Annuler');
+            assert.strictEqual(t.$('[data-role=psd-change-folder]').textContent, 'Changer de dossier');
+            await t.click(t.$('[data-role=psd-all]'));
+            assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 2 PSD');
+            await t.click(t.$('[data-role=psd-none]'));
+            assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 0 PSD');
+            assert.strictEqual(t.$('[data-role=primary]').disabled, true, 'rien de coché : bouton inactif');
+            await t.click(t.$('[data-role=psd-all]'));
+            t.said.length = 0;
+            await t.click(t.$('[data-role=primary]'));
+            assert.deepEqual(t.said.filter((m) => /Lecture/.test(m)), ['Lecture des PSD… (1 / 2)', 'Lecture des PSD… (2 / 2)']);
+            assert.deepEqual(psd.reads, [tree.p1, tree.p2], 'lus un par un, dans l\'ordre');
+            assert.strictEqual(t.batches.length, 1, 'importBatch appelé une fois');
+            assert.deepEqual(t.batches[0].items, [{ path: tree.p1, shapes: [{ from: tree.p1 }] }, { path: tree.p2, shapes: [{ from: tree.p2 }] }]);
+            assert.deepEqual(t.batches[0].rules, { words: [], types: { shape: 5 } }, 'règles de l\'outil Libellés');
+            assert.strictEqual(t.$('[data-role=psd-pane]'), null, 'retour à la vue normale');
+            assert.strictEqual(t.$$('.s-stack').length, sectionsBefore);
+            assert.ok(t.$$('.s-stack').every((e) => !e.hidden));
+            assert.strictEqual(t.status.text, '2 PSD importés · 0 textes · 0 formes · Ctrl+Z pour annuler');
+            assert.strictEqual(t.status.level, 'ok');
+            assert.ok(t.$('[data-role=psd-import]').classList.contains('is-last'));
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : règles de Libellés absentes ou illisibles -> rules null (l\'hôte prend ses règles par défaut)', async () => {
+        const tree = psdTree();
+        try {
+            const holder = {};
+            const t = await setup({ modules: holder });
+            holder.fs = fakePsd(t.win).fsx;
+            await t.click(t.$('[data-role=psd-import]'));
+            await t.click(t.$('[data-role=primary]'));
+            assert.strictEqual(t.batches[0].rules, null);
+            t.win.localStorage.setItem('siming.labels.rules', '{pas du json');
+            await t.click(t.$('[data-role=psd-import]'));
+            await t.click(t.$('[data-role=primary]'));
+            assert.strictEqual(t.batches[1].rules, null);
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : un PSD qui ne se lit pas devient un item en erreur, les autres continuent', async () => {
+        const tree = psdTree();
+        try {
+            const holder = {};
+            const t = await setup({ modules: holder });
+            const psd = fakePsd(t.win, tree.p1);
+            holder.fs = psd.fsx;
+            await t.click(t.$('[data-role=psd-import]'));
+            await t.click(t.$('[data-role=psd-all]'));
+            await t.click(t.$('[data-role=primary]'));
+            assert.deepEqual(t.batches[0].items, [{ path: tree.p1, error: 'PSD tronqué' }, { path: tree.p2, shapes: [{ from: tree.p2 }] }]);
+            const lost = await setup({ modules: { fs: { readFile: (p, cb) => setTimeout(() => cb(new Error('EACCES')), 0) } } });
+            await lost.click(lost.$('[data-role=psd-import]'));
+            await lost.click(lost.$('[data-role=primary]'));
+            assert.deepEqual(lost.batches[0].items, [{ path: tree.p1, error: 'EACCES' }]);
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : sans Node, lecture impossible (erreur) et la liste reste ouverte', async () => {
+        const tree = psdTree();
+        try {
+            const t = await setup();
+            await t.click(t.$('[data-role=psd-import]'));
+            await t.click(t.$('[data-role=primary]'));
+            assert.strictEqual(t.status.text, 'Lecture des PSD impossible : Node n\'est pas activé dans ce panneau');
+            assert.strictEqual(t.status.level, 'error');
+            assert.strictEqual(t.batches.length, 0);
+            assert.ok(t.$('[data-role=psd-pane]'), 'la liste reste là');
+            assert.strictEqual(t.$('[data-role=primary]').disabled, false, 'commandes réactivées');
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : Annuler et Échap ferment la liste ; Entrée rouvre la liste, pas pendant qu\'elle est ouverte', async () => {
+        const tree = psdTree();
+        try {
+            const t = await setup();
+            await t.click(t.$('[data-role=psd-import]'));
+            const calls = t.counter.calls;
+            t.section.focus();
+            await t.key({ key: 'Enter', code: 'Enter' }, t.section);
+            assert.strictEqual(t.counter.calls, calls, 'Entrée ne rejoue rien tant que la liste est ouverte');
+            assert.ok(t.$('[data-role=psd-pane]'));
+            await t.key({ key: 'Escape', code: 'Escape' }, t.section);
+            assert.strictEqual(t.$('[data-role=psd-pane]'), null, 'Échap = Annuler');
+            assert.ok(t.$$('.s-stack').every((e) => !e.hidden));
+            assert.strictEqual(t.batches.length, 0);
+            await t.key({ key: 'Escape', code: 'Escape' }, t.section);   // liste fermée : Échap ne fait rien
+            await t.key({ key: 'Enter', code: 'Enter' }, t.section);
+            assert.ok(t.$('[data-role=psd-pane]'), 'Entrée rejoue le geste : la liste se rouvre');
+            await t.click(t.$('[data-role=psd-cancel]'));
+            assert.strictEqual(t.$('[data-role=psd-pane]'), null);
+            assert.strictEqual(t.keys.binding('toolbox.psd-cancel').code, 'Escape');
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : Changer de dossier relance la liste sur le dossier choisi ; annulé, rien ne change', async () => {
+        const tree = psdTree();
+        const other = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-vue-psd-b-'));
+        try {
+            for (const n of ['b.psd', 'a.psd', 'x.txt']) fs.writeFileSync(path.join(other, n), 'x');
+            const t = await setup();
+            await t.click(t.$('[data-role=psd-import]'));
+            FakeFolder.selectResult = null;
+            await t.click(t.$('[data-role=psd-change-folder]'));
+            assert.strictEqual(t.$('[data-role=psd-folder]').textContent, tree.asset, 'dialogue annulé');
+            FakeFolder.selectResult = new FakeFolder(other);
+            await t.click(t.$('[data-role=psd-change-folder]'));
+            assert.strictEqual(t.$('[data-role=psd-folder]').textContent, other);
+            assert.deepEqual(t.$$('[data-role=psd-list] .s-row-name').map((e) => e.textContent), ['a.psd', 'b.psd']);
+            assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 2 PSD');
+            assert.strictEqual(t.status.text, '2 PSD trouvés');
+        } finally { FakeFolder.selectResult = null; tree.cleanup(); fs.rmSync(other, { recursive: true, force: true }); }
+    });
+
+    test('vue boîte à outils : M1, chaque PSD attend une image peinte avant sa lecture (progression visible)', async () => {
+        const tree = psdTree();
+        try {
+            const holder = {};
+            const t = await setup({ modules: holder });
+            const psd = fakePsd(t.win);
+            holder.fs = psd.fsx;
+            const frames = [];
+            t.win.requestAnimationFrame = (cb) => { frames.push(t.said[t.said.length - 1]); setTimeout(cb, 0); return frames.length; };
+            await t.click(t.$('[data-role=psd-import]'));
+            await t.click(t.$('[data-role=psd-all]'));
+            await t.click(t.$('[data-role=primary]'));
+            assert.deepEqual(frames.slice(0, 2), ['Lecture des PSD… (1 / 2)', 'Lecture des PSD… (2 / 2)'], 'une image par PSD, après son message');
+            assert.deepEqual(psd.reads, [tree.p1, tree.p2]);
+            assert.strictEqual(t.batches.length, 1);
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : PSD trouvé dans un dossier vide -> « Aucun PSD dans ce dossier »', async () => {
+        const tree = psdTree();
+        try {
+            for (const n of ['1.psd', '2.psd']) fs.rmSync(path.join(tree.asset, n));
+            const t = await setup();
+            await t.click(t.$('[data-role=psd-import]'));
+            assert.strictEqual(t.$('[data-role=psd-list] .s-empty').textContent, 'Aucun PSD dans ce dossier');
+        } finally { tree.cleanup(); }
+    });
+
+    test('vue boîte à outils : projet non enregistré -> liste vide, statut de l\'hôte, Changer de dossier proposé', async () => {
+        const t = await setup();
+        await t.click(t.$('[data-role=psd-import]'));
+        assert.ok(t.$('[data-role=psd-pane]'));
+        assert.strictEqual(t.$('[data-role=psd-list] .s-empty').textContent, 'Aucun dossier : choisis-le avec « Changer de dossier »', 'M2 : pas « aucun PSD » sans dossier');
+        assert.strictEqual(t.status.text, 'Projet non enregistré : choisis le dossier des PSD');
+        assert.strictEqual(t.$('[data-role=primary]').disabled, true);
+        assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 0 PSD');
+        assert.ok(t.$('[data-role=psd-change-folder]'));
     });
 };
