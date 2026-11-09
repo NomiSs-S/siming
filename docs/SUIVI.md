@@ -222,7 +222,12 @@ Demande de Simon : « les installeurs ne marchent plus, mets-les à jour et rép
 - **Correction** : les deux installeurs extraient le `.zxp` signé tel quel dans le dossier CEP de l'utilisateur (`%APPDATA%\Adobe\CEP\extensions\com.siming`, `~/Library/Application Support/Adobe/CEP/extensions/com.siming`) : ni UPIA, ni Creative Cloud, ni droits administrateur. Extraction dans un dossier temporaire, contrôle de `CSXS/manifest.xml` et `META-INF/signatures.xml`, puis remplacement. Lien ou jonction de développement : le lien seul est retiré. Ancienne copie UPIA du dossier système : `UPIA --remove SIMING`, puis suppression avec autorisation (UAC, mot de passe macOS). Windows : « q » pour abandonner l'attente d'After Effects.
 - `dev-install.command` et `dev-install.bat` remplacent une copie signée posée par l'installeur (même dossier désormais).
 - Vérifié : installeur Windows rempli lancé pour de vrai avec `APPDATA` temporaire (jonction factice retirée sans toucher sa cible, 1.3.1 installée puis 1.3.0 par-dessus) ; installeur macOS lancé sous bash avec remplaçants (`ditto` → `unzip`, `osascript` → node, `pgrep`) : 1.3.1 puis 1.2.0, dossier temporaire nettoyé. `node tests/run.js` : 289 tests, 0 échec.
-- **Reste à vérifier** : chargement sans PlayerDebugMode d'une copie extraite (signature auto-signée acceptée par CEP, comme le fait ZXP Installer), sur un vrai Mac ; voir `TESTS-MANUELS.md`. Les installeurs corrigés n'atteignent les collègues qu'une fois joints à une Release (remplacer ceux de la v1.3.1, ou publier la 1.4.0).
+- **Reste à vérifier** : chargement sans PlayerDebugMode d'une copie extraite (signature auto-signée acceptée par CEP, comme le fait ZXP Installer), sur un vrai Mac ; voir `TESTS-MANUELS.md`. Les installeurs corrigés n'atteignent les collègues qu'une fois joints à une Release.
+- Le modèle `tools/installer/…` lancé depuis le dépôt (dépôt `__REPO__` non rempli) donnait un 404 de GitHub : il lit maintenant `repository` dans `tools.json`.
+
+### 2026-11-09 : SIMING 1.4.0 publiée
+
+Demande de Simon : « mets tout à jour pour la 1.4 ». Publiée sans test complet dans After Effects (Claude Code vérifié sur Mac le 2026-11-06). Commit 3d3be88 sur `main`. Release https://github.com/NomiSs-S/siming/releases/tag/v1.4.0 (Latest) : `SIMING-1.4.0.zxp` (signature vérifiée, `com.siming.mcp` et `mcp.jsx` inclus, aucun `._`), installeurs sans UPIA, `INSTALLATION.md`. Note affichée : « Ajout : Claude Code dans After Effects (Réglages › Claude), installeur qui ne dépend plus de Creative Cloud » ; les notes demandent de re-télécharger l'installeur une fois. Installeur Windows téléchargé de la Release : liste v1.4.0 en tête.
 
 ## Pistes
 
