@@ -52,7 +52,7 @@ module.exports = function (test) {
         assert.strictEqual(files[0].data.toString(), '#!/bin/bash\necho é\n');
     });
 
-    test('installeur Windows : dépôt rempli, CRLF, ASCII, UPIA et API GitHub', () => {
+    test('installeur Windows : dépôt rempli, CRLF, ASCII, API GitHub', () => {
         const { bat } = R.installers(LIST);
         assert.ok(!bat.includes('__REPO__'));
         assert.ok(bat.includes("$Repo = 'simon/siming'"));
@@ -60,8 +60,19 @@ module.exports = function (test) {
         assert.ok(/^[\x00-\x7F]*$/.test(bat), 'console Windows : ASCII uniquement');
         assert.ok(bat.includes('#POWERSHELL#'));
         assert.ok(bat.includes('https://api.github.com/repos/$Repo/releases'));
-        assert.ok(bat.includes('UnifiedPluginInstallerAgent.exe') && bat.includes('/install'));
         assert.ok(bat.includes('AfterFX'));
+    });
+
+    test('installeur Windows : .zxp extrait chez l\'utilisateur, sans UPIA pour installer', () => {
+        // UPIA passe par Creative Cloud : non connecté, il échoue (-631) et sort avec le code 0.
+        const { bat } = R.installers(LIST);
+        assert.ok(!/\/install\b/.test(bat), 'plus d\'installation par UPIA');
+        assert.ok(bat.includes("Join-Path $env:APPDATA 'Adobe\\CEP\\extensions'"), 'dossier de l\'utilisateur');
+        assert.ok(bat.includes('[IO.Compression.ZipFile]::ExtractToDirectory($tmp, $new)'));
+        assert.ok(bat.includes("'META-INF\\signatures.xml'"), 'signature présente avant de remplacer');
+        assert.ok(bat.includes('[IO.FileAttributes]::ReparsePoint') && bat.includes('cmd /c rmdir "$path"'),
+            'jonction de développement : le lien seul');
+        assert.ok(bat.includes('/remove SIMING') && bat.includes('-Verb RunAs'), 'ancienne copie UPIA retirée');
     });
 
     test('installeur Windows : chemin par variable, pré-versions exclues, erreurs rattrapées', () => {
@@ -73,16 +84,20 @@ module.exports = function (test) {
         assert.ok(bat.includes('releases?per_page=100'));
         assert.ok(bat.includes("$ProgressPreference = 'SilentlyContinue'"));
         assert.ok(bat.includes('Telechargement impossible'));
-        assert.ok(/try \{[^]*& \$upia \/install/.test(bat), 'appel UPIA dans un try');
+        assert.ok(/try \{[^]*ExtractToDirectory[^]*\} catch \{[^]*Installation impossible/.test(bat), 'extraction dans un try');
     });
 
-    test('installeur macOS : dépôt rempli, LF, bash, UPIA et API GitHub', () => {
+    test('installeur macOS : dépôt rempli, LF, bash, API GitHub, extraction chez l\'utilisateur', () => {
         const { cmd } = R.installers(LIST);
         assert.ok(cmd.startsWith('#!/bin/bash\n'));
         assert.ok(!cmd.includes('\r'));
         assert.ok(cmd.includes('REPO="simon/siming"'));
         assert.ok(cmd.includes('https://api.github.com/repos/$REPO/releases'));
-        assert.ok(cmd.includes('UnifiedPluginInstallerAgent') && cmd.includes('--install'));
+        assert.ok(!cmd.includes('--install'), 'plus d\'installation par UPIA');
+        assert.ok(cmd.includes('USER_DIR="$HOME/Library/Application Support/Adobe/CEP/extensions"'));
+        assert.ok(cmd.includes('ditto -x -k "$tmp" "$new"'));
+        assert.ok(cmd.includes('[ ! -f "$new/META-INF/signatures.xml" ]'), 'signature présente avant de remplacer');
+        assert.ok(cmd.includes('--remove SIMING') && cmd.includes('with administrator privileges'), 'ancienne copie UPIA retirée');
         assert.ok(cmd.includes('osascript -l JavaScript'));
         assert.ok(cmd.includes('if (r.prerelease) return;'), 'pré-versions exclues');
         assert.ok(cmd.includes('releases?per_page=100'));
@@ -99,11 +114,13 @@ module.exports = function (test) {
         assert.ok(cmd.includes('[ "$go" = "i" ] && break'), 'installer quand même');
     });
 
-    test('installeur macOS : lien de développement retiré, jamais son contenu', () => {
+    test('installeur macOS : lien de développement retiré (jamais son contenu), copie remplacée', () => {
         const { cmd } = R.installers(LIST);
-        assert.ok(cmd.includes('if [ -L "$devlink" ]'), 'lien symbolique détecté');
-        assert.ok(cmd.includes('rm "$devlink"'), 'seul le lien est retiré');
-        assert.ok(!/rm -r[f]? "\$devlink/.test(cmd), 'jamais de rm -r sur le lien');
+        assert.ok(cmd.includes('if [ -L "$TARGET" ]; then\n  rm "$TARGET"'), 'seul le lien est retiré');
+        // rm -rf seulement sur une vraie copie, jamais sur le lien (il suivrait vers le dépôt)
+        const rmr = cmd.match(/rm -r[f]? "\$TARGET/g) || [];
+        assert.strictEqual(rmr.length, 1);
+        assert.ok(cmd.includes('elif [ -e "$TARGET" ]; then\n  rm -rf "$TARGET"'), 'après le test du lien');
         const bash = spawnSync('bash', ['-n'], { input: cmd, encoding: 'utf8' });
         if (!bash.error) assert.strictEqual(bash.status, 0, 'syntaxe bash : ' + bash.stderr);
     });
@@ -142,6 +159,15 @@ module.exports = function (test) {
         } finally {
             if (saved !== undefined) process.env.ZXPSIGNCMD = saved;
         }
+    });
+
+    test('publication : fichiers « ._ » de macOS retirés avant de signer, le reste intact', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-dot-'));
+        fs.mkdirSync(path.join(dir, 'host', 'tools'), { recursive: true });
+        for (const f of ['host/tools/mcp.jsx', 'host/tools/._mcp.jsx', '._index.html', 'index.html']) fs.writeFileSync(path.join(dir, f), 'x');
+        const removed = R.removeAppleDouble(dir).map((p) => p.split(path.sep).join('/')).sort();
+        assert.deepEqual(removed, ['._index.html', 'host/tools/._mcp.jsx']);
+        assert.ok(fs.existsSync(path.join(dir, 'host/tools/mcp.jsx')) && fs.existsSync(path.join(dir, 'index.html')));
     });
 
     test('publication : --dry-run régénère le manifeste sans signer', () => {

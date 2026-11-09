@@ -36,19 +36,54 @@ function validate(list) {
     return list;
 }
 
-function panel(x) {
+/** Ressources communes : page, cœur hôte, Node (contexte séparé : SIMING.runProgram, service Claude). */
+function resources(page) {
     return [
-        '    <Extension Id="' + x.id + '">',
-        '      <DispatchInfo>',
         '        <Resources>',
-        '          <MainPath>' + x.page + '</MainPath>',
+        '          <MainPath>' + page + '</MainPath>',
         '          <ScriptPath>./host/siming.jsx</ScriptPath>',
         '          <CEFCommandLine>',
         '            <Parameter>--allow-file-access-from-files</Parameter>',
         '            <Parameter>--allow-file-access</Parameter>',
-        '            <Parameter>--enable-nodejs</Parameter>',   // Node (contexte séparé) : SIMING.runProgram
+        '            <Parameter>--enable-nodejs</Parameter>',
         '          </CEFCommandLine>',
         '        </Resources>',
+    ];
+}
+
+/** Service Claude Code : extension invisible (sans menu), lancée avec After Effects, ou par le
+ *  hub (requestOpenExtension) si After Effects ne la démarre pas lui-même. */
+const SERVICE = { id: 'com.siming.mcp', page: './client/claude.html' };
+
+function service() {
+    return [
+        '    <Extension Id="' + SERVICE.id + '">',
+        '      <DispatchInfo>',
+    ].concat(resources(SERVICE.page), [
+        '        <Lifecycle>',
+        '          <AutoVisible>false</AutoVisible>',
+        '          <StartOn>',
+        '            <Event>applicationActivate</Event>',
+        '            <Event>com.adobe.csxs.events.ApplicationActivate</Event>',
+        '            <Event>com.adobe.csxs.events.ApplicationInitialized</Event>',
+        '          </StartOn>',
+        '        </Lifecycle>',
+        '        <UI>',
+        '          <Type>Custom</Type>',
+        '          <Geometry>',
+        '            <Size><Height>100</Height><Width>100</Width></Size>',
+        '          </Geometry>',
+        '        </UI>',
+        '      </DispatchInfo>',
+        '    </Extension>',
+    ]).join('\n');
+}
+
+function panel(x) {
+    return [
+        '    <Extension Id="' + x.id + '">',
+        '      <DispatchInfo>',
+    ].concat(resources(x.page), [
         '        <Lifecycle>',
         '          <AutoVisible>true</AutoVisible>',
         '        </Lifecycle>',
@@ -62,7 +97,7 @@ function panel(x) {
         '        </UI>',
         '      </DispatchInfo>',
         '    </Extension>',
-    ].join('\n');
+    ]).join('\n');
 }
 
 function buildManifest(list) {
@@ -74,7 +109,7 @@ function buildManifest(list) {
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<ExtensionManifest Version="' + CSXS + '" ExtensionBundleId="com.siming" ExtensionBundleVersion="' + v + '" ExtensionBundleName="SIMING" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
         '  <ExtensionList>',
-        panels.map((x) => '    <Extension Id="' + x.id + '" Version="' + v + '"/>').join('\n'),
+        panels.concat([SERVICE]).map((x) => '    <Extension Id="' + x.id + '" Version="' + v + '"/>').join('\n'),
         '  </ExtensionList>',
         '  <ExecutionEnvironment>',
         '    <HostList>',
@@ -88,7 +123,7 @@ function buildManifest(list) {
         '    </RequiredRuntimeList>',
         '  </ExecutionEnvironment>',
         '  <DispatchInfoList>',
-        panels.map(panel).join('\n'),
+        panels.map(panel).concat([service()]).join('\n'),
         '  </DispatchInfoList>',
         '</ExtensionManifest>',
         '',
@@ -102,7 +137,7 @@ function writeManifest() {
     return xml;
 }
 
-module.exports = { buildManifest, validate, readList, writeManifest, MANIFEST, TOOLS_JSON, ROOT, MIN_AE, CSXS };
+module.exports = { buildManifest, validate, readList, writeManifest, MANIFEST, TOOLS_JSON, ROOT, MIN_AE, CSXS, SERVICE };
 
 if (require.main === module) {
     try {

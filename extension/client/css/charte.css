@@ -193,6 +193,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-key-btn.is-recording { border-color: var(--accent-text); color: var(--accent-text); font-family: var(--font); }
 .s-settings-actions { display: flex; gap: 8px; margin-top: 4px; }
 
+/* Réglages › Claude : état d'un service (pastille + texte), commande à copier */
+.s-state { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 6px 10px; border-radius: var(--radius); background: var(--bg-inset); font-size: 11px; color: var(--text); }
+.s-state[data-level="ok"] .s-dot { background: var(--ok); }
+.s-state[data-level="warn"] .s-dot { background: var(--warn); }
+.s-state[data-level="error"] .s-dot { background: var(--error); }
+.s-state-text { flex: 1; min-width: 0; }
+.s-command { display: block; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); font-family: var(--mono); font-size: 10px; line-height: 1.5; color: var(--text-strong); word-break: break-all; user-select: text; cursor: text; }
+
 /* Barre de valeur (curseur) */
 .s-bar { position: relative; flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); overflow: hidden; cursor: ew-resize; touch-action: none; }
 .s-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-soft); pointer-events: none; }

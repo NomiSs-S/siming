@@ -6,7 +6,9 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : 1.3.1** : Quick Tools (outil par défaut), Boîte à outils, Unparent, Libellés
+**État : 1.4.0** : Quick Tools (outil par défaut), Boîte à outils, Unparent, Libellés, et
+Claude Code (serveur MCP local, Réglages › Claude ; spec
+`docs/superpowers/specs/2026-11-06-claude-code-mcp-design.md`)
 (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
 
 ## Structure
@@ -15,10 +17,11 @@ projet (`extension/host/`). Spec de référence :
 - `extension/client/` : `index.html` (hub), `tool.html` (outil seul, déduit de l'identifiant d'extension),
   `css/charte.css`, `js/bridge.js` (seul contact avec AE), `js/keys.js` (raccourcis :
   registre d'actions, un outil y enregistre ses gestes via `ctx.keys`), `js/ui/` (composants),
-  `tools/<id>.js` (vues).
+  `tools/<id>.js` (vues), `js/mcp/` (Claude Code : protocole MCP, serveur HTTP et réglages,
+  service, onglet Claude du hub), `claude.html` (page de l'extension invisible `com.siming.mcp`).
 - `extension/host/` : `siming.jsx` (JSON, helpers AE, géométrie partagée `SIMING.geom`, sélection
   de propriétés et keyframes, annulation, routeur),
-  `tools/<id>.jsx` (cœur et API de chaque outil).
+  `tools/<id>.jsx` (cœur et API de chaque outil ; `mcp.jsx` : ce que Claude Code lit et exécute).
 - `tests/` : `node tests/run.js`. `tools/` : dev-install, make-cert, release.js, installeurs.
 - `docs/SUIVI.md` : journal, pistes, erreurs. À mettre à jour à chaque session.
 - `docs/NOTES-EXTENDSCRIPT.md` : pièges techniques ExtendScript et CEP. Y ajouter chaque piège découvert.
@@ -60,6 +63,10 @@ version de l'outil dans `tools.json`, jamais le manifeste (généré).
 - Les commandes Bash longues (au-delà d'environ 8 Ko) échouent : écrire les gros fichiers avec l'outil Write, les petits avec des heredocs, un fichier par commande.
 - Dépôt GitHub public `NomiSs-S/siming`, branche `main` (`origin`). ZXPSignCmd, certificat de signature et son mot de passe sont dans `~/.siming/`, hors dépôt.
 - Ne jamais committer le certificat de signature ni son mot de passe.
+- Le dépôt est sur un disque externe exFAT (`/Volumes/KINGSTON`, autrefois « EXT 11 ») : sur le Mac,
+  SIMING s'installe par **copie** (`tools/dev-install.command`, à relancer après chaque modification),
+  jamais par un lien vers ce disque (SIMING disparaissait d'After Effects). macOS y crée des fichiers
+  `._*` : ignorés par le code et git, retirés par `release.js`.
 
 ## Ajouter un outil
 
@@ -68,4 +75,5 @@ version de l'outil dans `tools.json`, jamais le manifeste (généré).
 3. Cœur : `extension/host/tools/<id>.jsx` avec `SIMING.registerTool(id, api)`.
 4. Tests hôte et vue dans `tests/`, branchés dans `tests/run.js`.
 5. Monter la version mineure dans `tools.json`, documenter dans le README, noter les décisions dans `docs/SUIVI.md`.
+   Un geste utile à Claude Code : l'ajouter à `SIMING.mcp.GESTURES` (`js/mcp/protocol.js`).
 6. `node tools/release.js --dry-run`, puis `node tools/release.js` et la Release GitHub (notice des collègues : `docs/INSTALLATION.md`).

@@ -32,13 +32,17 @@ function bootable(win, sandbox, opts) {
 }
 
 module.exports = function (test) {
-    test('pages : index.html et tool.html ne référencent que des fichiers existants', () => {
+    test('pages : index.html, tool.html et claude.html ne référencent que des fichiers existants', () => {
         for (const page of ['index.html', 'tool.html']) {
             const html = fs.readFileSync(path.join(CLIENT, page), 'utf8');
             const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
             assert.ok(refs.length >= 9, page);
             for (const ref of refs) assert.ok(fs.existsSync(path.join(CLIENT, ref)), page + ' -> ' + ref);
         }
+        const claude = fs.readFileSync(path.join(CLIENT, 'claude.html'), 'utf8');
+        for (const ref of [...claude.matchAll(/src="([^"]+)"/g)].map((m) => m[1])) assert.ok(fs.existsSync(path.join(CLIENT, ref)), 'claude.html -> ' + ref);
+        assert.ok(/SIMING\.mcp\.startService\(\)/.test(claude));
+        assert.ok(/js\/mcp\/settings\.js/.test(fs.readFileSync(path.join(CLIENT, 'index.html'), 'utf8')), 'onglet Claude dans le hub');
         assert.ok(/SIMING\.boot\('hub'\)/.test(fs.readFileSync(path.join(CLIENT, 'index.html'), 'utf8')));
         assert.ok(/SIMING\.boot\('standalone'\)/.test(fs.readFileSync(path.join(CLIENT, 'tool.html'), 'utf8')));
     });

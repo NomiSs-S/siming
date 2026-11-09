@@ -1,7 +1,8 @@
 /*
  * SIMING : hub (panneau principal). Rail, une vue par outil, Réglages, statut commun,
  * raccourcis clavier (registre SIMING.keys : « Afficher <outil> » = chiffre de sa place).
- *   SIMING.startHub({ root, list, bridge, openExtension }) -> hub
+ *   SIMING.startHub({ root, list, bridge, openExtension, claude }) -> hub
+ *   claude : accès du hub au service Claude Code (SIMING.mcp.hubEnv), null hors After Effects.
  */
 (function (global) {
     'use strict';
@@ -56,7 +57,7 @@
         }
     };
 
-    SIMING.startHub = function ({ root, list, bridge, openExtension }) {
+    SIMING.startHub = function ({ root, list, bridge, openExtension, claude }) {
         const keys = SIMING.keys;
         const doc = global.document;
         let tools = SIMING.orderTools(list.tools, SIMING.settings.get('toolOrder', ''));
@@ -150,7 +151,7 @@
         keys.attach(doc);
         const settings = buildSettings(settingsView, {
             list, status, tools: () => tools, hidden: () => hidden,
-            onOrder: setOrder, onHidden: setHidden, onKeys: refreshHints,
+            onOrder: setOrder, onHidden: setHidden, onKeys: refreshHints, claude,
         });
         global.addEventListener('resize', () => rail.layout());
 
@@ -160,16 +161,19 @@
         return hub;
     };
 
-    /** Vue Réglages en trois onglets, pensée pour beaucoup d'outils :
+    /** Vue Réglages en onglets, pensée pour beaucoup d'outils :
      *   Outils     : liste réordonnable (poignée à glisser, ou ↑ ↓ au clavier), œil = masquer
      *                du rail, touche de chaque outil ; recherche dès SEARCH_FROM outils.
      *   Raccourcis : recherche + actions groupées par outil, rétablir.
      *   Général    : outil au lancement (menu déroulant), à propos.
+     *   Claude     : laisser Claude Code agir dans After Effects (si js/mcp/settings.js est chargé).
      *  tools() / hidden() : état courant ; onOrder(ids), onHidden(id, masqué) ; onKeys() après un raccourci. */
-    function buildSettings(view, { list, status, tools, hidden, onOrder, onHidden, onKeys }) {
+    function buildSettings(view, { list, status, tools, hidden, onOrder, onHidden, onKeys, claude }) {
         const keys = SIMING.keys;
         const doc = view.ownerDocument;
-        const TABS = [{ id: 'tools', label: 'Outils' }, { id: 'keys', label: 'Raccourcis' }, { id: 'general', label: 'Général' }];
+        const withClaude = !!(SIMING.mcp && SIMING.mcp.settingsPane);
+        const TABS = [{ id: 'tools', label: 'Outils' }, { id: 'keys', label: 'Raccourcis' }, { id: 'general', label: 'Général' }]
+            .concat(withClaude ? [{ id: 'claude', label: 'Claude' }] : []);
         const panes = {};
         const tabs = ui.segmented({
             role: 'settings-tabs', labels: TABS.map((t) => t.label),
@@ -304,6 +308,9 @@
                 .concat(tools().filter((t) => !off.includes(t.id)).map((t) => ({ value: t.id, label: t.name })));
             startSelect.setOptions(options, options.some((o) => o.value === current) ? current : 'last');
         }
+
+        // --- Claude : service MCP pour Claude Code ---------------------------------------
+        if (withClaude) SIMING.mcp.settingsPane(panes.claude, { status, env: claude || null });
 
         const refresh = () => { renderTools(); renderKeys(); renderStart(); };
         refresh();

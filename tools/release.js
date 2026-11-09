@@ -62,6 +62,28 @@ function writeInstallers(list, dir) {
         zip([{ name: MAC_INSTALLER, data: Buffer.from(cmd, 'utf8'), mode: 0o755 }]));
 }
 
+/**
+ * Retire les fichiers « ._ » que macOS écrit à côté de chaque fichier sur un disque non Apple
+ * (exFAT, FAT) : ZXPSignCmd les signerait avec le reste et After Effects les prendrait pour
+ * du code (._mcp.jsx). Rend leurs chemins relatifs à dir.
+ */
+function removeAppleDouble(dir) {
+    const removed = [];
+    (function walk(d) {
+        for (const name of fs.readdirSync(d)) {
+            const full = path.join(d, name);
+            const st = fs.statSync(full);
+            if (/^\._/.test(name) && st.isFile()) {
+                fs.unlinkSync(full);
+                removed.push(path.relative(dir, full));
+            } else if (st.isDirectory()) {
+                walk(full);
+            }
+        }
+    })(dir);
+    return removed;
+}
+
 function sign(list) {
     const tool = process.env.ZXPSIGNCMD;
     if (!tool || !fs.existsSync(tool)) throw new Error('ZXPSIGNCMD doit pointer vers ZXPSignCmd');
@@ -79,6 +101,8 @@ function sign(list) {
 function main(argv) {
     const dry = argv.includes('--dry-run');
     const list = validate(readList());
+    const junk = removeAppleDouble(path.join(ROOT, 'extension'));
+    if (junk.length) console.log('Fichiers « ._ » de macOS retirés de extension/ : ' + junk.length);
     writeManifest();
     installers(list);   // vérifie que les modèles existent
     if (dry) {
@@ -93,7 +117,7 @@ function main(argv) {
     console.log('Première ligne des notes : « Ajout : … » ou « Correction : … » (affichée par l\'installeur).');
 }
 
-module.exports = { installers, writeInstallers, checkRepository, sign, runZxpSign, main, DIST };
+module.exports = { installers, writeInstallers, checkRepository, sign, runZxpSign, removeAppleDouble, main, DIST };
 
 if (require.main === module) {
     try {

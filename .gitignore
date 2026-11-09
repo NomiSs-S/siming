@@ -5,3 +5,4 @@ dist/
 .env
 .superpowers/
 extension/CSXS/manifest.xml
+._*

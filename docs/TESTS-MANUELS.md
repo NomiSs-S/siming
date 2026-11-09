@@ -9,13 +9,15 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 ## Installation
 
 - [ ] `tools/dev-install` (Windows et macOS) : SIMING apparaît dans Fenêtre › Extensions après redémarrage d'AE.
+- [ ] macOS, `tools/dev-install.command` : `~/Library/Application Support/Adobe/CEP/extensions/com.siming` est un vrai dossier (pas un lien), sans fichier `._*` ; éjecter le disque KINGSTON, redémarrer AE : SIMING est toujours là.
 - [ ] Release signée installée avec l'installeur (Windows et macOS) : le menu de versions s'affiche, « Entrée » installe la dernière, la version installée est indiquée au lancement suivant.
 - [ ] Retour à une version précédente avec l'installeur : la version choisie est bien installée.
 - [ ] AE ouvert pendant l'installation : l'installeur demande de le fermer.
 - [ ] Windows : `SIMING-Installer-Windows.bat` lancé depuis un dossier dont le nom contient une apostrophe (ex. `C:\Users\…\l'atelier`) : l'installeur démarre normalement.
 - [ ] macOS 15 (Sequoia) ou plus : premier lancement de `SIMING-Installer.command` refusé, puis **Réglages Système › Confidentialité et sécurité › Ouvrir quand même** : l'installeur s'ouvre (procédure de `docs/INSTALLATION.md`).
 - [ ] macOS : `SIMING-Installer.command` fonctionne avec le `/bin/bash` 3.2 livré par Apple (liste des versions lue par le heredoc dans `$(...)`).
-- [ ] Noter la commande et le chemin exacts d'UPIA qui fonctionnent sur chaque système (spec § 13).
+- [ ] Installeur (extraction du `.zxp` depuis la 1.4.0), **sans** PlayerDebugMode (Windows : `HKCU\Software\Adobe\CSXS.12`, clé `PlayerDebugMode` absente ou 0 ; macOS : `defaults delete com.adobe.CSXS.12 PlayerDebugMode`) et sans être connecté à Creative Cloud : SIMING s'ouvre (signature acceptée).
+- [ ] Machine où une ancienne version avait été installée par UPIA (dossier `Common Files\Adobe\CEP\extensions\com.siming` ou `/Library/Application Support/Adobe/CEP/extensions/com.siming`) : l'installeur la retire (autorisation ou mot de passe demandé), un seul SIMING dans Fenêtre › Extensions.
 
 ## Hub
 
@@ -25,7 +27,7 @@ Préparer une comp « Rig » : `Parent` ; trois enfants `A`, `B`, `C` ; un petit
 - [ ] Panneau très étroit (ancré à 180–220 px de large) : **rien n'est rogné à droite** ; les aides de section passent sous leur titre, Ancrage au-dessus d'Aligner (Quick Tools), Répartir en 3 colonnes, couleur d'une nature sous son nom (Libellés › Règles), touche d'un raccourci sous son libellé (Réglages), boutons de la Boîte à outils l'un sous l'autre ; quand l'outil affiché est rangé dans « … », « … » est allumé en bleu.
 - [ ] Barre de défilement (panneau court, Réglages › Raccourcis, récapitulatif de Libellés) : fine, grise, arrondie, sans flèches ; plus épaisse au survol, plus claire quand on la tient ; plus de barre claire de Windows.
 - [ ] Touches 1…n (rangée de chiffres, avec ou sans Maj en AZERTY) changent d'outil dans l'ordre du rail (pas dans un champ) ; infobulle du rail « Nom (1) ».
-- [ ] Réglages : trois onglets Outils / Raccourcis / Général, le dernier ouvert est retrouvé après fermeture/réouverture. Général : outil au lancement (menu déroulant lisible en thème sombre) respecté après réouverture ; « À propos » liste les versions.
+- [ ] Réglages : quatre onglets Outils / Raccourcis / Général / Claude, le dernier ouvert est retrouvé après fermeture/réouverture. Général : outil au lancement (menu déroulant lisible en thème sombre) respecté après réouverture ; « À propos » liste les versions.
 - [ ] Réglages › Outils : glisser une ligne par sa poignée (la ligne suit la souris, contour bleu) réordonne le rail au relâchement ; ↑ ↓ sur la poignée aussi ; les touches 1…n, les infobulles et la pastille de touche de chaque ligne suivent ; ordre retrouvé après réouverture.
 - [ ] Réglages › Outils : l'œil masque un outil du rail (ligne atténuée, compteur « n · 1 masqué »), les chiffres se décalent ; l'outil masqué reste ouvrable par Fenêtre › Extensions › SIMING – <Outil> ; le dernier outil visible ne peut pas être masqué.
 - [ ] Réglages › Raccourcis : la recherche filtre par action, outil ou touche (accents ignorés) ; Échap vide le champ ; « Aucune action ne correspond » si rien.
@@ -138,3 +140,22 @@ Préparer dans « Rig » (1920 × 1080) : trois calques `A`, `B`, `C` animés en
 - [ ] **Convertir les expressions en keyframes** : position avec `wiggle(2, 50)` sélectionnée : une keyframe par image sur la durée du calque, le mouvement est identique, l'expression est désactivée (texte gardé, réactivable) ; un seul Ctrl+Z. Calque sélectionné sans propriété : toutes ses expressions. Opacité à expression constante : 2 keyframes. Expression en erreur : listée, laissée telle quelle. Source Text animé par expression : noter le résultat. Comparer avec Animation › Assistant d'images clés › Convertir l'expression en images clés.
 - [ ] Dernier geste cerclé de bleu, Entrée le rejoue (variante Alt comprise) ; Réglages › Raccourcis, groupe « Boîte à outils » : 23 gestes ; donner une touche à « Copier la frame » et la frapper.
 - [ ] Panneau isolé « SIMING – Boîte à outils » : identique ; à 200 px de large, rien n'est rogné, les libellés longs passent sur deux lignes.
+
+## Claude Code (1.4.0)
+
+Il faut Claude Code installé (`claude` dans un terminal). Projet de test : la comp « Rig ».
+
+- [ ] Après `tools/dev-install` (ou l'installeur) et redémarrage d'AE : rien de nouveau dans Fenêtre › Extensions (le service `com.siming.mcp` est invisible) ; Réglages du hub : quatre onglets Outils / Raccourcis / Général / **Claude**, lisibles à 260 px.
+- [ ] Onglet Claude : **Éteint** par défaut, pastille grise « Éteint : … », pas de commande affichée. **Activé** : statut vert « Claude Code peut agir… », état « Démarrage du service… » puis, en 2 s au plus, pastille verte « Actif sur cet ordinateur, port 47821 ». Le fichier `claude.json` existe dans `~/Library/Application Support/SIMING/` (macOS) / `%APPDATA%\SIMING\` (Windows). Noter si l'état reste sur « Démarrage » ou passe à « Service introuvable ».
+- [ ] **Copier la commande** : statut « Commande copiée » ; la coller dans Terminal (macOS), PowerShell et Invite de commandes (Windows) : « Added HTTP MCP server siming » ; `claude mcp list` : `siming` connecté (✓).
+- [ ] Démarrage du service sans le hub : activé, quitter AE, le relancer **sans ouvrir le panneau SIMING**, puis `claude mcp list` : noter si `siming` est connecté (After Effects lance-t-il seul l'extension invisible ?). Sinon, ouvrir le hub une fois : connecté dans les 2 s.
+- [ ] Dans Claude Code : « Quelle est la comp active et ses calques ? » : réponse juste (get_comp). « Crée un texte "Bonjour" centré qui apparaît en fondu sur 1 s » : le texte est là ; Édition montre « Annuler Claude : … » ; **un seul** Ctrl+Z (Cmd+Z) retire tout. La ligne de statut du hub affiche « Claude : … » à chaque action, le compteur d'appels monte.
+- [ ] « Regarde la frame à 1 s » : Claude décrit l'image juste (capture_frame) ; préférence « Autoriser les scripts à écrire des fichiers… » décochée : message qui dit quoi cocher. Noter le délai et la taille de l'image reçue sur une comp 4K.
+- [ ] Gestes : sélectionner des keyframes, « lisse les keyframes sélectionnées à 60 % en entrée et en sortie » : siming_tool (quicktools / ease), même résultat que dans Quick Tools ; « ajoute un null relié aux calques sélectionnés ».
+- [ ] Erreur : demander un script qui échoue à mi-chemin : Claude reçoit l'erreur avec sa ligne, ce qui a été fait reste et s'annule d'un Ctrl+Z.
+- [ ] After Effects occupé : ouvrir Composition › Paramètres de composition (fenêtre modale) puis demander quelque chose à Claude : après 60 s, « After Effects n'a pas répondu… » ; fermer la fenêtre : noter si l'action part ensuite.
+- [ ] **Éteint** : la pastille redevient grise ; dans Claude Code, l'appel suivant échoue (connexion refusée) ; `/mcp` montre `siming` en échec. Réactivé : `/mcp` › reconnecter.
+- [ ] **Nouveau jeton** : statut orange, la commande change ; Claude Code échoue (403) jusqu'à `claude mcp remove --scope user siming` puis la nouvelle commande.
+- [ ] Port pris : avant de lancer AE, `python3 -m http.server 47821 --bind 127.0.0.1` ; onglet Claude : pastille rouge « Port 47821 déjà pris… » et bouton **Changer de port** ; un clic : nouveau port, nouvelle commande, service actif.
+- [ ] Sécurité : `curl -i -X POST http://127.0.0.1:47821/mcp -d "{}"` (sans jeton) : 403 ; depuis un autre ordinateur du réseau : connexion impossible.
+- [ ] Panneaux Unparent ouverts pendant que Claude agit : rien ne casse (le service recharge `siming.jsx` à son démarrage, comme chaque panneau).

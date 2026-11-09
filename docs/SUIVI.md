@@ -185,6 +185,45 @@ Demande de Simon (3 points).
 Versions : SIMING 1.3.1, Quick Tools 1.1.0, Libellés 1.1.0. Tests : 250, 0 échec ; rendu et gestes vérifiés dans Chrome à 260 px (page de démonstration).
 Publiée le jour même à la demande de Simon (« publie »), sans test dans After Effects : Release https://github.com/NomiSs-S/siming/releases/tag/v1.3.1 (« Latest ») : `SIMING-1.3.1.zxp` (signature vérifiée), installeurs Windows et macOS (ce dernier corrigé), `INSTALLATION.md`. Note affichée par l'installeur : « Ajout : lissage de 5 en 5, aligner un calque seul, mot seul et priorité des règles (Libellés) ».
 
+### 2026-11-06 : Claude Code dans After Effects (MCP), 1.4.0 non publiée
+
+Demande de Simon : « ajouter un MCP à SIMING pour que Claude Code puisse agir directement dans After Effects », ExtendScript libre compris (« pouvoir TOUT faire »), et si possible pour les collègues.
+Spec : `docs/superpowers/specs/2026-11-06-claude-code-mcp-design.md`.
+
+Décisions :
+- **Serveur dans l'extension**, pas de programme à installer : une extension invisible `com.siming.mcp` (`client/claude.html`) fait tourner un serveur MCP (HTTP « streamable », réponses JSON sans SSE) écrit à la main, sans dépendance, dans le Node de CEP. Claude Code s'y relie par `claude mcp add --scope user --transport http siming http://127.0.0.1:47821/mcp --header "Authorization: Bearer <jeton>"`. Écarté : un serveur stdio externe (Node à installer chez les collègues), AppleScript `DoScript` (macOS seul, pas de valeur de retour).
+- **Six outils** : `get_project`, `get_comp`, `get_properties` (lecture), `run_extendscript` (corps de fonction : `return`, `log()`), `capture_frame` (frame rendue, réduite à 1568 px), `siming_tool` (16 gestes de Quick Tools et de la Boîte à outils ; Unparent et Libellés, à état, restent à la portée de `run_extendscript`). Chaque appel = un groupe d'annulation « Claude : <undoName> » ; appels l'un après l'autre ; délai d'attente 60 s par défaut (message clair : After Effects occupé).
+- **Sécurité** : éteint par défaut (Réglages › Claude) ; écoute 127.0.0.1 seulement ; refuse un autre nom d'hôte (rebinding DNS), toute requête portant `Origin` (navigateur) et tout jeton absent ou faux (403, pas 401 : Claude Code tenterait OAuth). Jeton de 48 caractères hexadécimaux dans `<données de l'utilisateur>/SIMING/claude.json`, renouvelable.
+- **Démarrage** : `StartOn` au lancement d'AE ; comme After Effects ne démarre pas toujours les extensions invisibles, le hub (onglet Claude) relance le service par `requestOpenExtension` quand il ne répond pas en 1,5 s. Hub et service se parlent par événements CEP (`com.siming.mcp.reload`, `ping`, `state`, `activity`) ; la ligne de statut du hub montre chaque action de Claude.
+- Interface : 4ᵉ onglet **Claude** des Réglages (interrupteur segmenté, état à pastille, commande à copier, Nouveau jeton, Changer de port si le port est pris). Nouveaux styles `.s-state`, `.s-command` (charte).
+- Fichiers « ._ » de macOS sur le disque exFAT : `loadTools`, le test de syntaxe et `add-bom.js` les ignorent, `release.js` les retire avant de signer (`._mcp.jsx` aurait été évalué par After Effects).
+Fait : `host/tools/mcp.jsx`, `client/js/mcp/{protocol,server,service,settings}.js`, `claude.html`, manifeste, `SIMING.nodeRequire`. Tests : 4 fichiers (hôte, protocole, serveur et service HTTP de bout en bout sur le faux AE, onglet Claude) ; `node tests/run.js` : 287 tests, 0 échec. Version SIMING 1.4.0.
+État : à essayer dans After Effects (`docs/TESTS-MANUELS.md` § Claude Code) avant la Release.
+
+### 2026-11-06 : SIMING disparaissait sur Mac (installation par lien vers le disque externe)
+
+Demande de Simon : « jusqu'à maintenant, le plugin ne marche que sur Windows ; sur Mac il disparaît au bout d'un moment. Trouve, corrige, et installe-le proprement sur cet ordinateur ».
+- **Cause** : SIMING n'était pas installé sur le Mac, seulement relié : `~/Library/Application Support/Adobe/CEP/extensions/com.siming` était un lien (fait par `tools/dev-install.command` le 8 octobre) vers `/Volumes/EXT 11/PERSO/SIMING/extension`. Le disque externe exFAT s'appelle maintenant KINGSTON : lien mort, After Effects ne voyait plus rien. Même avant le changement de nom, SIMING disparaissait dès que le disque était éjecté ou démonté par la veille (dernier journal du hub, 8 octobre 17:52 : « mach port died », « Heartbeat call failed »). Aucune installation par l'installeur (UPIA ne connaît pas SIMING sur ce Mac). Sous Windows, la jonction vers une lettre de lecteur fixe tenait.
+- **Correction** : `tools/dev-install.command` **copie** désormais `extension/` sur le disque interne (sans `._*` ni `.DS_Store`, attributs étendus retirés, marque `.siming-dev`) ; `--link` garde l'ancien lien sur demande. Il refuse de toucher un `com.siming` qui ne vient pas de lui et prévient si un SIMING de l'installeur est aussi dans `/Library`. L'installeur macOS retire aussi une copie de développement marquée (pas seulement un lien). Tests : script lancé pour de vrai dans un dossier temporaire (lien cassé remplacé, `._` exclu, dossier étranger respecté, `--link`).
+- **Installé** : SIMING 1.4.0 copié dans `~/Library/Application Support/Adobe/CEP/extensions/com.siming` (PlayerDebugMode 1 pour CSXS 11 et 12 ; After Effects 2026 = 26.2.1 = CEP 12). After Effects 2026 lancé : l'extension invisible `com.siming.mcp` a démarré seule au lancement (journal `CEPHtmlEngine12-AEFT-26.2.1-com.siming.mcp.log`, processus actif) : le `StartOn` marche dans AE 26.2.1.
+- Après chaque modification du code sur le Mac : relancer `tools/dev-install.command`, puis After Effects. `node tests/run.js` : 288 tests, 0 échec.
+
+### 2026-11-06 : After Effects planté pendant le premier essai de Claude Code
+
+Signalé par Simon : « After Effects a crashé quand j'ai donné l'extension à Claude ». Enquête : transcription de la session Claude Code (projet LORNA), journaux CEP, vidage Sentry d'After Effects.
+- **Ce qui a marché, dans le vrai After Effects (macOS, 26.2.1)** : `claude mcp add` avec la commande de l'onglet Claude, `initialize`, `tools/list`, `get_project`, `run_extendscript` (scripts exécutés, valeurs rendues). Le service redémarre seul avec After Effects et réécoute sur 47821.
+- **Le plantage** : Claude a importé par script 5 SVG de la planche (texte en DM Sans, police variable, et Permanent Marker), activé la rastérisation continue et ouvert la comp. 0,2 s plus tard (01:07:09.515), After Effects s'est arrêté (`abort`) dans son fil de rendu, pile `AdobeSVGRE` → `AdobeAGM` → `AdobeCoolType` : le moteur SVG d'AE 2026 en dessinant le texte des SVG. La `capture_frame` demandée 3 s plus tard est arrivée dans un After Effects déjà mort (connexion coupée à 01:07:33, au « Heartbeat call failed » des extensions). SIMING n'est pas en cause : il a transmis le script.
+- **Fait** : instructions MCP (vues par Claude à la connexion) : n'importer que des SVG sans texte et recréer les textes en calques texte, essayer d'abord un seul fichier ; proposer d'enregistrer avant un import ou une construction longue ; connexion coupée d'un coup = After Effects planté, le dire au lieu de réessayer. Piège noté dans `NOTES-EXTENDSCRIPT.md`, avec où trouver le vidage d'After Effects. Copie de développement réinstallée (prise en compte au prochain lancement d'AE).
+
+### 2026-11-09 : installeurs réparés, sans UPIA
+
+Demande de Simon : « les installeurs ne marchent plus, mets-les à jour et répare-les ».
+- **Cause** (reproduite sous Windows avec le `.zxp` 1.3.1 publié) : UPIA passe désormais par l'application Creative Cloud ; sans session ouverte, `/install` échoue (`status = -631`, « user not signed in » dans `Upia.log`) **mais sort avec le code 0** : l'installeur affichait « SIMING installé » sans rien installer. La liste des versions (API GitHub) marchait.
+- **Correction** : les deux installeurs extraient le `.zxp` signé tel quel dans le dossier CEP de l'utilisateur (`%APPDATA%\Adobe\CEP\extensions\com.siming`, `~/Library/Application Support/Adobe/CEP/extensions/com.siming`) : ni UPIA, ni Creative Cloud, ni droits administrateur. Extraction dans un dossier temporaire, contrôle de `CSXS/manifest.xml` et `META-INF/signatures.xml`, puis remplacement. Lien ou jonction de développement : le lien seul est retiré. Ancienne copie UPIA du dossier système : `UPIA --remove SIMING`, puis suppression avec autorisation (UAC, mot de passe macOS). Windows : « q » pour abandonner l'attente d'After Effects.
+- `dev-install.command` et `dev-install.bat` remplacent une copie signée posée par l'installeur (même dossier désormais).
+- Vérifié : installeur Windows rempli lancé pour de vrai avec `APPDATA` temporaire (jonction factice retirée sans toucher sa cible, 1.3.1 installée puis 1.3.0 par-dessus) ; installeur macOS lancé sous bash avec remplaçants (`ditto` → `unzip`, `osascript` → node, `pgrep`) : 1.3.1 puis 1.2.0, dossier temporaire nettoyé. `node tests/run.js` : 289 tests, 0 échec.
+- **Reste à vérifier** : chargement sans PlayerDebugMode d'une copie extraite (signature auto-signée acceptée par CEP, comme le fait ZXP Installer), sur un vrai Mac ; voir `TESTS-MANUELS.md`. Les installeurs corrigés n'atteignent les collègues qu'une fois joints à une Release (remplacer ceux de la v1.3.1, ou publier la 1.4.0).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -247,6 +286,10 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - **Mot réservé d'ES3 comme nom de variable** (2026-10-07) : `var short` passe sous Node (tests verts) mais peut faire refuser tout le fichier par ExtendScript. Le test de syntaxe les refuse maintenant.
 - **Barres obliques inverses dans un script Node écrit par heredoc** (2026-10-07) : dans un gabarit `` `…` ``, `\\d` devient `\d` puis `d` ; pour modifier du code qui contient des expressions régulières, passer par l'outil Edit.
 - **Barre de valeur tassée** (2026-10-07) : `.s-bar` a `flex: 1` (pensé pour une rangée) ; seule dans une colonne flex, elle s'écrase à ~18 px. `.s-stack > .s-bar { flex: none; }`.
+- **Fichiers « ._ » de macOS sur le disque exFAT** (2026-11-06) : chaque fichier écrit depuis le Mac sur KINGSTON reçoit un `._<nom>` ; `getFiles('*.jsx')` aurait évalué `._mcp.jsx`, et `add-bom.js` lui avait ajouté un BOM. Ignorés partout, retirés par `release.js`.
+- **SVG à texte importé dans After Effects 2026** (2026-11-06) : plantage d'AE au rendu (moteur SVG, polices). Consigne ajoutée aux instructions MCP ; voir `NOTES-EXTENDSCRIPT.md`.
+- **Extension reliée à un disque externe** (2026-11-06) : le lien de développement vers `/Volumes/EXT 11/…` est mort quand le disque a été renommé KINGSTON (et chaque éjection ou mise en veille le coupait) : SIMING « disparaissait » sur Mac. Sur Mac, installer par copie (`tools/dev-install.command`).
+- **UPIA échoue sans session Creative Cloud et sort avec le code 0** (2026-11-09) : `status = -631` ; l'installeur croyait avoir réussi. Remplacé par l'extraction du `.zxp`. Voir `NOTES-EXTENDSCRIPT.md`, Installation.
 - **`pgrep -f` pour savoir si une application tourne** (2026-10-12) : attrape tous les processus dont le chemin contient le nom (processus d'appoint dans le dossier de l'application) ; `pgrep -x` sur le nom exact du processus. Voir `NOTES-EXTENDSCRIPT.md`, Installation (macOS).
 
 ## Questions ouvertes à vérifier dans After Effects
@@ -270,3 +313,7 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - Boîte à outils, null : un enfant à la position animée garde-t-il son animation quand on le relie (compensation d'AE) ? Fond et null commencent-ils bien à 0 ?
 - Boîte à outils, ajouts : `comp.duplicate()` range-t-il la copie dans le même dossier ? Rogner : la commande native d'AE fait-elle bien avancer le timecode de départ (sinon s'aligner sur elle) ? Marqueurs de comp hors zone ? `setValuesAtTimes` sur Source Text et sur un tracé de masque ? `explorer.exe /select,` avec un chemin accentué ?
 - Voir aussi la spec CEP § 13 (version AEFT minimale, UPIA, `requestOpenExtension`, thème, lecture de `tools.json`).
+- Claude Code : ~~After Effects démarre-t-il seul l'extension invisible `com.siming.mcp` (`StartOn`) ?~~ Oui sur macOS, AE 26.2.1 (2026-11-06) ; Windows à vérifier. ~~`cep_node.require('http')` écoute-t-il bien ?~~ Oui (macOS, appels de Claude servis). `requestOpenExtension` la lance-t-il depuis le hub ? `event.data` des événements CEP : texte ou objet ?
+- Import de SVG à texte dans AE 2026 : plantage aussi par Fichier › Importer (fenêtre d'options SVG) ? Avec une police non variable ? Sous Windows ?
+- Claude Code : `navigator.clipboard.writeText` ou `execCommand('copy')` dans le panneau (Copier la commande) ? `e.line` d'une erreur dans le code de `run_extendscript` (ligne du code envoyé ?) ; une capture 4K passe-t-elle sous la limite d'image (réduction par canevas) ?
+

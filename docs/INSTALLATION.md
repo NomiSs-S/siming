@@ -34,13 +34,40 @@ fichiers, une fois pour toutes : **Préférences › Scripts et expressions** �
 **« Autoriser les scripts à écrire des fichiers et à accéder au réseau »**. Le panneau te le
 rappelle si ce n'est pas fait.
 
+## Claude Code dans After Effects (facultatif)
+
+SIMING peut laisser Claude Code lire ton projet et agir dans After Effects. C'est éteint tant
+que tu ne l'actives pas.
+
+1. Installe Claude Code : https://claude.com/claude-code (il te faut un compte Claude).
+2. Dans After Effects : **Fenêtre › Extensions › SIMING**, Réglages (dernier bouton du rail) ›
+   onglet **Claude** › **Activé**.
+3. **Copier la commande**, puis colle-la dans un terminal (Windows : PowerShell ou Invite de
+   commandes ; macOS : Terminal) et valide. Une seule fois.
+4. Relance Claude Code et demande-lui ce que tu veux faire dans After Effects.
+
+Bon à savoir :
+
+- Chaque action de Claude s'annule d'un **Ctrl+Z** (Cmd+Z sur Mac).
+- Pour qu'il voie une frame (`capture_frame`), coche la même préférence que pour Copier la
+  frame (ci-dessus).
+- Ouvre After Effects **avant** Claude Code. Sinon, dans Claude Code : `/mcp`, puis reconnecte
+  « siming ».
+- L'onglet Claude dit « Service introuvable » : redémarre After Effects. « Port déjà pris » :
+  **Changer de port**, puis recolle la commande.
+- Nouveau jeton, nouveau port, ou Claude Code connaît déjà « siming » : lance d'abord
+  `claude mcp remove --scope user siming`, puis la nouvelle commande.
+
 ## Revenir à une version précédente
 
 Relance l'installeur et tape le numéro de la version voulue.
 
 ## En cas de souci
 
-- « Installeur Adobe (UPIA) introuvable » : Creative Cloud doit être installé. En secours, installe le fichier `.zxp` indiqué avec ZXP Installer (gratuit) : https://aescripts.com/learn/zxp-installer/
+- « Une ancienne installation reste… » : les versions jusqu'à la 1.3.1 s'installaient ailleurs.
+  Accepte la demande de Windows (ou tape ton mot de passe sur Mac) pour la retirer ; sinon
+  After Effects verrait deux SIMING.
+- « Installation impossible » : quitte After Effects, puis relance l'installeur.
 - « Impossible de joindre GitHub » : vérifie ta connexion Internet, puis relance.
 - SIMING n'apparaît pas dans Fenêtre › Extensions : redémarre After Effects.
 - Mac, « After Effects est ouvert » alors qu'il semble fermé : il tourne encore sans fenêtre.

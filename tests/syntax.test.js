@@ -11,7 +11,7 @@ function jsxFiles(dir, out) {
     for (const name of fs.readdirSync(dir)) {
         const full = path.join(dir, name);
         if (fs.statSync(full).isDirectory()) jsxFiles(full, out);
-        else if (/\.jsx$/i.test(name)) out.push(full);
+        else if (/\.jsx$/i.test(name) && !/^\._/.test(name)) out.push(full);   // « ._ » : métadonnées macOS
     }
     return out;
 }

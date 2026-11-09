@@ -635,6 +635,7 @@
         files.sort(function (a, b) { return (a.name < b.name) ? -1 : ((a.name > b.name) ? 1 : 0); });
         for (var i = 0; i < files.length; i++) {
             if (!(files[i] instanceof File)) continue;
+            if (/^\._/.test(files[i].name)) continue;   // fichier « ._ » de macOS sur un disque non Apple
             try {
                 $.evalFile(files[i]);
             } catch (e) {

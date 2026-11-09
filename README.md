@@ -4,7 +4,7 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.3.1 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.4.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
@@ -12,6 +12,8 @@ dans son propre panneau.
 | Boîte à outils | 1.0.0 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.1.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
+
+Et, en option, **Claude Code** : Claude lit le projet et agit dans After Effects (voir plus bas).
 
 Quick Tools est le premier outil du rail (touche 1) et celui qui s'ouvre la première fois.
 Le panneau se range même très étroit : ce qui ne tient plus côte à côte passe à la ligne.
@@ -127,9 +129,41 @@ vidéo fuchsia, image orange, solide et nul rouges. Couleurs et noms sont ceux d
 Préférences › Étiquettes d'After Effects : les 16 étiquettes d'AE, pas de couleur libre.
 Raccourcis réglables : Appliquer (Entrée), Analyser, Analyser et appliquer.
 
+## Claude Code : principe
+
+SIMING peut laisser [Claude Code](https://claude.com/claude-code) agir dans After Effects :
+« anime le titre de la comp active », « range les calques par nature », « crée les déclinaisons
+9:16 et ajuste les textes qui sortent du cadre »…
+
+1. Réglages › **Claude** › **Activé** (éteint par défaut).
+2. **Copier la commande**, la coller une fois dans un terminal (Claude Code doit être installé),
+   puis relancer Claude Code.
+3. Demander à Claude ce qu'on veut faire dans After Effects.
+
+Ce que Claude peut faire (outils MCP du serveur `siming`) :
+
+| Outil | Rôle |
+|---|---|
+| `get_project` | éléments du projet, comp active, sélection du panneau Projet |
+| `get_comp` | calques d'une comp (nature, parent, temps, transformation, effets, animations, expressions) et sélection |
+| `get_properties` | arbre des propriétés d'un calque : matchNames, valeurs, keyframes, expressions |
+| `run_extendscript` | exécuter du code ExtendScript : tout ce qu'un script peut faire |
+| `capture_frame` | voir une frame rendue, pour vérifier le résultat |
+| `siming_tool` | jouer un geste de Quick Tools ou de la Boîte à outils |
+
+Chaque action de Claude forme **un seul groupe d'annulation** « Claude : … » : Ctrl+Z (Cmd+Z) la
+défait d'un coup. Claude peut tout modifier dans le projet ouvert, comme un script : garde un œil
+sur ce qu'il fait.
+
+Comment ça marche : une extension invisible de SIMING (`com.siming.mcp`, lancée avec After
+Effects ou par le hub) fait tourner un petit serveur MCP sur `http://127.0.0.1:47821/mcp`. Il
+n'écoute que l'ordinateur, refuse les requêtes de navigateur et exige un jeton (rangé dans les
+réglages de l'utilisateur, renouvelable). Si After Effects n'était pas ouvert au lancement de
+Claude Code : `/mcp` dans Claude Code, puis reconnecter `siming`. Détail : `docs/INSTALLATION.md`.
+
 ## Réglages
 
-Le bouton Réglages du rail ouvre trois onglets, pensés pour beaucoup d'outils :
+Le bouton Réglages du rail ouvre quatre onglets, pensés pour beaucoup d'outils :
 
 - **Outils** : la liste des outils du rail. Glisse la poignée d'une ligne pour changer
   l'ordre (ou ↑ ↓ au clavier sur la poignée) ; l'œil masque un outil du rail (il reste
@@ -144,6 +178,8 @@ Le bouton Réglages du rail ouvre trois onglets, pensés pour beaucoup d'outils 
   qui sinon garderait les combinaisons pour lui.
 - **Général** : outil au lancement (menu déroulant : dernier utilisé ou un outil
   précis) et « À propos ».
+- **Claude** : laisser Claude Code agir dans After Effects (éteint par défaut), état du service,
+  commande à coller dans un terminal, nouveau jeton, autre port si le sien est pris.
 
 Le dernier onglet ouvert est retrouvé. Les raccourcis agissent quand le panneau a le focus ; ils sont repérés
 par la touche physique, donc valables en AZERTY comme en QWERTY.
@@ -154,9 +190,11 @@ par la touche physique, donc valables en AZERTY comme en QWERTY.
 node tests/run.js        # tests sans After Effects (faux AE, pont, vues)
 ```
 
-Installation de développement : `tools/dev-install.bat` (Windows) ou
-`tools/dev-install.command` (macOS), puis recharger le panneau après chaque
-modification. Publication : `node tools/release.js` (voir le plan, Tâche 13).
+Installation de développement : `tools/dev-install.bat` (Windows : jonction vers le dépôt,
+recharger le panneau après chaque modification) ou `tools/dev-install.command` (macOS : **copie**
+de `extension/` sur le disque interne, à relancer après chaque modification, puis After Effects ;
+`--link` pour un lien vers le dépôt, qui disparaît d'After Effects si le disque externe est
+éjecté, renommé ou mis en veille). Publication : `node tools/release.js` (voir le plan, Tâche 13).
 
 Documentation : `CLAUDE.md` (conventions), `docs/SUIVI.md` (journal, pistes,
 erreurs), `docs/NOTES-EXTENDSCRIPT.md` (pièges), `docs/CHARTE-GRAPHIQUE.md`,
