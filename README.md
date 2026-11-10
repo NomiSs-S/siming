@@ -4,12 +4,12 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.5.1 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.5.2 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
 | Quick Tools | 1.1.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir (sur la partie visible, masques compris) |
-| Boîte à outils | 1.1.1 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, importer les PSD, expressions en keyframes |
+| Boîte à outils | 1.1.2 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, importer les PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.1.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
 
@@ -107,17 +107,20 @@ est cerclé de bleu et **Entrée** le rejoue.
    textes et de formes (« 3 PSD importés · 12 textes · 8 formes »), et ajoute ce qui a échoué.
 
 Formes recréées : rectangles (tournés ou arrondis à rayons égaux ; à coins inégaux, en tracé à
-l'identique), ellipses et autres formes vectorielles (en tracés), avec remplissage uni et contour centré, ainsi que les styles de calque
-ombre portée, ombre interne, lueur externe, lueur interne, biseautage et estampage, satin,
-incrustation couleur et contour. Un calque de pixels d'une seule couleur, opaque sur toute sa
+l'identique), ellipses et autres formes vectorielles (en tracés), avec remplissage uni ou **dégradé
+linéaire à deux couleurs** (posé avec l'effet Dégradé d'After Effects : le lissage de Photoshop aux
+extrémités est la seule différence, de l'ordre d'une dizaine de niveaux sur 255) et contour centré. Les **styles de
+calque** (ombre, lueur, biseautage, satin, incrustations, contour…) ne sont pas recréés : After Effects
+les a déjà importés avec le PSD, modifiables, et SIMING les **copie tels quels** du calque PSD sur la forme
+(Copier puis Coller : le presse-papiers est écrasé). Remplissage et contour de la forme sont alors à 100 %,
+l'opacité du fond de Photoshop étant dans les options de fusion copiées ; sans style, c'est l'opacité du
+fond qui s'applique au remplissage et au contour. Un calque de pixels d'une seule couleur, opaque sur toute sa
 boîte (le fond d'une planche), devient lui aussi un rectangle plein. Tout ce qui ne peut pas être recréé fidèlement **reste un calque
-PSD**, tel qu'After Effects l'a importé, sans message : dégradés (de remplissage ou en incrustation),
-motifs, contours intérieurs ou extérieurs, contours en pointillés ou aux extrémités et jonctions
-non standard, plusieurs tracés avec un contour ou une rotation, soustraction ou intersection de
-formes, calques détourés ou masqués (ou servant de base à un détourage), masque vectoriel inversé
-ou désactivé, remplissage à moins de 100 % avec des styles, réglage de style qu'After Effects ne
-sait pas reproduire : **contour de style** (courbe) autre que linéaire, satin dont le contour n'est
-pas linéaire, biseautage à texture ou à contour, plusieurs styles d'une même sorte (deux ombres…).
+PSD**, tel qu'After Effects l'a importé, sans message : dégradés radial, angulaire…, à trois couleurs ou plus,
+transparents, décalés, mis à l'échelle ou non alignés sur le calque, ou avec un contour, motifs, contours intérieurs
+ou extérieurs, contours en pointillés ou aux extrémités et jonctions non standard, plusieurs tracés avec un
+contour ou une rotation, soustraction ou intersection de formes, calques détourés ou masqués (ou servant de
+base à un détourage), masque vectoriel inversé ou désactivé.
 Un rectangle ou une ellipse retouchés point par point dans Photoshop sont recréés en tracé, à
 l'identique. After Effects importe un calque de forme à la taille du document (son tracé en masque) :
 c'est prévu. S'il l'importe à une autre taille encore (styles fusionnés dans les pixels), la forme n'est pas posée et le statut compte une « forme en erreur ». Les PSD 16 et

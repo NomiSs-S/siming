@@ -6,7 +6,7 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : 1.5.1** : Quick Tools (outil par défaut), Boîte à outils (dont Importer les PSD), Unparent, Libellés, et
+**État : 1.5.2** : Quick Tools (outil par défaut), Boîte à outils (dont Importer les PSD), Unparent, Libellés, et
 Claude Code (serveur MCP local, Réglages › Claude ; spec
 `docs/superpowers/specs/2026-11-06-claude-code-mcp-design.md`)
 (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
@@ -17,11 +17,13 @@ Claude Code (serveur MCP local, Réglages › Claude ; spec
 - `extension/client/` : `index.html` (hub), `tool.html` (outil seul, déduit de l'identifiant d'extension),
   `css/charte.css`, `js/bridge.js` (seul contact avec AE), `js/keys.js` (raccourcis :
   registre d'actions, un outil y enregistre ses gestes via `ctx.keys`), `js/ui/` (composants),
-  `tools/<id>.js` (vues), `js/mcp/` (Claude Code : protocole MCP, serveur HTTP et réglages,
+  `tools/<id>.js` (vues), `js/psd/` (Importer les PSD : `reader.js` lit le PSD, `shapes.js` en tire les formes
+  en JSON, dégradés compris), `js/mcp/` (Claude Code : protocole MCP, serveur HTTP et réglages,
   service, onglet Claude du hub), `claude.html` (page de l'extension invisible `com.siming.mcp`).
 - `extension/host/` : `siming.jsx` (JSON, helpers AE, géométrie partagée `SIMING.geom`, sélection
   de propriétés et keyframes, annulation, routeur),
-  `tools/<id>.jsx` (cœur et API de chaque outil ; `mcp.jsx` : ce que Claude Code lit et exécute).
+  `tools/<id>.jsx` (cœur et API de chaque outil ; `mcp.jsx` : ce que Claude Code lit et exécute ; `psdimport.jsx` : import des PSD,
+  formes recréées, styles de calque recopiés du calque PSD par Copier / Coller).
 - `tests/` : `node tests/run.js`. `tools/` : dev-install, make-cert, release.js, installeurs.
 - `docs/SUIVI.md` : journal, pistes, erreurs. À mettre à jour à chaque session.
 - `docs/NOTES-EXTENDSCRIPT.md` : pièges techniques ExtendScript et CEP. Y ajouter chaque piège découvert.

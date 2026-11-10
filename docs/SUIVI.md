@@ -298,6 +298,40 @@ Essai sur la planche test (`E:/PERSO/TEST`, vu par le serveur MCP) : ni les form
 Release GitHub v1.5.1 (https://github.com/NomiSs-S/siming/releases/tag/v1.5.1) : `.zxp` signé, installeurs
 Windows et macOS, `INSTALLATION.md`. Première version publiée avec Importer les PSD (la 1.5.0 ne l'a pas été).
 
+### 2026-11-10 : Import PSD, styles copiés et dégradés (1.5.2, non publiée, à valider dans AE)
+
+Constaté par script dans After 26.2 (détails dans `NOTES-EXTENDSCRIPT.md`, « Styles de calque » et « Dégradés ») :
+After importe un PSD avec ses styles de calque **modifiables** ; Copier (19) puis Coller (20) les recopie
+d'un calque PSD sur un calque de forme, réglages compris ; les noms de menu des styles sont faux
+(`findMenuCommandId('Ombre portée')` = l'effet) et les groupes s'appellent `<sorte>/enabled` ; les couleurs d'un
+dégradé de forme sont inaccessibles, mais l'effet Dégradé (`ADBE Ramp`) convient.
+
+Décisions :
+
+- **Styles de calque : copiés, plus reconstruits.** Supprimés : `js/psd/styles.js` (la conversion de couleur est
+  passée dans `shapes.js`), `tests/psd-styles.test.js`, et côté hôte `STYLE_TABLE`, les tables d'énumérations,
+  `applyStyles` & co, tout usage des noms de menu. `Shape` n'a plus de champ `styles` ; `shapes.js` ne refuse plus
+  un calque à cause de ses styles (`lfx2` illisible, `lmfx` / `lfxs`, style non reproductible, fond < 100 % avec
+  styles). `replaceWithShape` copie les styles du calque PSD (`copyLayerStyles`, test « le groupe est-il masqué ? »)
+  avant de retirer l'original ; un collage sans effet est une panne visible. Avec styles : remplissage et contour à
+  100 % (l'opacité du fond est dans les options de fusion copiées) ; sans : `fillOpacity`.
+  Le presse-papiers de l'utilisateur est écrasé (accepté). La sélection de calques est rétablie par identifiant
+  (et non plus par index : les index bougent quand la forme prend la place de l'original).
+- **Dégradés : effet Dégradé** pour les linéaires à deux couleurs RVB opaques, alignés sur le calque, sans échelle ni
+  décalage ni milieu déplacé, en « Classique » : `fill = { type: 'ramp', start, end, startColor, endColor }`
+  (géométrie mesurée dans After sur « Ellipse 1 ») ; la forme prend la couleur de départ en remplissage uni et
+  l'effet colore le tout. Le reste (radial, 3 arrêts, transparence…) reste un calque PSD. Écarts assumés : le
+  lissage de Photoshop aux extrémités (une dizaine de niveaux sur 255), et, ajouts à la consigne, **un dégradé avec
+  contour reste en PSD** (l'effet colorerait le contour aussi) et des arrêts qui ne sont pas à 0 et 100 % sont
+  reproduits en rapprochant les points (la couleur reste au-delà, comme dans Photoshop).
+- `cropPrecomp` / `styleOverflow` : noms de groupes corrigés (`dropShadow/enabled`…), qui ne trouvaient jamais rien.
+- Faux After : Copier / Coller des styles, groupe `ADBE Layer Styles` masqué sans style (`selected` lève), calques
+  déclarés avec `styles: [...]`, effet `ADBE Ramp` à sept paramètres ; ancien faux des menus de styles retiré.
+- La planche test donne 6 formes (Ellipse 1 comprise). `tools.json` : 1.5.2, Boîte à outils 1.1.2.
+
+À valider dans After : scénario « Importer les PSD » de `TESTS-MANUELS.md` (styles copiés, dégradé, sélection
+rétablie, un seul Ctrl+Z).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
