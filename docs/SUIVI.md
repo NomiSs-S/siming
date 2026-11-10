@@ -420,6 +420,14 @@ Laissé tel quel, à trancher dans After :
 À valider dans After : « Importer les PSD » de `TESTS-MANUELS.md` (nouvelles lignes : fond qui déborde, texte verrouillé,
 étiquette de la forme, dossier très haut, autre projet ouvert, fenêtre « Éléments ignorés »).
 
+### 2026-11-10 : SIMING 1.5.2 publiée
+
+Release GitHub v1.5.2 (https://github.com/NomiSs-S/siming/releases/tag/v1.5.2). Vérifiée dans After 26.2 (projet test) :
+planche test (6 formes dont l'ellipse en dégradé, 576 points comparés au PSD brut, écart max 26/255 dans le texte,
+15/255 sur le dégradé : lissage de Photoshop) et `7.psd` (forme à lueur externe copiée, écart max 12/255), rangement
+dans 02_ASSET même avec un dossier sélectionné. Restent à essayer à la main : interface (sous-dossiers, Réglages ›
+Import PSD), un seul Ctrl+Z, opacité du fond sous l'effet Dégradé.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
