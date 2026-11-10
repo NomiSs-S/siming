@@ -293,6 +293,11 @@ Essai sur la planche test (`E:/PERSO/TEST`, vu par le serveur MCP) : ni les form
   change de taille ; l'ancre est donc relevée avant et reposée après. Vérifié via MCP : « Groupe 1 » en 1173 × 278,
   rendu identique. Le faux After des tests imite ce comportement et donne à un calque de précompo la boîte de sa compo.
 
+### 2026-11-10 : SIMING 1.5.1 publiée
+
+Release GitHub v1.5.1 (https://github.com/NomiSs-S/siming/releases/tag/v1.5.1) : `.zxp` signé, installeurs
+Windows et macOS, `INSTALLATION.md`. Première version publiée avec Importer les PSD (la 1.5.0 ne l'a pas été).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
