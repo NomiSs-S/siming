@@ -10,18 +10,22 @@
  *  un dégradé linéaire à deux couleurs est posé par l'effet Dégradé (les couleurs d'un dégradé de forme
  *  sont inaccessibles par script).
  *
- *  - list({ folder? }) : PSD du dossier (sans folder : 02_RESSOURCES/02_ASSET, cherché depuis
- *    le dossier du projet en remontant d'au plus 3 dossiers parents), triés par nom naturel
- *    (2.psd avant 10.psd). « imported » : un métrage du projet a ce PSD pour fichier
- *    (After Effects nomme le métrage d'un PSD en calques « calque/fichier.psd », mais sa source
- *    reste le PSD lui-même).
- *    -> { folder: string|null, files: [{ name, path, imported }], status: { text, level } }
+ *  - list({ folder?, sourcePath? }) : PSD du dossier et de ses sous-dossiers (jusqu'à MAX_SUBFOLDER_DEPTH
+ *    niveaux, fichiers et dossiers cachés ignorés). Sans folder : sourcePath (défaut 02_RESSOURCES/02_ASSET),
+ *    cherché depuis le dossier du projet en remontant d'au plus 3 dossiers parents. Ordre : le dossier lu
+ *    d'abord, puis chaque sous-dossier (ordre naturel, en profondeur), PSD en nom naturel (2.psd avant 10.psd)
+ *    dans chacun. « dir » : dossier relatif au dossier lu ('' à la racine, 'A/B' sinon). « imported » : un
+ *    métrage du projet a ce PSD pour fichier (After Effects nomme le métrage d'un PSD en calques
+ *    « calque/fichier.psd », mais sa source reste le PSD lui-même).
+ *    -> { folder: string|null, files: [{ name, path, dir, imported }], status: { text, level } }
  *  - pickFolder({ from? }) : dialogue de choix de dossier, départ = from ou le dossier du projet.
  *    -> { folder: string|null }
  *
- *  - importBatch({ items: [{ path, shapes, error? }], rules }) : importe les PSD en compos (calques rognés),
- *    les range dans 02_ASSET du panneau Projet, remplace les calques de forme, convertit les textes et pose
- *    les libellés (un seul groupe d'annulation).
+ *  - importBatch({ items: [{ path, dir?, shapes, error? }], rules, bin?, steps? }) : importe les PSD en compos
+ *    (calques rognés), les range dans le chutier de dépose du panneau Projet (bin, défaut 02_ASSET ; « A/B » =
+ *    chutiers imbriqués) en recréant le dossier relatif de chaque PSD (dir), puis, selon steps (texts, shapes,
+ *    labels, crop, anchors : tout est fait sauf ce qui vaut false) remplace les calques de forme, convertit les
+ *    textes, pose les libellés, recadre les précompos et centre les ancres (un seul groupe d'annulation).
  *    -> { imported: [{ name, compId }], status: { text, level } }
  *
  *  Contraintes : ES3, API en données JSON, UTF-8 avec BOM.
@@ -32,8 +36,9 @@
     var S = $.global.SIMING;
     var deselectLayers = S.ae.deselectLayers;   // partagés dans SIMING.ae (siming.jsx)
 
-    var ASSET_PATH = '02_RESSOURCES/02_ASSET';
+    var ASSET_PATH = '02_RESSOURCES/02_ASSET';   // dossier des PSD par défaut (réglage « Dossier des PSD »)
     var MAX_PARENTS = 3;
+    var MAX_SUBFOLDER_DEPTH = 4;                 // niveaux de sous-dossiers lus sous le dossier des PSD
     var PICK_PROMPT = 'Choisis le dossier des PSD';
 
     // Édition › Copier et Édition › Coller : identifiants numériques d'After (relevés par script dans After 26.2),
@@ -84,6 +89,42 @@
 
     function status(text, level) { return { text: text, level: level }; }
 
+    /**
+     * Chemin relatif d'un réglage (dossier des PSD, chutier de dépose) : séparateurs ramenés à « / », sans
+     * « / » de tête ni de fin ; null s'il est vide, absolu (« / » ou « \ » au début ; « C:\ » tombe sur le « : »
+     * interdit), s'il contient un caractère interdit dans un nom de dossier (Windows, macOS) ou un nom finissant
+     * par un point ou une espace (ce qui écarte « . » et « .. »). Le panneau fait la même vérification (js/psd/settings.js) ; l'hôte retombe sur le défaut.
+     */
+    function cleanRelPath(value) {
+        if (typeof value !== 'string') return null;
+        var s = value.replace(/\\/g, '/').replace(/^\s+|\s+$/g, '');
+        if (s === '' || s.charAt(0) === '/') return null;
+        var parts = s.split('/'), out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            if (p === '') continue;
+            if (/[<>:"|?*\u0000-\u001F]/.test(p) || /[. ]$/.test(p)) return null;
+            out.push(p);
+        }
+        return out.length ? out.join('/') : null;
+    }
+
+    /** Segments d'un dossier relatif (« A/B » -> ['A', 'B']) : vides, « . » et « .. » écartés. */
+    function dirSegments(dir) {
+        var out = [];
+        if (typeof dir !== 'string') return out;
+        var parts = dir.replace(/\\/g, '/').split('/');
+        for (var i = 0; i < parts.length; i++) {
+            if (parts[i] !== '' && parts[i] !== '.' && parts[i] !== '..') out.push(parts[i]);
+        }
+        return out;
+    }
+
+    /** Une étape de l'import est faite sauf si steps[id] vaut false (champ absent = faite). */
+    function stepOn(steps, id) {
+        return !(steps && typeof steps === 'object' && steps[id] === false);
+    }
+
     // ------------------------------------------------------------------------
     //  Lecture du projet et du disque
     // ------------------------------------------------------------------------
@@ -96,12 +137,13 @@
         return (p && p.exists) ? p : null;
     }
 
-    /** Dossier 02_RESSOURCES/02_ASSET en partant du dossier du projet puis en remontant
-     *  d'au plus MAX_PARENTS dossiers parents ; null s'il n'existe pas. */
-    function findAssetFolder(start) {
+    /** Dossier des PSD (sourcePath, défaut 02_RESSOURCES/02_ASSET) en partant du dossier du projet puis en
+     *  remontant d'au plus MAX_PARENTS dossiers parents ; null s'il n'existe pas. */
+    function findAssetFolder(start, sourcePath) {
+        var rel = cleanRelPath(sourcePath) || ASSET_PATH;
         var dir = start;
         for (var i = 0; i <= MAX_PARENTS && dir; i++) {
-            var candidate = new Folder(dir.fsName + '/' + ASSET_PATH);
+            var candidate = new Folder(dir.fsName + '/' + rel);
             if (candidate.exists) return candidate;
             var up = dir.parent;
             if (!up || up.fsName === dir.fsName) return null;
@@ -123,18 +165,40 @@
         return set;
     }
 
-    /** PSD du dossier, triés par nom naturel : [{ name, path, imported }]. */
-    function listPsds(folder) {
-        var entries = folder.getFiles();
-        var done = importedPaths();
-        var files = [];
+    /** Nom lisible d'un fichier ou dossier (File.name est encodé : « %20 » pour une espace). */
+    function entryName(entry) {
+        if (entry.displayName) return String(entry.displayName);
+        try { return File.decode(entry.name); } catch (e) { return String(entry.name); }
+    }
+
+    function byName(a, b) { return naturalCompare(a.name, b.name); }
+
+    /** Ajoute à out les PSD de folder (dir : son chemin relatif), puis ceux de ses sous-dossiers, en profondeur. */
+    function collectPsds(folder, dir, depth, done, out) {
+        var entries = folder.getFiles(), here = [], subs = [];
         for (var i = 0; i < entries.length; i++) {
-            if (!(entries[i] instanceof File)) continue;
-            if (!isPsdName(entries[i].name)) continue;
-            var p = entries[i].fsName;
-            files.push({ name: entries[i].name, path: p, imported: done[String(p).toLowerCase()] === true });
+            var name = entryName(entries[i]);
+            if (name.charAt(0) === '.') continue;   // cachés (dont les « ._ » de macOS)
+            if (entries[i] instanceof File) {
+                if (!isPsdName(name)) continue;
+                var p = entries[i].fsName;
+                here.push({ name: name, path: p, dir: dir, imported: done[String(p).toLowerCase()] === true });
+            } else if (entries[i] instanceof Folder && depth < MAX_SUBFOLDER_DEPTH) {
+                subs.push({ name: name, folder: entries[i] });
+            }
         }
-        files.sort(function (a, b) { return naturalCompare(a.name, b.name); });
+        here.sort(byName);
+        subs.sort(byName);
+        for (var h = 0; h < here.length; h++) out.push(here[h]);
+        for (var k = 0; k < subs.length; k++) {
+            collectPsds(subs[k].folder, dir === '' ? subs[k].name : dir + '/' + subs[k].name, depth + 1, done, out);
+        }
+    }
+
+    /** PSD du dossier et de ses sous-dossiers : [{ name, path, dir, imported }] (ordre : voir l'en-tête). */
+    function listPsds(folder) {
+        var files = [];
+        collectPsds(folder, '', 0, importedPaths(), files);
         return files;
     }
 
@@ -483,23 +547,41 @@
     // ------------------------------------------------------------------------
 
     var UNDO_NAME = 'Boîte à outils : importer les PSD';
-    var PROJECT_ASSET = '02_ASSET';
+    var PROJECT_ASSET = '02_ASSET';   // chutier de dépose par défaut (réglage « Chutier de dépose »)
 
     function isRootItem(item) {
         var p = item.parentFolder;
         return !p || p.id === app.project.rootFolder.id;
     }
 
-    /** Dossier 02_ASSET du panneau Projet : celui de la racine, sinon le premier trouvé ailleurs, sinon créé à la racine. */
-    function projectAssetFolder() {
+    /**
+     * Dossier du panneau Projet de ce nom directement sous parent (null = la racine), ou null. Sous la racine,
+     * anywhere : à défaut, le premier dossier de ce nom trouvé ailleurs dans le projet.
+     */
+    function childFolder(parent, name, anywhere) {
         var any = null;
         for (var i = 1; i <= app.project.numItems; i++) {
             var it = app.project.item(i);
-            if (!(it instanceof FolderItem) || it.name !== PROJECT_ASSET) continue;
-            if (isRootItem(it)) return it;
+            if (!(it instanceof FolderItem) || it.name !== name) continue;
+            if (parent ? (it.parentFolder && it.parentFolder.id === parent.id) : isRootItem(it)) return it;
             if (!any) any = it;
         }
-        return any || app.project.items.addFolder(PROJECT_ASSET);
+        return anywhere ? any : null;
+    }
+
+    /** Dossier du panneau Projet au bout de segments (['02_ASSET', 'VIDEO_A']) : réutilisé s'il existe (même nom,
+     *  même parent), sinon créé. Le premier segment, à défaut de la racine, est cherché ailleurs dans le projet. */
+    function projectFolderAt(segments) {
+        var parent = null;
+        for (var i = 0; i < segments.length; i++) {
+            var found = childFolder(parent, segments[i], i === 0);
+            if (!found) {
+                found = app.project.items.addFolder(segments[i]);
+                if (parent) found.parentFolder = parent;
+            }
+            parent = found;
+        }
+        return parent;
     }
 
     /** Identifiants des éléments du projet (id -> true). */
@@ -727,9 +809,10 @@
      * bien (focusComp) : sinon rien n'est lancé. Lève une erreur si le PSD n'a pas pu être importé ou traité
      * (l'appelant le compte illisible et retire ce que l'import a créé).
      * before : les éléments du projet avant l'import (projectItemIds). tally reçoit les formes, textes, pannes de
-     * forme et, si la commande de conversion en texte manque, missing ; ctx.asset garde le dossier 02_ASSET.
+     * forme et, si la commande de conversion en texte manque, missing. cfg : { bin: segments du chutier de dépose,
+     * steps } ; le PSD est rangé dans bin + son dossier relatif (item.dir), les dossiers étant créés au besoin.
      */
-    function importOne(item, before, ctx, rules, tally) {
+    function importOne(item, before, cfg, rules, tally) {
         var i;
         var file = new File(String(item.path));
         var options = new ImportOptions(file);
@@ -747,8 +830,8 @@
             if (it instanceof CompItem) created[it.id] = true;
             if (isRootItem(it)) toMove.push(it);
         }
-        if (!ctx.asset) ctx.asset = projectAssetFolder();
-        for (i = 0; i < toMove.length; i++) toMove[i].parentFolder = ctx.asset;
+        var target = projectFolderAt(cfg.bin.concat(dirSegments(item.dir)));
+        for (i = 0; i < toMove.length; i++) toMove[i].parentFolder = target;
 
         var fileName = String(file.displayName || File.decode(file.name));
         var plan = walkImport(comp, created, fileName);
@@ -758,7 +841,7 @@
             if (list[i] && list[i].match) shapes[shapeKey(list[i].match.name, list[i].match.nth)] = list[i];
         }
         var p, m;
-        for (p = 0; p < plan.length; p++) {          // formes d'abord : les index des calques ne bougent pas
+        for (p = 0; p < plan.length && cfg.on.shapes; p++) {          // formes d'abord : les index des calques ne bougent pas
             var opened = false;
             for (m = 0; m < plan[p].matches.length; m++) {
                 var match = plan[p].matches[m], shape = shapes[shapeKey(match.name, match.nth)];
@@ -772,19 +855,19 @@
         }
         var toolbox = S.getTool('toolbox'), labels = S.getTool('labels');
         for (p = 0; p < plan.length; p++) {
-            if (plan[p].matches.length === 0 || !toolbox) continue;
+            if (plan[p].matches.length === 0 || !toolbox || !cfg.on.texts) continue;
             focusComp(plan[p].comp);
             var converted = toolbox._core.convertTextsIn(plan[p].comp, layersOf(plan[p].comp), false);
             tally.texts += converted.done;
             if (converted.missing) tally.missing = true;
         }
-        for (p = 0; p < plan.length && labels; p++) labels._core.labelLayers(layersOf(plan[p].comp), rules);
+        for (p = 0; p < plan.length && labels && cfg.on.labels; p++) labels._core.labelLayers(layersOf(plan[p].comp), rules);
         // précompos recadrées, les plus profondes d'abord (leur taille compte dans la boîte de la précompo au-dessus)
-        for (p = plan.length - 1; p >= 1; p--) {
+        for (p = plan.length - 1; p >= 1 && cfg.on.crop; p--) {
             if (cropPrecomp(plan[p].comp, holdersOf(plan, plan[p].comp))) tally.cropped++;
         }
         var quick = S.getTool('quicktools');
-        for (p = 0; p < plan.length && quick; p++) tally.anchors += centerAnchors(plan[p].comp, quick._core.placeAnchor);
+        for (p = 0; p < plan.length && quick && cfg.on.anchors; p++) tally.anchors += centerAnchors(plan[p].comp, quick._core.placeAnchor);
         return { name: comp.name, compId: comp.id };
     }
 
@@ -806,9 +889,10 @@
             if (!start) {
                 return { folder: null, files: [], status: status('Projet non enregistré : choisis le dossier des PSD', 'info') };
             }
-            folder = findAssetFolder(start);
+            var rel = (args && cleanRelPath(args.sourcePath)) || ASSET_PATH;
+            folder = findAssetFolder(start, rel);
             if (!folder) {
-                return { folder: null, start: start.fsName, files: [], status: status('Dossier ' + ASSET_PATH + ' introuvable : choisis le dossier des PSD', 'warn') };
+                return { folder: null, start: start.fsName, files: [], status: status('Dossier ' + rel + ' introuvable : choisis le dossier des PSD', 'warn') };
             }
         }
         var files = listPsds(folder);
@@ -830,14 +914,22 @@
     };
 
     /**
-     * importBatch({ items: [{ path, shapes: Shape[] | null, error? }], rules }) : importe les PSD (voir importOne),
-     * dans un seul groupe d'annulation. Un item avec error, sans chemin, ou dont le traitement lève une erreur
+     * importBatch({ items: [{ path, dir?, shapes: Shape[] | null, error? }], rules, bin?, steps? }) : importe les PSD
+     * (voir importOne), dans un seul groupe d'annulation. bin : chutier de dépose (relatif, « A/B » imbriqué ; vide
+     * ou invalide = 02_ASSET). steps : { texts, shapes, labels, crop, anchors } ; false = étape sautée. Un item avec error, sans chemin, ou dont le traitement lève une erreur
      * compte comme PSD illisible ; le lot continue. La compo active au départ est rouverte à la fin.
      * -> { imported: [{ name, compId }], status }
      */
     api.importBatch = function (args) {
         var items = (args && args.items && typeof args.items.length === 'number') ? args.items : [];
         var rules = args ? args.rules : null;
+        var cfg = {
+            bin: (cleanRelPath(args ? args.bin : null) || PROJECT_ASSET).split('/'),
+            steps: args ? args.steps : null,
+            on: {}
+        };
+        var STEP_IDS = ['texts', 'shapes', 'labels', 'crop', 'anchors'];
+        for (var n = 0; n < STEP_IDS.length; n++) cfg.on[STEP_IDS[n]] = stepOn(cfg.steps, STEP_IDS[n]);
         var imported = [], tally = { shapes: 0, texts: 0, failed: 0, missing: false }, unreadable = 0, valid = [], i;
         for (i = 0; i < items.length; i++) {
             if (items[i] && !items[i].error && items[i].path) valid.push(items[i]);
@@ -846,21 +938,19 @@
         if (valid.length > 0) {
             // seule une compo se rouvre dans le viewer : un autre élément actif (métrage…) n'est pas rétabli
             var active = app.project.activeItem, activeId = (active instanceof CompItem) ? active.id : null;
-            var ctx = { asset: null };
             try {
                 S.ae.undo(UNDO_NAME, function () {
                     for (var k = 0; k < valid.length; k++) {
                         var mine = { shapes: 0, texts: 0, failed: 0, missing: false, anchors: 0, cropped: 0 }, before = projectItemIds();
                         try {
-                            imported.push(importOne(valid[k], before, ctx, rules, mine));
+                            imported.push(importOne(valid[k], before, cfg, rules, mine));
                             tally.shapes += mine.shapes;
                             tally.texts += mine.texts;
                             tally.failed += mine.failed;
                             if (mine.missing) tally.missing = true;
                         } catch (e) {
                             unreadable++;
-                            removeNewItems(before);        // pas de PSD à demi importé dans le projet
-                            ctx.asset = null;              // peut être le 02_ASSET qu'on vient de retirer
+                            removeNewItems(before);        // pas de PSD à demi importé dans le projet (chutiers créés compris)
                         }
                     }
                 });
@@ -869,8 +959,9 @@
                 if (back) { try { back.openInViewer(); } catch (e2) { /* compo disparue */ } }
             }
         }
-        var text = S.plural(imported.length, 'PSD importé', 'PSD importés') + ' · ' +
-            S.plural(tally.texts, 'texte', 'textes') + ' · ' + S.plural(tally.shapes, 'forme', 'formes');
+        var text = S.plural(imported.length, 'PSD importé', 'PSD importés');
+        if (cfg.on.texts) text += ' · ' + S.plural(tally.texts, 'texte', 'textes');
+        if (cfg.on.shapes) text += ' · ' + S.plural(tally.shapes, 'forme', 'formes');
         if (unreadable > 0) text += ' · ' + S.plural(unreadable, 'PSD illisible', 'PSD illisibles');
         if (tally.failed > 0) text += ' · ' + S.plural(tally.failed, 'forme en erreur', 'formes en erreur');
         if (tally.missing) text += ' · textes non convertis (commande introuvable dans cette langue d\'After Effects)';
@@ -882,6 +973,7 @@
         naturalCompare: naturalCompare,
         isPsdName: isPsdName,
         findAssetFolder: findAssetFolder,
+        cleanRelPath: cleanRelPath,
         replaceWithShape: replaceWithShape,
         copyLayerStyles: copyLayerStyles,
         styleOverflow: styleOverflow,

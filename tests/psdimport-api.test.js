@@ -1132,4 +1132,205 @@ module.exports = function (test) {
             FakeComp.prototype.openInViewer = real;
         }
     });
+
+    // ------------------------------------------------------------------------
+    //  Sous-dossiers du dossier des PSD, chutier de dépose et étapes réglables
+    // ------------------------------------------------------------------------
+
+    const touch = (...parts) => { fs.mkdirSync(path.dirname(path.join(...parts)), { recursive: true }); fs.writeFileSync(path.join(...parts), 'x'); };
+
+    test('Import PSD : list descend dans les sous-dossiers (dir relatif, racine d\'abord, dossiers et PSD en ordre naturel), cachés ignorés', withTree((t) => {
+        const { call } = host();
+        touch(t.asset, 'SOUS', 'b.psd');
+        touch(t.asset, 'SOUS', 'a.psd');
+        touch(t.asset, 'SOUS', 'notes.txt');
+        touch(t.asset, 'SOUS', 'PROF', 'c.psd');
+        touch(t.asset, 'VIDEO 10', 'v.psd');
+        touch(t.asset, 'VIDEO 2', 'w.psd');
+        touch(t.asset, '.cache', 'caché.psd');
+        touch(t.asset, '._1.psd');
+        touch(t.asset, '.cache.psd');
+        touch(t.asset, 'SOUS', '._a.psd');
+        const r = call('list', { folder: t.asset });
+        assert.deepStrictEqual(r.files.map((f) => [f.dir, f.name]), [
+            ['', '1.psd'], ['', '2.psd'], ['', '10.psd'],
+            ['SOUS', 'a.psd'], ['SOUS', 'b.psd'], ['SOUS/PROF', 'c.psd'],
+            ['VIDEO 2', 'w.psd'], ['VIDEO 10', 'v.psd'],
+        ]);
+        assert.strictEqual(r.files[3].path, path.join(t.asset, 'SOUS', 'a.psd'), 'le chemin complet est gardé');
+        assert.strictEqual(r.status.text, '8 PSD trouvés');
+        // le dossier des PSD est trouvé depuis le projet avec les mêmes sous-dossiers
+        app.project.file = new FakeFile(t.aep);
+        assert.strictEqual(call('list', {}).files.length, 8);
+    }));
+
+    test('Import PSD : list s\'arrête à 4 niveaux de sous-dossiers', withTree((t) => {
+        const { call } = host();
+        touch(t.asset, 'A', 'B', 'C', 'D', 'quatre.psd');
+        touch(t.asset, 'A', 'B', 'C', 'D', 'E', 'cinq.psd');
+        const r = call('list', { folder: t.asset });
+        assert.deepStrictEqual(r.files.map((f) => f.dir).filter(Boolean), ['A/B/C/D']);
+        assert.strictEqual(r.files.filter((f) => f.name === 'cinq.psd').length, 0);
+    }));
+
+    test('Import PSD : list, imported se lit aussi pour un PSD de sous-dossier', withTree((t) => {
+        const { call } = host();
+        touch(t.asset, 'SOUS', 'a.psd');
+        app.project.items.push(new FootageItem('x/a.psd', new FileSource(new FakeFile(path.join(t.asset, 'SOUS', 'a.psd')), true)));
+        const r = call('list', { folder: t.asset });
+        assert.deepStrictEqual(r.files.filter((f) => f.dir === 'SOUS').map((f) => f.imported), [true]);
+    }));
+
+    test('Import PSD : list, sourcePath personnalisé cherché depuis le projet ; vide ou invalide -> le défaut ; introuvable -> son nom dans le message', withTree((t) => {
+        const { call } = host();
+        touch(t.root, 'PROJ', 'Autre', 'Dossier', 'x.psd');
+        app.project.file = new FakeFile(t.aep);
+        const custom = call('list', { sourcePath: 'Autre/Dossier' });
+        assert.deepStrictEqual(custom.files.map((f) => f.name), ['x.psd']);
+        assert.strictEqual(custom.folder, path.join(t.root, 'PROJ', 'Autre', 'Dossier'));
+        assert.strictEqual(call('list', { sourcePath: 'Autre\\Dossier' }).files.length, 1, 'antislash accepté');
+        for (const bad of ['', '   ', '../x', '/Autre', 'C:\\Autre', 'a/../b', 'a|b', null, 12]) {
+            assert.strictEqual(call('list', { sourcePath: bad }).folder, t.asset, 'défaut pour ' + JSON.stringify(bad));
+        }
+        const none = call('list', { sourcePath: 'Rien/Ici' });
+        assert.strictEqual(none.folder, null);
+        assert.strictEqual(none.status.text, 'Dossier Rien/Ici introuvable : choisis le dossier des PSD');
+    }));
+
+    /** Chaîne des noms de dossiers d'un élément, de la racine à lui : « 02_ASSET/VIDEO_A ». */
+    const chain = (item) => {
+        const names = [];
+        for (let p = item.parentFolder; p; p = p.parentFolder) names.unshift(p.name);
+        return names.join('/');
+    };
+
+    test('Import PSD : importBatch recrée le dossier relatif de chaque PSD sous le chutier, compo et « N Calques » rangés dedans', () => {
+        const { call } = importScene();
+        const r = call('importBatch', { items: [
+            { path: PSD_A, dir: 'VIDEO_A/VERSION_2', shapes: null },
+            { path: PSD_B, dir: '', shapes: null },
+        ], rules: RULES });
+        assert.strictEqual(r.imported.length, 2);
+        assert.strictEqual(chain(itemById(r.imported[0].compId)), '02_ASSET/VIDEO_A/VERSION_2');
+        assert.strictEqual(chain(folders('1 Calques')[0]), '02_ASSET/VIDEO_A/VERSION_2');
+        assert.strictEqual(chain(itemById(r.imported[1].compId)), '02_ASSET', 'racine : comme avant');
+        assert.strictEqual(chain(folders('2 Calques')[0]), '02_ASSET');
+        assert.strictEqual(folders('VIDEO_A').length, 1);
+        assert.strictEqual(folders('VERSION_2').length, 1);
+        assert.deepStrictEqual(app.undoGroups, ['Boîte à outils : importer les PSD'], 'un seul groupe d\'annulation');
+    });
+
+    test('Import PSD : importBatch réutilise les dossiers du projet (même nom, même parent) et en crée un autre sous un autre parent', () => {
+        const { call } = importScene();
+        const asset = new FolderItem('02_ASSET');
+        const video = new FolderItem('VIDEO_A', asset);
+        const ailleurs = new FolderItem('VIDEO_A');           // même nom, mais à la racine : pas le bon parent
+        const divers = new FolderItem('Divers');
+        const rangee = new FolderItem('VIDEO_A', divers);     // ni sous un autre dossier
+        app.project.items.push(divers, rangee, ailleurs, asset, video);
+        const first = call('importBatch', { items: [{ path: PSD_A, dir: 'VIDEO_A', shapes: null }], rules: RULES });
+        assert.strictEqual(itemById(first.imported[0].compId).parentFolder, video, 'dossier existant réutilisé');
+        assert.strictEqual(folders('VIDEO_A').length, 3, 'rien de créé');
+        const second = call('importBatch', { items: [{ path: PSD_B, dir: 'VIDEO_A/V2', shapes: null }], rules: RULES });
+        assert.strictEqual(chain(itemById(second.imported[0].compId)), '02_ASSET/VIDEO_A/V2');
+        assert.strictEqual(folders('V2')[0].parentFolder, video);
+        assert.strictEqual(folders('VIDEO_A').length, 3);
+        // « .. » et segments vides du dir sont écartés
+        const odd = call('importBatch', { items: [{ path: PSD_A, dir: '../X//Y/.', shapes: null }], rules: RULES });
+        assert.strictEqual(chain(itemById(odd.imported[0].compId)), '02_ASSET/X/Y');
+    });
+
+    test('Import PSD : importBatch, chutier de dépose personnalisé (« A/B » = chutiers imbriqués), vide ou invalide = 02_ASSET', () => {
+        const { call } = importScene();
+        const r = call('importBatch', { items: [{ path: PSD_A, dir: 'V', shapes: null }], rules: RULES, bin: 'Import\\PSD' });
+        assert.strictEqual(chain(itemById(r.imported[0].compId)), 'Import/PSD/V');
+        assert.strictEqual(folders('02_ASSET').length, 0);
+        const again = call('importBatch', { items: [{ path: PSD_B, dir: 'V', shapes: null }], rules: RULES, bin: 'Import/PSD' });
+        assert.strictEqual(itemById(again.imported[0].compId).parentFolder, itemById(r.imported[0].compId).parentFolder, 'chutiers réutilisés');
+        assert.strictEqual(folders('PSD').length, 1);
+        for (const bad of ['', '..', '../x', '/abs', 'a:b', 'a?', 'x.', null, 5]) {
+            app.reset();
+            const s = importScene();
+            const o = s.call('importBatch', { items: [{ path: PSD_A, shapes: null }], rules: RULES, bin: bad });
+            assert.strictEqual(chain(itemById(o.imported[0].compId)), '02_ASSET', 'défaut pour ' + JSON.stringify(bad));
+        }
+    });
+
+    test('Import PSD : importBatch, un PSD en échec retire aussi les chutiers que son dossier relatif avait fait créer', () => {
+        const real = FakeComp.prototype.openInViewer;
+        FakeComp.prototype.openInViewer = function () { if (this.name === '1') throw new Error('viewer indisponible'); return real.call(this); };
+        try {
+            const { call } = importScene();
+            const r = call('importBatch', { items: [{ path: PSD_A, dir: 'V/W', shapes: [shapeOf()] }, { path: PSD_B, dir: 'V', shapes: null }], rules: RULES });
+            assert.strictEqual(r.imported.length, 1);
+            assert.strictEqual(folders('W').length, 0, 'sous-dossier du PSD en échec retiré');
+            assert.strictEqual(chain(itemById(r.imported[0].compId)), '02_ASSET/V');
+        } finally {
+            FakeComp.prototype.openInViewer = real;
+        }
+    });
+
+    /** Importe PSD_A (formes, texte, libellés, précompo à recadrer) avec ces étapes ; renvoie la compo interne. */
+    function withSteps(steps) {
+        app.reset();
+        const { call } = importScene();
+        app.importRecipes[PSD_A] = { layers: [{ name: '1', group: { layers: [{ name: 'Rectangle 1' }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES, steps });
+        const outer = itemById(r.imported[0].compId);
+        return { r, outer, inner: outer.layers[0].source };
+    }
+    const anchorOf = (comp, i) => plain(comp.layer(i).property('ADBE Transform Group').property('ADBE Anchor Point').value).slice(0, 2);
+
+    test('Import PSD : importBatch, tout est fait quand steps manque, est vide ou ne dit pas false', () => {
+        for (const steps of [undefined, null, {}, { texts: true, shapes: 1, labels: undefined }]) {
+            const { r, inner } = withSteps(steps);
+            assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · 1 forme · Ctrl+Z pour annuler', JSON.stringify(steps));
+            assert.deepStrictEqual(kinds(inner), ['shape', 'text', 'av']);
+            assert.deepStrictEqual(inner.layers.map((s) => s.label), [5, 6, 8]);
+        }
+    });
+
+    test('Import PSD : importBatch, étape « textes » coupée -> aucun texte converti, absente du statut', () => {
+        const { r, inner } = withSteps({ texts: false });
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 forme · Ctrl+Z pour annuler');
+        assert.deepStrictEqual(kinds(inner), ['shape', 'av', 'av']);
+    });
+
+    test('Import PSD : importBatch, étape « formes » coupée -> calque PSD gardé, absente du statut', () => {
+        const { r, inner } = withSteps({ shapes: false });
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · Ctrl+Z pour annuler');
+        assert.deepStrictEqual(kinds(inner), ['av', 'text', 'av']);
+    });
+
+    test('Import PSD : importBatch, étape « libellés » coupée -> étiquettes laissées telles qu\'After les crée', () => {
+        const { r, inner, outer } = withSteps({ labels: false });
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · 1 forme · Ctrl+Z pour annuler');
+        const fresh = new FakeComp(998, 'Réf').addLayer('Réf').label;
+        assert.deepStrictEqual(inner.layers.map((s) => s.label), [fresh, fresh, fresh]);
+        assert.strictEqual(outer.layers[0].label, fresh);
+    });
+
+    test('Import PSD : importBatch, étape « recadrer » coupée -> précompo à sa taille d\'origine ; faite, elle rétrécit', () => {
+        const on = withSteps({});
+        const off = withSteps({ crop: false });
+        assert.ok(on.inner.width < off.inner.width || on.inner.height < off.inner.height, 'recadrée par défaut');
+        assert.deepStrictEqual([off.inner.width, off.inner.height], [1920, 1080]);
+    });
+
+    test('Import PSD : importBatch, étape « ancres » coupée -> ancre des calques laissée, au centre quand elle est faite', () => {
+        const ref = valueOf(new FakeComp(997, 'Réf').addLayer('Réf'), 'ADBE Anchor Point').slice(0, 2);   // ancre d'un calque neuf
+        const off = withSteps({ anchors: false });
+        for (let i = 1; i <= 3; i++) assert.deepStrictEqual(anchorOf(off.inner, i), ref, 'ancre ' + i);
+        assert.deepStrictEqual(anchorOf(off.outer, 1), ref);
+        const on = withSteps({});
+        assert.notDeepStrictEqual(anchorOf(on.inner, 3), ref);
+    });
+
+    test('Import PSD : importBatch, toutes les étapes coupées -> compo importée et rangée, rien d\'autre', () => {
+        const { r, inner, outer } = withSteps({ texts: false, shapes: false, labels: false, crop: false, anchors: false });
+        assert.strictEqual(r.status.text, '1 PSD importé · Ctrl+Z pour annuler');
+        assert.deepStrictEqual(kinds(inner), ['av', 'av', 'av']);
+        assert.strictEqual(chain(outer), '02_ASSET');
+        assert.deepStrictEqual([inner.width, inner.height], [1920, 1080]);
+    });
 };

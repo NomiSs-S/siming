@@ -8,7 +8,10 @@
  * chaque geste et quand le pointeur entre dans la vue.
  * Importer les PSD ouvre une liste à cocher qui remplace le contenu de la boîte (son bouton
  * principal est alors le seul à l'écran) ; Échap ou Annuler rend la boîte. Les PSD sont lus ici
- * (Node du panneau), l'import se fait en un seul appel à l'hôte (outil psdimport).
+ * (Node du panneau), l'import se fait en un seul appel à l'hôte (outil psdimport). Les sous-dossiers du dossier
+ * des PSD sont listés par groupes ; le dossier des PSD, le chutier de dépose et les étapes de l'import sont
+ * des réglages (Réglages › Import PSD, js/psd/settings.js), relus à chaque ouverture de la liste et à chaque
+ * import ; une icône Réglages de la liste ouvre cet onglet (ctx.openSettings, absent d'un panneau isolé).
  */
 (function (global) {
     'use strict';
@@ -48,7 +51,7 @@
                 { icon: 'source', name: 'Afficher la source', text: 'Dans le panneau Projet.', keys: [{ k: ['Alt', 'clic'], t: 'son fichier sur le disque' }] },
                 { icon: 'texte', name: 'Textes PSD', text: 'Ils deviennent modifiables (sélection, sinon toute la compo).' },
                 { icon: 'figer', name: 'Expressions en keyframes', text: 'Une keyframe par image, l\'expression est désactivée.' },
-                { icon: 'importer', name: 'Importer les PSD', text: 'Les .psd de 02_RESSOURCES/02_ASSET ; ceux déjà importés sont décochés. Textes convertis, formes recréées, libellés posés.' },
+                { icon: 'importer', name: 'Importer les PSD', text: 'Les .psd de 02_ASSET et de ses sous-dossiers, rangés dans le Projet. Étapes et dossiers réglables (icône Réglages de la liste).' },
             ] },
         ],
         footer: 'Le dernier geste est cerclé de bleu : Entrée le rejoue.',
@@ -82,6 +85,8 @@
         let psd = null;     // { pane, list, folder, primary } tant que la liste des PSD remplace la vue
         let psdFolder = null;   // dernier dossier de PSD connu de l'hôte (rouvert au geste suivant)
         let psdStart = null;    // sans dossier de PSD : le dossier du projet, où ouvrir la fenêtre de choix
+        let psdSourceUsed = null;   // réglage « Dossier des PSD » qui a trouvé psdFolder ; null si choisi à la main (gardé)
+        const psdSettings = SIMING.psdSettings;
         const settings = ctx.settings;
         const keys = ctx.keys || SIMING.keys;
         const pref = (key, fallback) => {
@@ -293,8 +298,12 @@
                 tip: () => (psdFolder || '') + '\nCliquer pour changer de dossier', emptyTip: 'Choisir le dossier des PSD',
             });
             const primary = ui.primaryButton({ label: 'Importer 0 PSD', onClick: () => task(importChecked) });
+            const gear = ctx.openSettings ? h('button', {
+                class: 's-icon-btn', type: 'button', 'data-role': 'psd-settings', title: 'Réglages de l\'import', 'aria-label': 'Réglages de l\'import',
+                onclick: () => { if (!busy) ctx.openSettings('psd'); },
+            }, ui.icon('reglages', 16)) : null;
             const pane = h('div', { class: 's-stack s-psd-pane', 'data-role': 'psd-pane' },
-                ui.sectionTitle('Importer les PSD'), folder, list, primary,
+                h('div', { class: 's-psd-head' }, ui.sectionTitle('Importer les PSD'), gear), folder, list, primary,
                 ui.button({ label: 'Annuler', role: 'psd-cancel', onClick: () => { if (!busy) cancelPsd(); } }));
             psd = { pane, list, folder, primary };
             sections.forEach((e) => { e.hidden = true; });
@@ -312,9 +321,17 @@
             } else {
                 psd.folder.set({ title: 'Choisir le dossier des PSD', subtitle: ASSET_HINT, empty: true });
             }
-            psd.list.setRows(l.files.map((f) => ({
-                key: f.path, name: f.name, title: f.path, checked: !f.imported, pill: f.imported ? 'déjà importé' : '', tone: 'done',
-            })), l.folder ? PSD_EMPTY : PSD_NO_FOLDER);
+            psd.dirs = {};
+            const grouped = l.files.some((f) => f.dir);   // des sous-dossiers : un intitulé au-dessus de chaque groupe
+            const root = l.folder ? splitFolder(l.folder).name : '';
+            let dir = null;
+            const rows = [];
+            for (const f of l.files) {
+                psd.dirs[f.path] = f.dir || '';
+                if (grouped && f.dir !== dir) { dir = f.dir; rows.push({ heading: dir || root, title: dir || l.folder }); }
+                rows.push({ key: f.path, name: f.name, title: f.path, checked: !f.imported, pill: f.imported ? 'déjà importé' : '', tone: 'done' });
+            }
+            psd.list.setRows(rows, l.folder ? PSD_EMPTY : PSD_NO_FOLDER);
             syncPsd();
             ctx.status.set(l.status.text, l.status.level);
         }
@@ -333,7 +350,17 @@
         action('psd-cancel', 'Annuler l\'import des PSD', () => { if (!busy) cancelPsd(); }, 'Escape', () => !focusRoot.hidden && !!psd);
 
         async function openPsdList() {
-            showPsd(await psdCall('list', psdFolder ? { folder: psdFolder } : {}));
+            const source = psdSettings.read(settings).sourcePath;
+            if (psdSourceUsed !== null && psdSourceUsed !== source) psdFolder = null;   // le réglage a changé depuis
+            const auto = !psdFolder;
+            const l = await psdCall('list', psdFolder ? { folder: psdFolder } : { sourcePath: source });
+            if (auto) psdSourceUsed = source;
+            showPsd(l);
+        }
+
+        /** Liste ouverte dont le dossier vient d'un réglage qui a changé depuis (Réglages › Import PSD) : on la relit. */
+        function refreshStalePsd() {
+            if (psd && !busy && psdSourceUsed !== null && psdSourceUsed !== psdSettings.read(settings).sourcePath) task(openPsdList);
         }
 
         /**
@@ -353,6 +380,7 @@
             let picked = nativeFolderPick(psdFolder || psdStart);
             if (picked === undefined) picked = (await psdCall('pickFolder', psdFolder ? { from: psdFolder } : {})).folder;
             if (!picked) return;
+            psdSourceUsed = null;   // choisi à la main : gardé, quel que soit le réglage
             showPsd(await psdCall('list', { folder: picked }));
         }
 
@@ -360,22 +388,27 @@
         async function importChecked() {
             const paths = psd.list.checked();
             if (!paths.length) return;
+            const cfg = psdSettings.read(settings);
             let fs = null;
-            try { const req = SIMING.nodeRequire(); fs = req ? req('fs') : null; } catch (e) { fs = null; }
-            if (!fs) { ctx.status.set(PSD_NO_NODE, 'error'); return; }
+            if (cfg.steps.shapes) {   // les PSD ne se lisent ici que pour recréer leurs formes
+                try { const req = SIMING.nodeRequire(); fs = req ? req('fs') : null; } catch (e) { fs = null; }
+                if (!fs) { ctx.status.set(PSD_NO_NODE, 'error'); return; }
+            }
             const items = [];
             for (let i = 0; i < paths.length; i++) {
+                const dir = psd.dirs[paths[i]] || '';
+                if (!fs) { items.push({ path: paths[i], dir, shapes: null }); continue; }
                 ctx.status.set('Lecture des PSD… (' + (i + 1) + ' / ' + paths.length + ')', 'info');
                 await painted();   // la progression s'affiche avant la lecture (un PSD peut peser 100 Mo)
                 try {
-                    items.push({ path: paths[i], shapes: SIMING.psd.shapes(SIMING.psd.read(await readFile(fs, paths[i]))) });
+                    items.push({ path: paths[i], dir, shapes: SIMING.psd.shapes(SIMING.psd.read(await readFile(fs, paths[i]))) });
                 } catch (e) {
-                    items.push({ path: paths[i], error: e.message });
+                    items.push({ path: paths[i], dir, error: e.message });
                 }
             }
             ctx.status.set('Import des PSD…', 'info');
             await painted();
-            const r = await psdCall('importBatch', { items, rules: labelRules() });
+            const r = await psdCall('importBatch', { items, rules: labelRules(), bin: cfg.bin, steps: cfg.steps });
             closePsd();
             render(r);
         }
@@ -484,8 +517,9 @@
             peeking = call('info').then((s) => { if (s) setComp(s.comp); }).catch(() => {}).finally(() => { peeking = null; });
             return peeking;
         }
-        focusRoot.addEventListener('pointerenter', peek);
-        global.addEventListener('focus', peek);
+        const entered = () => { peek(); refreshStalePsd(); };
+        focusRoot.addEventListener('pointerenter', entered);
+        global.addEventListener('focus', entered);
 
         setComp(null);
         const ready = run('init', {});

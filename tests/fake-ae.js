@@ -718,6 +718,7 @@ class FakeFile {
 class FakeFolder {
     constructor(p) { this.path = normalize(p); }
     get name() { return path.basename(this.path); }
+    get displayName() { return decodeURIComponent(this.name); }   // comme File : name est encodé, displayName lisible
     get fsName() { return this.path; }
     get absoluteURI() { return this.path.replace(/\\/g, '/'); }
     get exists() { return fs.existsSync(this.path) && fs.statSync(this.path).isDirectory(); }

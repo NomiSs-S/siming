@@ -58,6 +58,15 @@ module.exports = function (test) {
         }
     });
 
+    test('pages : index.html et tool.html chargent les réglages de l\'import des PSD (js/psd/settings.js), avant hub.js', () => {
+        for (const page of ['index.html', 'tool.html']) {
+            const html = fs.readFileSync(path.join(CLIENT, page), 'utf8');
+            const srcs = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+            assert.ok(srcs.indexOf('js/psd/settings.js') > srcs.indexOf('js/siming.js'), page + ' : settings.js après siming.js');
+            assert.ok(srcs.indexOf('js/psd/settings.js') < srcs.indexOf('js/hub.js'), page + ' : settings.js avant hub.js');
+        }
+    });
+
     test('tools.json : version, outils avec script, icône et cœur hôte existants', () => {
         assert.ok(/^\d+\.\d+\.\d+$/.test(LIST.version));
         assert.ok(/^[A-Za-z0-9-]+\/siming$/.test(LIST.repository));

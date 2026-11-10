@@ -26,6 +26,7 @@ const FILES = [
     './toolbox-api.test.js',
     './toolbox-view.test.js',
     './psdimport-api.test.js',
+    './psd-settings.test.js',
     './mcp-host.test.js',
     './mcp-protocol.test.js',
     './mcp-server.test.js',

@@ -469,4 +469,51 @@ module.exports = function (test) {
         assert.deepEqual(list.checked(), []);
         assert.strictEqual(ui.checkList({}).querySelector('.s-empty').textContent, 'Rien à afficher');
     });
+
+    test('checkList : un intitulé de groupe n\'a pas de case et ne compte pas, Tout / Rien l\'ignorent', () => {
+        const { ui } = setup();
+        const seen = [];
+        const list = ui.checkList({ role: 'g', allLabel: 'Tous', onChange: (keys) => seen.push(keys) });
+        list.setRows([
+            { key: 'a', name: 'a.psd', checked: true },
+            { heading: 'VIDEO_A', title: 'tout le chemin' },
+            { key: 'b', name: 'b.psd', checked: false },
+            { heading: 'VIDEO_A/V2' },
+            { key: 'c', name: 'c.psd', checked: true },
+        ]);
+        const heads = Array.from(list.querySelectorAll('[data-role=check-group]'));
+        assert.deepEqual(heads.map((e) => e.textContent), ['VIDEO_A', 'VIDEO_A/V2']);
+        assert.strictEqual(heads[0].title, 'tout le chemin');
+        assert.strictEqual(heads[1].title, 'VIDEO_A/V2', 'sans title : le texte');
+        assert.strictEqual(heads[0].querySelector('input'), null);
+        assert.deepEqual(list.checked(), ['a', 'c']);
+        assert.strictEqual(list.querySelector('.s-check-count').textContent, '2 / 3');
+        list.setAll(true);
+        assert.deepEqual(list.checked(), ['a', 'b', 'c']);
+        assert.strictEqual(list.querySelectorAll('.s-check-row:not(.is-all)').length, 3);
+        assert.deepEqual(list.children.length, 6, 'tout, 3 lignes, 2 intitulés dans l\'ordre donné');
+        assert.deepEqual(Array.from(list.children).map((e) => e.className.split(' ')[0]), ['s-check-row', 's-check-row', 's-check-group', 's-check-row', 's-check-group', 's-check-row']);
+    });
+
+    test('textField : valeur, onCommit à la validation (change) seulement, set() sans onCommit, Échap rend la valeur d\'avant', () => {
+        const { ui, win } = setup();
+        const got = [];
+        const f = ui.textField({ role: 'champ', value: 'départ', placeholder: 'ex.', label: 'Chemin', onCommit: (v) => got.push(v) });
+        assert.strictEqual(f.getAttribute('data-role'), 'champ');
+        assert.strictEqual(f.value, 'départ');
+        assert.strictEqual(f.input.getAttribute('aria-label'), 'Chemin');
+        assert.strictEqual(f.input.placeholder, 'ex.');
+        f.input.value = 'a/b';
+        f.input.dispatchEvent(new win.Event('input', { bubbles: true }));
+        assert.deepEqual(got, [], 'rien tant que la saisie n\'est pas validée');
+        f.input.dispatchEvent(new win.Event('change', { bubbles: true }));
+        assert.deepEqual(got, ['a/b']);
+        f.set('autre');
+        assert.strictEqual(f.value, 'autre');
+        assert.deepEqual(got, ['a/b'], 'set ne valide pas');
+        f.input.value = 'brouillon';
+        f.input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        assert.strictEqual(f.value, 'autre');
+        assert.strictEqual(ui.textField({}).value, '', 'sans valeur : vide');
+    });
 };

@@ -332,6 +332,43 @@ Décisions :
 À valider dans After : scénario « Importer les PSD » de `TESTS-MANUELS.md` (styles copiés, dégradé, sélection
 rétablie, un seul Ctrl+Z).
 
+### 2026-11-10 : Import PSD, sous-dossiers de 02_ASSET et réglages (1.5.2, non publiée, à valider dans AE)
+
+Demande : « détecter les sous-dossiers dans 02_ASSET au cas où on a plusieurs vidéos, et recréer l'arborescence dans
+le chutier ASSET », puis des réglages (onglet « Import PSD » de Réglages ; dossiers et étapes).
+
+Décisions :
+
+- **Liste récursive** (`psdimport.list`) : `MAX_SUBFOLDER_DEPTH = 4` niveaux sous le dossier lu ; fichiers et dossiers
+  cachés (nom commençant par « . », dont les `._*`) ignorés. Chaque fichier reçoit `dir` (`''`, `'A'`, `'A/B'`).
+  Ordre = parcours en profondeur : les PSD du dossier (ordre naturel), puis chaque sous-dossier (ordre naturel) avec
+  ses propres sous-dossiers ; pas un tri à plat des chemins, qui mettrait `A2` avant `A/B`. Noms lus par
+  `displayName` (`Folder.name` est encodé : « %20 »), pour les dossiers (recréés dans le Projet) comme pour les PSD.
+- **Vue** : `ui.checkList` accepte des lignes `{ heading }` (intitulé non cochable, hors compte). Intitulés seulement
+  s'il y a des sous-dossiers ; les PSD de la racine ont alors pour intitulé le nom du dossier lu (ajout à la
+  consigne, qui ne dit rien de la racine).
+- **Rangement** : `importOne` résout `bin + dir` (`projectFolderAt`) après avoir relevé ce que l'import a créé à la
+  racine (sinon les dossiers neufs seraient déplacés dans eux-mêmes). Dossier existant = même nom, même parent ;
+  seul le premier segment du chutier est cherché aussi ailleurs dans le projet (comportement de 02_ASSET gardé).
+  Plus de cache du dossier entre deux PSD : relu à chaque PSD, donc plus de dossier périmé après l'échec d'un PSD
+  (qui retire aussi les dossiers créés pour lui).
+- **Réglages** (`js/psd/settings.js`, chargé par `index.html` et `tool.html` ; clés `psd.sourcePath`, `psd.bin`,
+  `psd.step.<texts|shapes|labels|crop|anchors>`) : valeurs par défaut, `checkPath` (mêmes règles que `cleanRelPath` côté
+  hôte, qui retombe sur le défaut), onglet dans `buildSettings` quand le module est chargé. Valeur invalide : non
+  enregistrée, le champ retrouve **la valeur déjà enregistrée** (le défaut si rien n'a été réglé), statut orange.
+  Nouveau composant `ui.textField`. `hub.openSettings(onglet)` et `ctx.openSettings` (absent du panneau isolé :
+  pas d'icône Réglages dans la liste).
+- **Étapes** : `importBatch({ steps })`, champ absent ou autre que `false` = étape faite. Une étape coupée sort du
+  statut (« textes », « formes »). Sans l'étape des formes, la vue ne lit pas les PSD (`shapes: null`), donc n'exige
+  plus Node.
+- **Liste ouverte et réglage changé** : au retour dans la vue (pointeur, focus), la liste est relue si le « Dossier
+  des PSD » a changé depuis ; un dossier choisi à la main n'est jamais remplacé. Chutier et étapes sont lus à
+  l'import.
+- Faux After : `FakeFolder.displayName`. Tests : liste récursive, rangement, chutiers, étapes (hôte) ; groupes,
+  transmission, icône, relecture (vue) ; onglet Réglages (`tests/psd-settings.test.js`, hub) ; `textField`, intitulés.
+
+À valider dans After : « Sous-dossiers et réglages de l'import » de `TESTS-MANUELS.md`.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

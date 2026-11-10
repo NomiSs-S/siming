@@ -182,6 +182,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-search-input::-webkit-search-cancel-button { display: none; }
 .s-search-clear { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .s-search-clear:hover { background: #2E2E2E; color: var(--text); }
+.s-field { display: flex; align-items: center; height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); }
+.s-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.s-field-input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: transparent; color: var(--text-strong); font: inherit; outline: none; -webkit-appearance: none; appearance: none; user-select: text; }
+.s-field-input::placeholder { color: #6E6E6E; }
 .s-select { width: 100%; height: 30px; padding: 0 28px 0 10px; border: 1px solid var(--line); border-radius: var(--radius); color: var(--text-strong); font: inherit; cursor: pointer; color-scheme: dark; -webkit-appearance: none; appearance: none;
     background: var(--bg-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239A9A9A' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center; }
 .s-select:hover { border-color: #5A5A5A; }
@@ -318,6 +322,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 
 /* Importer les PSD : liste à cocher à la place de la boîte (dossier, Tout / Rien, lignes, boutons) */
 .s-psd-pane { flex: 1; min-height: 0; }
+.s-psd-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.s-psd-head .s-section { flex: 1; min-width: 0; }
+.s-psd-head .s-icon-btn { height: 32px; flex: none; }
+.s-check-group { flex: none; padding: 8px 10px 2px; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-check-group:first-child { padding-top: 4px; }
 
 /* Aide en fiches : en-tête, fiches (picto ou numéro, nom, une phrase, touches), pied */
 .s-help-backdrop { padding: 8px; }
