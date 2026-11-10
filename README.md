@@ -96,7 +96,7 @@ est cerclé de bleu et **Entrée** le rejoue.
    **Convertir les textes PSD** en texte modifiable (sélection, sinon toute la compo) et
    **Convertir les expressions en keyframes** (une par image, expression désactivée, son texte gardé).
 7. **Importer les PSD** : ouvre la liste des `.psd` de `02_RESSOURCES/02_ASSET` (cherché depuis le dossier du
-   projet en remontant ; « Changer de dossier » pour un autre) **et de ses sous-dossiers** (jusqu'à 4 niveaux ;
+   projet en remontant, à chaque ouverture de la liste ; un clic sur la carte du dossier pour en choisir un autre, qui est alors gardé) **et de ses sous-dossiers** (jusqu'à 4 niveaux ;
    plusieurs vidéos, plusieurs versions) : sans sous-dossier la liste est plate, sinon chaque dossier a son intitulé
    (le chemin relatif, non cochable) au-dessus de ses PSD. Ceux déjà importés
    sont décochés. Un clic sur « Importer N PSD » : chaque PSD devient une composition (calques
@@ -105,12 +105,16 @@ est cerclé de bleu et **Entrée** le rejoue.
    modifiable, ses **formes** recréées en calques de forme, ses calques reçoivent leur **libellé** (règles de
    l'outil Libellés), chaque **précompo** (groupe Photoshop) est recadrée sur son contenu (styles compris, sans
    que rien ne bouge dans la planche), et pour finir le **point d'ancrage** de chaque calque est centré sur son contenu (rien ne
-   bouge à l'écran ; calques verrouillés laissés). La carte du dossier, en haut de la liste, montre le dossier lu :
+   bouge à l'écran ; calques verrouillés laissés). La carte du dossier, en haut de la liste, montre le dossier lu (ou, sans dossier, pourquoi) :
    un clic ouvre l'Explorateur (le Finder sur Mac) sur ce dossier pour en choisir un autre. La case « Tous les PSD » coche ou décoche tout et donne le compte. Un seul Ctrl+Z défait le lot ; la ligne de statut dit combien de PSD, de
-   textes et de formes (« 3 PSD importés · 12 textes · 8 formes »), et ajoute ce qui a échoué.
+   textes et de formes (« 3 PSD importés · 12 textes · 8 formes », un compte à zéro n'y figure pas) et, s'il y a lieu, ce qui a échoué
+   (« 1 PSD illisible », « 2 formes en erreur », « 1 avertissement »). La fenêtre « Éléments ignorés » s'ouvre alors et donne la raison, PSD par PSD,
+   calque par calque. Seul un PSD qu'After Effects refuse d'importer est « illisible » (et retiré du projet) ; un PSD que SIMING ne sait pas
+   lire (PSB renommé, fichier abîmé) est importé quand même, sans ses formes, avec un avertissement ; une étape qui échoue sur une compo
+   (visualiseur verrouillé…) est sautée pour elle, les autres se font.
    L'icône Réglages en haut de la liste ouvre **Réglages › Import PSD** (voir plus bas) : le dossier des PSD, le
    chutier de dépose et chaque étape (textes, formes, libellés, recadrage des précompos, ancres) s'y règlent.
-   Une étape décochée n'est pas faite (et sort de la ligne de statut) ; sans l'étape des formes, les PSD ne sont même pas lus.
+   Une étape décochée n'est pas faite ; sans l'étape des formes, les PSD ne sont même pas lus (ni leurs calques texte : toutes les couches PSD sont alors essayées pour la conversion des textes).
 
 Formes recréées : rectangles (tournés ou arrondis à rayons égaux ; à coins inégaux, en tracé à
 l'identique), ellipses et autres formes vectorielles (en tracés), avec remplissage uni ou **dégradé
@@ -130,7 +134,7 @@ base à un détourage), masque vectoriel inversé ou désactivé.
 Un rectangle ou une ellipse retouchés point par point dans Photoshop sont recréés en tracé, à
 l'identique. After Effects importe un calque de forme à la taille du document (son tracé en masque) :
 c'est prévu. S'il l'importe à une autre taille encore (styles fusionnés dans les pixels), la forme n'est pas posée et le statut compte une « forme en erreur ». Les PSD 16 et
-32 bits sont importés, mais leurs formes ne sont pas lues (« 0 forme »).
+32 bits sont importés, mais leurs formes ne sont pas lues (aucune forme dans le statut).
 
 Alt + clic donne la variante d'un geste ; Entrée rejoue la variante choisie.
 
