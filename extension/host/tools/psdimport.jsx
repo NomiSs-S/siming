@@ -922,7 +922,10 @@
                 layers = layersOf(entry.comp);
             }
             focusComp(entry.comp);
-            var converted = toolbox._core.convertTextsIn(entry.comp, layers, textKeys !== null);   // calques texte connus : un verrou est signalé
+            // calques texte connus (lus dans le PSD) : un verrou ou un échec est signalé ; sinon, tous les calques sont
+            // essayés et l'erreur d'After sur ceux qui ne sont pas des textes reste muette
+            var known = textKeys !== null;
+            var converted = toolbox._core.convertTextsIn(entry.comp, layers, known, known);
             tally.texts += converted.done;
             if (converted.missing) tally.missing = true;
             for (var s = 0; s < converted.skipped.length; s++) {

@@ -386,6 +386,9 @@ module.exports = function (test) {
         assert.deepEqual(app.undoGroups, []);
         assert.deepEqual(comp.selectedLayers, []);
         assert.deepEqual(JSON.parse(JSON.stringify(core.convertTextsIn(comp, pool(), true))), { done: 0, skipped: ['Crédit : calque verrouillé'] });
+        // « Photo » n'est pas un texte : After lève ; l'erreur n'est citée que si l'appelant sait que ce sont des textes
+        assert.deepEqual(JSON.parse(JSON.stringify(core.convertTextsIn(comp, pool(), false, true))), { done: 0,
+            skipped: ['Photo : After Effects (erreur) : des données de texte non compatibles avec Photoshop ont été trouvées.'] });
         app.menuNames = {};
         const n = app.commands.length;
         assert.deepEqual(JSON.parse(JSON.stringify(core.convertTextsIn(comp, [comp.layer(comp.layers.indexOf(IM) + 1)], false))), { done: 0, skipped: [], missing: true });

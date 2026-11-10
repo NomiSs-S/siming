@@ -667,6 +667,10 @@ const app = {
         }
         if (id !== 3799 || !comp || !comp.selection) return;
         for (const st of comp.selection) {
+            // comme After : un calque d'un PSD qui n'est pas un texte fait lever la commande
+            if (!st.psdText && st.source && /\.psd$/i.test(String(st.source.name))) {
+                throw new Error('After Effects (erreur) : des données de texte non compatibles avec Photoshop ont été trouvées.');
+            }
             if (!st.psdText) continue;
             st.kind = 'text';
             st.text = st.psdText;
