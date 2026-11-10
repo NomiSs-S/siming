@@ -4,12 +4,12 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.5.1 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.5.2 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
 | Quick Tools | 1.1.0 | Lisser les keyframes, expression Elastic, point d'ancrage, aligner et répartir (sur la partie visible, masques compris) |
-| Boîte à outils | 1.1.1 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, importer les PSD, expressions en keyframes |
+| Boîte à outils | 1.1.2 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, importer les PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.1.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
 
@@ -96,32 +96,45 @@ est cerclé de bleu et **Entrée** le rejoue.
    **Convertir les textes PSD** en texte modifiable (sélection, sinon toute la compo) et
    **Convertir les expressions en keyframes** (une par image, expression désactivée, son texte gardé).
 7. **Importer les PSD** : ouvre la liste des `.psd` de `02_RESSOURCES/02_ASSET` (cherché depuis le dossier du
-   projet en remontant ; « Changer de dossier » pour un autre). Ceux déjà importés
+   projet en remontant, à chaque ouverture de la liste ; un clic sur la carte du dossier pour en choisir un autre, qui est alors gardé) **et de ses sous-dossiers** (jusqu'à 4 niveaux ;
+   plusieurs vidéos, plusieurs versions) : sans sous-dossier la liste est plate, sinon chaque dossier a son intitulé
+   (le chemin relatif, non cochable) au-dessus de ses PSD. Ceux déjà importés
    sont décochés. Un clic sur « Importer N PSD » : chaque PSD devient une composition (calques
-   rognés) rangée dans `02_ASSET` du panneau Projet, ses **textes** sont convertis en texte
+   rognés) rangée dans `02_ASSET` du panneau Projet, **dans le sous-dossier qui reproduit celui du PSD**
+   (`02_ASSET/VIDEO_A/VERSION_2`, créé au besoin, réutilisé s'il existe), ses **textes** sont convertis en texte
    modifiable, ses **formes** recréées en calques de forme, ses calques reçoivent leur **libellé** (règles de
    l'outil Libellés), chaque **précompo** (groupe Photoshop) est recadrée sur son contenu (styles compris, sans
    que rien ne bouge dans la planche), et pour finir le **point d'ancrage** de chaque calque est centré sur son contenu (rien ne
-   bouge à l'écran ; calques verrouillés laissés). La carte du dossier, en haut de la liste, montre le dossier lu :
+   bouge à l'écran ; calques verrouillés laissés). La carte du dossier, en haut de la liste, montre le dossier lu (ou, sans dossier, pourquoi) :
    un clic ouvre l'Explorateur (le Finder sur Mac) sur ce dossier pour en choisir un autre. La case « Tous les PSD » coche ou décoche tout et donne le compte. Un seul Ctrl+Z défait le lot ; la ligne de statut dit combien de PSD, de
-   textes et de formes (« 3 PSD importés · 12 textes · 8 formes »), et ajoute ce qui a échoué.
+   textes et de formes (« 3 PSD importés · 12 textes · 8 formes », un compte à zéro n'y figure pas) et, s'il y a lieu, ce qui a échoué
+   (« 1 PSD illisible », « 2 formes en erreur », « 1 avertissement »). La fenêtre « Éléments ignorés » s'ouvre alors et donne la raison, PSD par PSD,
+   calque par calque. Seul un PSD qu'After Effects refuse d'importer est « illisible » (et retiré du projet) ; un PSD que SIMING ne sait pas
+   lire (PSB renommé, fichier abîmé) est importé quand même, sans ses formes, avec un avertissement ; une étape qui échoue sur une compo
+   (visualiseur verrouillé…) est sautée pour elle, les autres se font.
+   L'icône Réglages en haut de la liste ouvre **Réglages › Import PSD** (voir plus bas) : le dossier des PSD, le
+   chutier de dépose et chaque étape (textes, formes, libellés, recadrage des précompos, ancres) s'y règlent.
+   Une étape décochée n'est pas faite ; sans l'étape des formes, les PSD ne sont même pas lus (ni leurs calques texte : toutes les couches PSD sont alors essayées pour la conversion des textes).
 
 Formes recréées : rectangles (tournés ou arrondis à rayons égaux ; à coins inégaux, en tracé à
-l'identique), ellipses et autres formes vectorielles (en tracés), avec remplissage uni et contour centré, ainsi que les styles de calque
-ombre portée, ombre interne, lueur externe, lueur interne, biseautage et estampage, satin,
-incrustation couleur et contour. Un calque de pixels d'une seule couleur, opaque sur toute sa
+l'identique), ellipses et autres formes vectorielles (en tracés), avec remplissage uni ou **dégradé
+linéaire à deux couleurs** (posé avec l'effet Dégradé d'After Effects : le lissage de Photoshop aux
+extrémités est la seule différence, de l'ordre d'une dizaine de niveaux sur 255) et contour centré. Les **styles de
+calque** (ombre, lueur, biseautage, satin, incrustations, contour…) ne sont pas recréés : After Effects
+les a déjà importés avec le PSD, modifiables, et SIMING les **copie tels quels** du calque PSD sur la forme
+(Copier puis Coller : le presse-papiers est écrasé). Remplissage et contour de la forme sont alors à 100 %,
+l'opacité du fond de Photoshop étant dans les options de fusion copiées ; sans style, c'est l'opacité du
+fond qui s'applique au remplissage et au contour. Un calque de pixels d'une seule couleur, opaque sur toute sa
 boîte (le fond d'une planche), devient lui aussi un rectangle plein. Tout ce qui ne peut pas être recréé fidèlement **reste un calque
-PSD**, tel qu'After Effects l'a importé, sans message : dégradés (de remplissage ou en incrustation),
-motifs, contours intérieurs ou extérieurs, contours en pointillés ou aux extrémités et jonctions
-non standard, plusieurs tracés avec un contour ou une rotation, soustraction ou intersection de
-formes, calques détourés ou masqués (ou servant de base à un détourage), masque vectoriel inversé
-ou désactivé, remplissage à moins de 100 % avec des styles, réglage de style qu'After Effects ne
-sait pas reproduire : **contour de style** (courbe) autre que linéaire, satin dont le contour n'est
-pas linéaire, biseautage à texture ou à contour, plusieurs styles d'une même sorte (deux ombres…).
+PSD**, tel qu'After Effects l'a importé, sans message : dégradés radial, angulaire…, à trois couleurs ou plus,
+transparents, décalés, mis à l'échelle ou non alignés sur le calque, ou avec un contour, motifs, contours intérieurs
+ou extérieurs, contours en pointillés ou aux extrémités et jonctions non standard, plusieurs tracés avec un
+contour ou une rotation, soustraction ou intersection de formes, calques détourés ou masqués (ou servant de
+base à un détourage), masque vectoriel inversé ou désactivé.
 Un rectangle ou une ellipse retouchés point par point dans Photoshop sont recréés en tracé, à
 l'identique. After Effects importe un calque de forme à la taille du document (son tracé en masque) :
 c'est prévu. S'il l'importe à une autre taille encore (styles fusionnés dans les pixels), la forme n'est pas posée et le statut compte une « forme en erreur ». Les PSD 16 et
-32 bits sont importés, mais leurs formes ne sont pas lues (« 0 forme »).
+32 bits sont importés, mais leurs formes ne sont pas lues (aucune forme dans le statut).
 
 Alt + clic donne la variante d'un geste ; Entrée rejoue la variante choisie.
 
@@ -190,7 +203,7 @@ Claude Code : `/mcp` dans Claude Code, puis reconnecter `siming`. Détail : `doc
 
 ## Réglages
 
-Le bouton Réglages du rail ouvre quatre onglets, pensés pour beaucoup d'outils :
+Le bouton Réglages du rail ouvre cinq onglets, pensés pour beaucoup d'outils :
 
 - **Outils** : la liste des outils du rail. Glisse la poignée d'une ligne pour changer
   l'ordre (ou ↑ ↓ au clavier sur la poignée) ; l'œil masque un outil du rail (il reste
@@ -205,6 +218,13 @@ Le bouton Réglages du rail ouvre quatre onglets, pensés pour beaucoup d'outils
   qui sinon garderait les combinaisons pour lui.
 - **Général** : outil au lancement (menu déroulant : dernier utilisé ou un outil
   précis) et « À propos ».
+- **Import PSD** : réglages de Boîte à outils › Importer les PSD, enregistrés par utilisateur.
+  *Dossier des PSD* : chemin relatif cherché depuis le dossier du projet en remontant (défaut
+  `02_RESSOURCES/02_ASSET`). *Chutier de dépose* : dossier du panneau Projet où tout est rangé (défaut `02_ASSET` ;
+  `A/B` crée des dossiers imbriqués). *Étapes de l'import* : convertir les textes, recréer les formes, poser les
+  libellés, recadrer les précompos, centrer les points d'ancrage (toutes cochées par défaut). Un chemin vide, absolu,
+  avec `..` ou un caractère interdit dans un nom de dossier n'est pas enregistré (message dans la ligne de statut,
+  valeur gardée). « Rétablir » remet les défauts.
 - **Claude** : laisser Claude Code agir dans After Effects (éteint par défaut), état du service,
   commande à coller dans un terminal, nouveau jeton, autre port si le sien est pris.
 

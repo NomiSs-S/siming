@@ -298,6 +298,128 @@ Essai sur la planche test (`E:/PERSO/TEST`, vu par le serveur MCP) : ni les form
 Release GitHub v1.5.1 (https://github.com/NomiSs-S/siming/releases/tag/v1.5.1) : `.zxp` signé, installeurs
 Windows et macOS, `INSTALLATION.md`. Première version publiée avec Importer les PSD (la 1.5.0 ne l'a pas été).
 
+### 2026-11-10 : Import PSD, styles copiés et dégradés (1.5.2, non publiée, à valider dans AE)
+
+Constaté par script dans After 26.2 (détails dans `NOTES-EXTENDSCRIPT.md`, « Styles de calque » et « Dégradés ») :
+After importe un PSD avec ses styles de calque **modifiables** ; Copier (19) puis Coller (20) les recopie
+d'un calque PSD sur un calque de forme, réglages compris ; les noms de menu des styles sont faux
+(`findMenuCommandId('Ombre portée')` = l'effet) et les groupes s'appellent `<sorte>/enabled` ; les couleurs d'un
+dégradé de forme sont inaccessibles, mais l'effet Dégradé (`ADBE Ramp`) convient.
+
+Décisions :
+
+- **Styles de calque : copiés, plus reconstruits.** Supprimés : `js/psd/styles.js` (la conversion de couleur est
+  passée dans `shapes.js`), `tests/psd-styles.test.js`, et côté hôte `STYLE_TABLE`, les tables d'énumérations,
+  `applyStyles` & co, tout usage des noms de menu. `Shape` n'a plus de champ `styles` ; `shapes.js` ne refuse plus
+  un calque à cause de ses styles (`lfx2` illisible, `lmfx` / `lfxs`, style non reproductible, fond < 100 % avec
+  styles). `replaceWithShape` copie les styles du calque PSD (`copyLayerStyles`, test « le groupe est-il masqué ? »)
+  avant de retirer l'original ; un collage sans effet est une panne visible. Avec styles : remplissage et contour à
+  100 % (l'opacité du fond est dans les options de fusion copiées) ; sans : `fillOpacity`.
+  Le presse-papiers de l'utilisateur est écrasé (accepté). La sélection de calques est rétablie par identifiant
+  (et non plus par index : les index bougent quand la forme prend la place de l'original).
+- **Dégradés : effet Dégradé** pour les linéaires à deux couleurs RVB opaques, alignés sur le calque, sans échelle ni
+  décalage ni milieu déplacé, en « Classique » : `fill = { type: 'ramp', start, end, startColor, endColor }`
+  (géométrie mesurée dans After sur « Ellipse 1 ») ; la forme prend la couleur de départ en remplissage uni et
+  l'effet colore le tout. Le reste (radial, 3 arrêts, transparence…) reste un calque PSD. Écarts assumés : le
+  lissage de Photoshop aux extrémités (une dizaine de niveaux sur 255), et, ajouts à la consigne, **un dégradé avec
+  contour reste en PSD** (l'effet colorerait le contour aussi) et des arrêts qui ne sont pas à 0 et 100 % sont
+  reproduits en rapprochant les points (la couleur reste au-delà, comme dans Photoshop).
+- `cropPrecomp` / `styleOverflow` : noms de groupes corrigés (`dropShadow/enabled`…), qui ne trouvaient jamais rien.
+- Faux After : Copier / Coller des styles, groupe `ADBE Layer Styles` masqué sans style (`selected` lève), calques
+  déclarés avec `styles: [...]`, effet `ADBE Ramp` à sept paramètres ; ancien faux des menus de styles retiré.
+- La planche test donne 6 formes (Ellipse 1 comprise). `tools.json` : 1.5.2, Boîte à outils 1.1.2.
+
+À valider dans After : scénario « Importer les PSD » de `TESTS-MANUELS.md` (styles copiés, dégradé, sélection
+rétablie, un seul Ctrl+Z).
+
+### 2026-11-10 : Import PSD, sous-dossiers de 02_ASSET et réglages (1.5.2, non publiée, à valider dans AE)
+
+Demande : « détecter les sous-dossiers dans 02_ASSET au cas où on a plusieurs vidéos, et recréer l'arborescence dans
+le chutier ASSET », puis des réglages (onglet « Import PSD » de Réglages ; dossiers et étapes).
+
+Décisions :
+
+- **Liste récursive** (`psdimport.list`) : `MAX_SUBFOLDER_DEPTH = 4` niveaux sous le dossier lu ; fichiers et dossiers
+  cachés (nom commençant par « . », dont les `._*`) ignorés. Chaque fichier reçoit `dir` (`''`, `'A'`, `'A/B'`).
+  Ordre = parcours en profondeur : les PSD du dossier (ordre naturel), puis chaque sous-dossier (ordre naturel) avec
+  ses propres sous-dossiers ; pas un tri à plat des chemins, qui mettrait `A2` avant `A/B`. Noms lus par
+  `displayName` (`Folder.name` est encodé : « %20 »), pour les dossiers (recréés dans le Projet) comme pour les PSD.
+- **Vue** : `ui.checkList` accepte des lignes `{ heading }` (intitulé non cochable, hors compte). Intitulés seulement
+  s'il y a des sous-dossiers ; les PSD de la racine ont alors pour intitulé le nom du dossier lu (ajout à la
+  consigne, qui ne dit rien de la racine).
+- **Rangement** : `importOne` résout `bin + dir` (`projectFolderAt`) après avoir relevé ce que l'import a créé à la
+  racine (sinon les dossiers neufs seraient déplacés dans eux-mêmes). Dossier existant = même nom, même parent ;
+  seul le premier segment du chutier est cherché aussi ailleurs dans le projet (comportement de 02_ASSET gardé).
+  Plus de cache du dossier entre deux PSD : relu à chaque PSD, donc plus de dossier périmé après l'échec d'un PSD
+  (qui retire aussi les dossiers créés pour lui).
+- **Réglages** (`js/psd/settings.js`, chargé par `index.html` et `tool.html` ; clés `psd.sourcePath`, `psd.bin`,
+  `psd.step.<texts|shapes|labels|crop|anchors>`) : valeurs par défaut, `checkPath` (mêmes règles que `cleanRelPath` côté
+  hôte, qui retombe sur le défaut), onglet dans `buildSettings` quand le module est chargé. Valeur invalide : non
+  enregistrée, le champ retrouve **la valeur déjà enregistrée** (le défaut si rien n'a été réglé), statut orange.
+  Nouveau composant `ui.textField`. `hub.openSettings(onglet)` et `ctx.openSettings` (absent du panneau isolé :
+  pas d'icône Réglages dans la liste).
+- **Étapes** : `importBatch({ steps })`, champ absent ou autre que `false` = étape faite. Une étape coupée sort du
+  statut (« textes », « formes »). Sans l'étape des formes, la vue ne lit pas les PSD (`shapes: null`), donc n'exige
+  plus Node.
+- **Liste ouverte et réglage changé** : au retour dans la vue (pointeur, focus), la liste est relue si le « Dossier
+  des PSD » a changé depuis ; un dossier choisi à la main n'est jamais remplacé. Chutier et étapes sont lus à
+  l'import.
+- Faux After : `FakeFolder.displayName`. Tests : liste récursive, rangement, chutiers, étapes (hôte) ; groupes,
+  transmission, icône, relecture (vue) ; onglet Réglages (`tests/psd-settings.test.js`, hub) ; `textField`, intitulés.
+
+À valider dans After : « Sous-dossiers et réglages de l'import » de `TESTS-MANUELS.md`.
+
+### 2026-11-10 : Import PSD, relecture et corrections (1.5.2, non publiée, à valider dans AE)
+
+Une relecture indépendante de la branche `fix/import-psd-1.5.2` (0 bloquant, 6 importants, 19 mineurs, 3 simplifications) a été
+reprise point par point. Version inchangée (1.5.2 n'est pas publiée).
+
+Corrections de comportement (chacune a un test qui échoue sans elle, vérifié par mutation) :
+
+- **I1** : un PSD que le lecteur du panneau ne sait pas lire (PSB renommé, bloc inattendu, EACCES) n'est plus refusé : le
+  panneau l'envoie avec `shapes: null` et `shapesError`, l'hôte l'importe sans formes (avertissement). Même chose sans Node
+  (le panneau n'est plus bloqué ; le message dit comment ne plus le voir : décocher « Recréer les formes »). Seul un échec
+  d'`importFile` ou du rangement rend un PSD « illisible » et le retire.
+- **I2** : chaque étape (formes, textes, libellés, recadrage, ancres) est exécutée par compo du parcours dans un `attempt` :
+  une exception saute l'étape pour cette compo, compte un avertissement et note la raison ; la compo importée reste. Fini
+  le « PSD illisible » pour un visualiseur verrouillé.
+- **I3** : le dossier trouvé automatiquement n'est plus gardé (`psdPicked` ne retient que le dossier choisi à la main) : la
+  liste est cherchée depuis le projet à chaque ouverture.
+- **I4 / S2** : rangement de tout élément neuf dont le parent n'est pas neuf (racine ou dossier sélectionné du Projet), juste
+  quelle que soit la réponse d'After.
+- **M1** : `importBatch` renvoie `report: { skipped: [raisons] }` (PSD illisible et sa raison, panne d'une forme avec le calque
+  et les deux tailles, étape sautée, calque texte verrouillé, formes non lues) ; la vue l'affiche dans la fenêtre « Éléments
+  ignorés » déjà utilisée par `render`. Le statut ne gagne qu'un « N avertissement(s) ».
+- **M2** : `list` renvoie `hint` (« Projet non enregistré », « <réglage> introuvable depuis le projet », « Dossier introuvable »)
+  pour la carte, au lieu du texte figé « 02_ASSET introuvable ».
+- **Mineurs** : m1 (étiquette reprise par la forme), m2 (calque texte verrouillé signalé), m6 (liste bornée à 3000 entrées,
+  statut orange), m7 (« Ctrl+Z » seulement si quelque chose est importé), m8 (comptes nuls omis ; compteurs `cropped` et
+  `anchors` supprimés), m9 (formes avant textes dans Réglages), m10 (plus de « annulé »), m11 (voir I1), m4 (voir plus bas).
+- **S1** : `layerHasStyles` fusionné dans `copyLayerStyles` (un seul aller-retour de sélection, plus de second `isActiveComp`) ;
+  remplissage et contour sont posés à l'opacité du fond puis repassés à 100 % si des styles ont été copiés.
+- **S3 / m5** : le lecteur sait quels calques sont des textes (`SIMING.psd.texts`, même rang `nth` que les formes) ; le panneau
+  envoie `texts: [{ name, nth }]`, l'hôte ne convertit que ceux-là et n'ouvre que les compos qui en ont. Sans `texts`
+  (lecteur en échec, étape « formes » coupée), repli : tous les calques PSD sont essayés comme avant.
+- **Nettoyage** : lecteur (lumière globale, `lfx2`, `lmfx`, `lfxs`, `artb`), export `SIMING.psd.color`, tests de ces restes,
+  CSS redondant, documentation (« Changer de dossier », « Tout / Rien »).
+- **Faux After** : un calque de forme Photoshop est importé comme dans After 26.2 (`vector: [g, h, d, b]` : métrage à la
+  taille du document, ancre et position au centre, tracé en masque) ; « Rectangle 1 » de la recette par défaut l'est,
+  « Calque 0 » reste un calque de pixels à la taille de sa boîte. `app.importFolder` simule un import déposé dans le dossier
+  sélectionné du Projet (défaut : la racine). Les tests croisent aussi `checkPath` (panneau) et `cleanRelPath` (hôte).
+
+Laissé tel quel, à trancher dans After :
+
+- **m4** (fond plus grand que le document) : le code accepte un métrage égal à la boîte entière **ou** à sa part dans le
+  document ; à constater lequel des deux After produit.
+- **m3** : le rang `nth` du panneau compte tous les calques hors groupes, celui de l'hôte seulement les calques dont le
+  métrage s'appelle `<nom>/<fichier>` ; un calque vide ou de réglage que After n'importerait pas en métrage décalerait le rang
+  des homonymes suivants (forme non posée, ou « forme en erreur »). Non corrigé : on ne sait pas ce qu'After importe.
+- Le maintien de l'opacité du fond sous l'effet Dégradé (supposé par le test « dégradé : opacité du fond »).
+- **I4** : où `importFile` dépose l'import (le code est juste dans les deux cas).
+
+À valider dans After : « Importer les PSD » de `TESTS-MANUELS.md` (nouvelles lignes : fond qui déborde, texte verrouillé,
+étiquette de la forme, dossier très haut, autre projet ouvert, fenêtre « Éléments ignorés »).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

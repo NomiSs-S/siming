@@ -5,21 +5,33 @@
  *
  *  Importe des fichiers Photoshop en compositions After Effects. Cette partie : le dossier
  *  des PSD, la liste de ses fichiers et, en interne (_core.replaceWithShape, appelé par l'import
- *  dans son groupe d'annulation), le remplacement d'un calque PSD par un calque de forme.
+ *  dans son groupe d'annulation), le remplacement d'un calque PSD par un calque de forme : les styles de
+ *  calque que After a importés avec le PSD sont recopiés tels quels (copier-coller, _core.copyLayerStyles) ;
+ *  un dégradé linéaire à deux couleurs est posé par l'effet Dégradé (les couleurs d'un dégradé de forme
+ *  sont inaccessibles par script).
  *
- *  - list({ folder? }) : PSD du dossier (sans folder : 02_RESSOURCES/02_ASSET, cherché depuis
- *    le dossier du projet en remontant d'au plus 3 dossiers parents), triés par nom naturel
- *    (2.psd avant 10.psd). « imported » : un métrage du projet a ce PSD pour fichier
- *    (After Effects nomme le métrage d'un PSD en calques « calque/fichier.psd », mais sa source
- *    reste le PSD lui-même).
- *    -> { folder: string|null, files: [{ name, path, imported }], status: { text, level } }
+ *  - list({ folder?, sourcePath? }) : PSD du dossier et de ses sous-dossiers (jusqu'à MAX_SUBFOLDER_DEPTH
+ *    niveaux, fichiers et dossiers cachés ignorés, lecture arrêtée après MAX_LIST_ENTRIES entrées). Sans folder :
+ *    sourcePath (défaut 02_RESSOURCES/02_ASSET), cherché depuis le dossier du projet en remontant d'au plus 3
+ *    dossiers parents. Ordre : le dossier lu d'abord, puis chaque sous-dossier (ordre naturel, en profondeur),
+ *    PSD en nom naturel (2.psd avant 10.psd) dans chacun. « dir » : dossier relatif au dossier lu ('' à la
+ *    racine, 'A/B' sinon). « imported » : un métrage du projet a ce PSD pour fichier (After Effects nomme le
+ *    métrage d'un PSD en calques « calque/fichier.psd », mais sa source reste le PSD lui-même).
+ *    -> { folder: string|null, hint?, start?, files: [{ name, path, dir, imported }], status: { text, level } }
+ *    hint : pourquoi il n'y a pas de dossier (court, pour la carte du panneau) ; start : dossier du projet.
  *  - pickFolder({ from? }) : dialogue de choix de dossier, départ = from ou le dossier du projet.
  *    -> { folder: string|null }
  *
- *  - importBatch({ items: [{ path, shapes, error? }], rules }) : importe les PSD en compos (calques rognés),
- *    les range dans 02_ASSET du panneau Projet, remplace les calques de forme, convertit les textes et pose
- *    les libellés (un seul groupe d'annulation).
- *    -> { imported: [{ name, compId }], status: { text, level } }
+ *  - importBatch({ items: [{ path, dir?, shapes, texts?, shapesError?, error? }], rules, bin?, steps? }) : importe
+ *    les PSD en compos (calques rognés), les range dans le chutier de dépose du panneau Projet (bin, défaut
+ *    02_ASSET ; « A/B » = chutiers imbriqués) en recréant le dossier relatif de chaque PSD (dir), puis, selon steps
+ *    (shapes, texts, labels, crop, anchors : tout est fait sauf ce qui vaut false) remplace les calques de forme,
+ *    convertit les textes, pose les libellés, recadre les précompos et centre les ancres (un seul groupe
+ *    d'annulation). shapes : formes lues par le panneau (null si la lecture a échoué : shapesError dit pourquoi,
+ *    l'import continue sans formes) ; texts : [{ name, nth }] des calques texte du PSD (absent : tous les calques
+ *    PSD sont essayés). Seul un échec de l'import lui-même rend un PSD « illisible » (et le retire du projet) ;
+ *    une étape qui échoue ensuite est sautée et signalée.
+ *    -> { imported: [{ name, compId }], status: { text, level }, report: { skipped: [raison…] } }
  *
  *  Contraintes : ES3, API en données JSON, UTF-8 avec BOM.
  * ============================================================================
@@ -27,153 +39,18 @@
 (function () {
 
     var S = $.global.SIMING;
-    var commandId = S.ae.commandId;          // partagés dans SIMING.ae (siming.jsx)
-    var deselectLayers = S.ae.deselectLayers;
+    var deselectLayers = S.ae.deselectLayers;   // partagés dans SIMING.ae (siming.jsx)
 
-    var ASSET_PATH = '02_RESSOURCES/02_ASSET';
+    var ASSET_PATH = '02_RESSOURCES/02_ASSET';   // dossier des PSD par défaut (réglage « Dossier des PSD »)
     var MAX_PARENTS = 3;
+    var MAX_SUBFOLDER_DEPTH = 4;                 // niveaux de sous-dossiers lus sous le dossier des PSD
+    var MAX_LIST_ENTRIES = 3000;                 // entrées (fichiers et dossiers) lues au plus : un dossier très haut ne fige pas After
     var PICK_PROMPT = 'Choisis le dossier des PSD';
 
-    // ------------------------------------------------------------------------
-    //  Styles de calque : TABLE UNIQUE des noms de menu et des matchNames
-    //  À VÉRIFIER DANS AFTER EFFECTS (relevés de mémoire, jamais testés dans AE) : voir
-    //  docs/NOTES-EXTENDSCRIPT.md. Si un nom est faux, l'import le dit (échec noté, calque PSD gardé).
-    // ------------------------------------------------------------------------
-
-    // Chaque style : menu (Calque › Styles de calque : anglais, français ; aucun identifiant numérique
-    // de repli), group (matchName du groupe sous « ADBE Layer Styles ») et props, une ligne par propriété :
-    //   p = matchName de la propriété, f = champ du style JSON (extension/client/js/psd/styles.js),
-    //   t = nature de la valeur : 'blend' (mode de fusion), 'color' ([r, g, b, 1]), 'number', 'bool' (1 / 0),
-    //   'map' (m = table mot -> valeur), 'const' (v = valeur fixe, sans champ).
-    // Tout champ présent doit avoir un équivalent (mode de fusion connu d'After, mot dans la table 'map') : sinon
-    // le calque est refusé en amont (stylesAreBuildable), jamais approché avec les réglages par défaut d'After.
-    // La lumière globale n'est jamais utilisée : l'angle (et l'altitude) du style, déjà résolus par shapes.js
-    // d'après le document, sont écrits en local et « utiliser l'angle global » est coupé.
-    // Un champ absent du style (layerConceals hors ombre portée…) est sauté. Les valeurs en pixels sont déjà
-    // mises à l'échelle (champ `scale`), rien à refaire.
-    //
-    // Contours (courbes) des styles : After n'en a pas ; styles.js refuse en amont tout contour non linéaire,
-    // le satin sans contour linéaire, le biseau à texture ou à contour (le calque reste en PSD). Avec un
-    // contour linéaire, l'anticrénelage est sans effet. gradientOverlay : refusé en amont (voir
-    // shapeIsBuildable). Angle et altitude globaux : le réglage partagé du calque n'est pas modifié, l'angle
-    // est écrit en local.
-    var GLOW_TECHNIQUES = { softer: 1, precise: 2 };
-    var GLOW_SOURCES = { center: 1, edge: 2 };
-    var BEVEL_STYLES = { outer: 1, inner: 2, emboss: 3, pillow: 4, strokeEmboss: 5 };
-    var BEVEL_TECHNIQUES = { smooth: 1, chiselHard: 2, chiselSoft: 3 };
-    var BEVEL_DIRECTIONS = { up: 1, down: 2 };
-    var STROKE_POSITIONS = { outside: 1, inside: 2, center: 3 };
-
-    var STYLE_TABLE = {
-        dropShadow: {
-            menu: ['Drop Shadow', 'Ombre portée'], group: 'dropShadow',
-            props: [
-                { p: 'dropShadow/mode2', f: 'blend', t: 'blend' },
-                { p: 'dropShadow/color', f: 'color', t: 'color' },
-                { p: 'dropShadow/opacity', f: 'opacity', t: 'number' },
-                { p: 'dropShadow/useGlobalAngle', t: 'const', v: 0 },
-                { p: 'dropShadow/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'dropShadow/distance', f: 'distance', t: 'number' },
-                { p: 'dropShadow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'dropShadow/blur', f: 'size', t: 'number' },
-                { p: 'dropShadow/noise', f: 'noise', t: 'number' },
-                { p: 'dropShadow/layerConceals', f: 'layerConceals', t: 'bool' }
-            ]
-        },
-        innerShadow: {
-            menu: ['Inner Shadow', 'Ombre interne'], group: 'innerShadow',
-            props: [
-                { p: 'innerShadow/mode2', f: 'blend', t: 'blend' },
-                { p: 'innerShadow/color', f: 'color', t: 'color' },
-                { p: 'innerShadow/opacity', f: 'opacity', t: 'number' },
-                { p: 'innerShadow/useGlobalAngle', t: 'const', v: 0 },
-                { p: 'innerShadow/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'innerShadow/distance', f: 'distance', t: 'number' },
-                { p: 'innerShadow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'innerShadow/blur', f: 'size', t: 'number' },
-                { p: 'innerShadow/noise', f: 'noise', t: 'number' }
-            ]
-        },
-        outerGlow: {
-            menu: ['Outer Glow', 'Lueur externe'], group: 'outerGlow',
-            props: [
-                { p: 'outerGlow/mode2', f: 'blend', t: 'blend' },
-                { p: 'outerGlow/color', f: 'color', t: 'color' },
-                { p: 'outerGlow/opacity', f: 'opacity', t: 'number' },
-                { p: 'outerGlow/noise', f: 'noise', t: 'number' },
-                { p: 'outerGlow/glowTechnique', f: 'technique', t: 'map', m: GLOW_TECHNIQUES },
-                { p: 'outerGlow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'outerGlow/blur', f: 'size', t: 'number' },
-                { p: 'outerGlow/inputRange', f: 'range', t: 'number' },
-                { p: 'outerGlow/shadingNoise', f: 'jitter', t: 'number' }
-            ]
-        },
-        innerGlow: {
-            menu: ['Inner Glow', 'Lueur interne'], group: 'innerGlow',
-            props: [
-                { p: 'innerGlow/mode2', f: 'blend', t: 'blend' },
-                { p: 'innerGlow/color', f: 'color', t: 'color' },
-                { p: 'innerGlow/opacity', f: 'opacity', t: 'number' },
-                { p: 'innerGlow/noise', f: 'noise', t: 'number' },
-                { p: 'innerGlow/glowTechnique', f: 'technique', t: 'map', m: GLOW_TECHNIQUES },
-                { p: 'innerGlow/innerGlowSource', f: 'source', t: 'map', m: GLOW_SOURCES },
-                { p: 'innerGlow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'innerGlow/blur', f: 'size', t: 'number' },
-                { p: 'innerGlow/inputRange', f: 'range', t: 'number' },
-                { p: 'innerGlow/shadingNoise', f: 'jitter', t: 'number' }
-            ]
-        },
-        bevelEmboss: {
-            menu: ['Bevel and Emboss', 'Biseautage et estampage'], group: 'bevelEmboss',
-            props: [
-                { p: 'bevelEmboss/bevelStyle', f: 'style', t: 'map', m: BEVEL_STYLES },
-                { p: 'bevelEmboss/bevelTechnique', f: 'technique', t: 'map', m: BEVEL_TECHNIQUES },
-                { p: 'bevelEmboss/bevelDirection', f: 'direction', t: 'map', m: BEVEL_DIRECTIONS },
-                { p: 'bevelEmboss/highlightMode', f: 'blend', t: 'blend' },
-                { p: 'bevelEmboss/highlightColor', f: 'color', t: 'color' },
-                { p: 'bevelEmboss/highlightOpacity', f: 'opacity', t: 'number' },
-                { p: 'bevelEmboss/shadowMode', f: 'shadowBlend', t: 'blend' },
-                { p: 'bevelEmboss/shadowColor', f: 'shadowColor', t: 'color' },
-                { p: 'bevelEmboss/shadowOpacity', f: 'shadowOpacity', t: 'number' },
-                { p: 'bevelEmboss/useGlobalAngle', t: 'const', v: 0 },
-                { p: 'bevelEmboss/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'bevelEmboss/localLightingAltitude', f: 'altitude', t: 'number' },
-                { p: 'bevelEmboss/strengthRatio', f: 'depth', t: 'number' },
-                { p: 'bevelEmboss/blur', f: 'size', t: 'number' },
-                { p: 'bevelEmboss/softness', f: 'soften', t: 'number' }
-            ]
-        },
-        satin: {
-            menu: ['Satin', 'Satin'], group: 'chromeFX',
-            props: [
-                { p: 'chromeFX/mode2', f: 'blend', t: 'blend' },
-                { p: 'chromeFX/color', f: 'color', t: 'color' },
-                { p: 'chromeFX/opacity', f: 'opacity', t: 'number' },
-                { p: 'chromeFX/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'chromeFX/distance', f: 'distance', t: 'number' },
-                { p: 'chromeFX/blur', f: 'size', t: 'number' },
-                { p: 'chromeFX/invert', f: 'invert', t: 'bool' }
-            ]
-        },
-        colorOverlay: {
-            menu: ['Color Overlay', 'Incrustation couleur'], group: 'solidFill',
-            props: [
-                { p: 'solidFill/mode2', f: 'blend', t: 'blend' },
-                { p: 'solidFill/color', f: 'color', t: 'color' },
-                { p: 'solidFill/opacity', f: 'opacity', t: 'number' }
-            ]
-        },
-        stroke: {
-            menu: ['Stroke', 'Contour'], group: 'frameFX',
-            props: [
-                { p: 'frameFX/mode2', f: 'blend', t: 'blend' },
-                { p: 'frameFX/color', f: 'color', t: 'color' },
-                { p: 'frameFX/opacity', f: 'opacity', t: 'number' },
-                { p: 'frameFX/size', f: 'size', t: 'number' },
-                { p: 'frameFX/style', f: 'position', t: 'map', m: STROKE_POSITIONS }
-            ]
-        }
-    };
+    // Édition › Copier et Édition › Coller : identifiants numériques d'After (relevés par script dans After 26.2),
+    // indépendants de la langue (les noms de menu des styles de calque désignent d'autres commandes).
+    var COMMAND_COPY = 19;
+    var COMMAND_PASTE = 20;
 
     // ------------------------------------------------------------------------
     //  Fonctions pures
@@ -217,6 +94,42 @@
 
     function status(text, level) { return { text: text, level: level }; }
 
+    /**
+     * Chemin relatif d'un réglage (dossier des PSD, chutier de dépose) : séparateurs ramenés à « / », sans
+     * « / » de tête ni de fin ; null s'il est vide, absolu (« / » ou « \ » au début ; « C:\ » tombe sur le « : »
+     * interdit), s'il contient un caractère interdit dans un nom de dossier (Windows, macOS) ou un nom finissant
+     * par un point ou une espace (ce qui écarte « . » et « .. »). Le panneau fait la même vérification (js/psd/settings.js) ; l'hôte retombe sur le défaut.
+     */
+    function cleanRelPath(value) {
+        if (typeof value !== 'string') return null;
+        var s = value.replace(/\\/g, '/').replace(/^\s+|\s+$/g, '');
+        if (s === '' || s.charAt(0) === '/') return null;
+        var parts = s.split('/'), out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            if (p === '') continue;
+            if (/[<>:"|?*\u0000-\u001F]/.test(p) || /[. ]$/.test(p)) return null;
+            out.push(p);
+        }
+        return out.length ? out.join('/') : null;
+    }
+
+    /** Segments d'un dossier relatif (« A/B » -> ['A', 'B']) : vides, « . » et « .. » écartés. */
+    function dirSegments(dir) {
+        var out = [];
+        if (typeof dir !== 'string') return out;
+        var parts = dir.replace(/\\/g, '/').split('/');
+        for (var i = 0; i < parts.length; i++) {
+            if (parts[i] !== '' && parts[i] !== '.' && parts[i] !== '..') out.push(parts[i]);
+        }
+        return out;
+    }
+
+    /** Une étape de l'import est faite sauf si steps[id] vaut false (champ absent = faite). */
+    function stepOn(steps, id) {
+        return !(steps && typeof steps === 'object' && steps[id] === false);
+    }
+
     // ------------------------------------------------------------------------
     //  Lecture du projet et du disque
     // ------------------------------------------------------------------------
@@ -229,12 +142,13 @@
         return (p && p.exists) ? p : null;
     }
 
-    /** Dossier 02_RESSOURCES/02_ASSET en partant du dossier du projet puis en remontant
-     *  d'au plus MAX_PARENTS dossiers parents ; null s'il n'existe pas. */
-    function findAssetFolder(start) {
+    /** Dossier des PSD (sourcePath, défaut 02_RESSOURCES/02_ASSET) en partant du dossier du projet puis en
+     *  remontant d'au plus MAX_PARENTS dossiers parents ; null s'il n'existe pas. */
+    function findAssetFolder(start, sourcePath) {
+        var rel = cleanRelPath(sourcePath) || ASSET_PATH;
         var dir = start;
         for (var i = 0; i <= MAX_PARENTS && dir; i++) {
-            var candidate = new Folder(dir.fsName + '/' + ASSET_PATH);
+            var candidate = new Folder(dir.fsName + '/' + rel);
             if (candidate.exists) return candidate;
             var up = dir.parent;
             if (!up || up.fsName === dir.fsName) return null;
@@ -256,19 +170,45 @@
         return set;
     }
 
-    /** PSD du dossier, triés par nom naturel : [{ name, path, imported }]. */
-    function listPsds(folder) {
-        var entries = folder.getFiles();
-        var done = importedPaths();
-        var files = [];
+    /** Nom lisible d'un fichier ou dossier (File.name est encodé : « %20 » pour une espace). */
+    function entryName(entry) {
+        if (entry.displayName) return String(entry.displayName);
+        try { return File.decode(entry.name); } catch (e) { return String(entry.name); }
+    }
+
+    function byName(a, b) { return naturalCompare(a.name, b.name); }
+
+    /** Ajoute à out les PSD de folder (dir : son chemin relatif), puis ceux de ses sous-dossiers, en profondeur.
+     *  scan.entries compte les entrées lues ; au-delà de MAX_LIST_ENTRIES la lecture s'arrête (scan.truncated). */
+    function collectPsds(folder, dir, depth, done, out, scan) {
+        var entries = folder.getFiles(), here = [], subs = [];
         for (var i = 0; i < entries.length; i++) {
-            if (!(entries[i] instanceof File)) continue;
-            if (!isPsdName(entries[i].name)) continue;
-            var p = entries[i].fsName;
-            files.push({ name: entries[i].name, path: p, imported: done[String(p).toLowerCase()] === true });
+            if (scan.entries >= MAX_LIST_ENTRIES) { scan.truncated = true; break; }
+            scan.entries++;
+            var name = entryName(entries[i]);
+            if (name.charAt(0) === '.') continue;   // cachés (dont les « ._ » de macOS)
+            if (entries[i] instanceof File) {
+                if (!isPsdName(name)) continue;
+                var p = entries[i].fsName;
+                here.push({ name: name, path: p, dir: dir, imported: done[String(p).toLowerCase()] === true });
+            } else if (entries[i] instanceof Folder && depth < MAX_SUBFOLDER_DEPTH) {
+                subs.push({ name: name, folder: entries[i] });
+            }
         }
-        files.sort(function (a, b) { return naturalCompare(a.name, b.name); });
-        return files;
+        here.sort(byName);
+        subs.sort(byName);
+        for (var h = 0; h < here.length; h++) out.push(here[h]);
+        for (var k = 0; k < subs.length && !scan.truncated; k++) {
+            collectPsds(subs[k].folder, dir === '' ? subs[k].name : dir + '/' + subs[k].name, depth + 1, done, out, scan);
+        }
+    }
+
+    /** PSD du dossier et de ses sous-dossiers : { files: [{ name, path, dir, imported }] (ordre : voir l'en-tête),
+     *  truncated : la lecture s'est arrêtée à MAX_LIST_ENTRIES entrées }. */
+    function listPsds(folder) {
+        var files = [], scan = { entries: 0, truncated: false };
+        collectPsds(folder, '', 0, importedPaths(), files, scan);
+        return { files: files, truncated: scan.truncated };
     }
 
     // ------------------------------------------------------------------------
@@ -312,32 +252,9 @@
 
     function isFiniteNumber(n) { return typeof n === 'number' && isFinite(n); }
 
-    /** Chaque champ présent a-t-il un équivalent After (mode de fusion connu, mot de la table) ? */
-    function styleIsMappable(style, def) {
-        for (var i = 0; i < def.props.length; i++) {
-            var entry = def.props[i];
-            if (entry.t === 'const') continue;
-            var v = style[entry.f];
-            if (v === undefined || v === null) continue;
-            if (entry.t === 'blend' && blendModeOf(v) === null) return false;
-            if (entry.t === 'map' && !entry.m.hasOwnProperty(v)) return false;
-        }
-        return true;
-    }
-
-    /** Styles reproductibles : sortes connues, au plus un style de chaque sorte (After n'en a qu'un), et pas
-     *  d'incrustation en dégradé (comme un fond en dégradé : les couleurs d'un dégradé ne semblent pas
-     *  écrivables par script, à vérifier dans After). */
-    function stylesAreBuildable(styles) {
-        if (!styles) return true;
-        var seen = {};
-        for (var i = 0; i < styles.length; i++) {
-            var kind = styles[i] && styles[i].kind;
-            if (!STYLE_TABLE.hasOwnProperty(kind) || seen[kind]) return false;
-            seen[kind] = true;
-            if (!styleIsMappable(styles[i], STYLE_TABLE[kind])) return false;
-        }
-        return true;
+    function rampIsValid(fill) {
+        return isNumberArray(fill.start, 2) && isNumberArray(fill.end, 2) &&
+            isNumberArray(fill.startColor, 3) && isNumberArray(fill.endColor, 3);
     }
 
     /** Le JSON est-il complet et reproductible tel quel ? (sinon le calque PSD reste : un refus, pas une panne) */
@@ -356,9 +273,16 @@
         if (blendModeOf(shape.blend === undefined ? 'normal' : shape.blend) === null) return false;
         // Le contour d'une forme After est toujours centré sur le tracé.
         if (shape.stroke && shape.stroke.align !== 'center') return false;
-        // Dégradé : à vérifier dans After, les couleurs d'un dégradé de forme ne semblent pas écrivables par script.
-        if (shape.fill && shape.fill.type !== 'solid') return false;
-        return stylesAreBuildable(shape.styles);
+        // Remplissage : uni, ou dégradé linéaire à deux couleurs (effet Dégradé). Les couleurs d'un dégradé de forme sont
+        // inaccessibles par script ; tout autre dégradé reste un calque PSD. L'effet colore aussi un contour : refusé.
+        if (shape.fill) {
+            if (shape.fill.type === 'ramp') {
+                if (shape.stroke || !rampIsValid(shape.fill)) return false;
+            } else if (shape.fill.type !== 'solid') {
+                return false;
+            }
+        }
+        return true;
     }
 
     // Ajouter une propriété invalide les références voisines : chaque accès repart du calque, et
@@ -411,14 +335,32 @@
         item.property('ADBE Vector Stroke Miter Limit').setValue(isFiniteNumber(stroke.miterLimit) ? stroke.miterLimit : PS_MITER_LIMIT);
     }
 
+    /** Remplissage uni ; pour un dégradé (ramp), la couleur de départ : l'effet Dégradé (addRamp) la remplace. */
     function addFill(layer, n, fill, opacity) {
+        var c = (fill.type === 'ramp') ? fill.startColor : fill.color;
         var item = addItem(layer, n, 'ADBE Vector Graphic - Fill');
-        item.property('ADBE Vector Fill Color').setValue([fill.color[0], fill.color[1], fill.color[2], 1]);
+        item.property('ADBE Vector Fill Color').setValue([c[0], c[1], c[2], 1]);
         item.property('ADBE Vector Fill Opacity').setValue(opacity);
     }
 
+    /**
+     * Effet Dégradé (ADBE Ramp) sur le calque de forme : linéaire, sans dispersion, sans part de l'original. Il
+     * respecte la forme (transparent en dehors). Ses points sont en coordonnées du calque : le calque de forme a
+     * l'ancre [0, 0] et des tracés en coordonnées du document, les points du JSON s'écrivent donc tels quels.
+     */
+    function addRamp(layer, fill) {
+        var fx = layer.property('ADBE Effect Parade').addProperty('ADBE Ramp');
+        fx.property('ADBE Ramp-0001').setValue([fill.start[0], fill.start[1]]);
+        fx.property('ADBE Ramp-0002').setValue([fill.startColor[0], fill.startColor[1], fill.startColor[2], 1]);
+        fx.property('ADBE Ramp-0003').setValue([fill.end[0], fill.end[1]]);
+        fx.property('ADBE Ramp-0004').setValue([fill.endColor[0], fill.endColor[1], fill.endColor[2], 1]);
+        fx.property('ADBE Ramp-0005').setValue(1);
+        fx.property('ADBE Ramp-0006').setValue(0);
+        fx.property('ADBE Ramp-0007').setValue(0);
+    }
+
     // ------------------------------------------------------------------------
-    //  Styles de calque : ajout par le menu, puis valeurs par matchName
+    //  Styles de calque : recopiés du calque PSD (After les a importés avec le PSD) par Copier / Coller
     // ------------------------------------------------------------------------
 
     /** La compo est-elle l'élément actif (celle du visualiseur, sur laquelle agit app.executeCommand) ? */
@@ -433,74 +375,63 @@
         if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
     }
 
-    /** Groupe du style sur le calque (sous « ADBE Layer Styles »), ou null s'il n'y est pas. */
-    function styleGroup(layer, group) {
-        var root = layer.property('ADBE Layer Styles');
-        return root ? root.property(group) : null;
+    /** Identifiants des calques sélectionnés de la compo. */
+    function selectedIds(comp) {
+        var sel = comp.selectedLayers, ids = [];
+        for (var i = 0; i < sel.length; i++) ids.push(S.ae.layerId(sel[i]));
+        return ids;
     }
 
-    /** Valeur After Effects d'un champ du style, ou undefined (champ absent, mode inconnu : sauté). */
-    function styleValue(entry, style) {
-        if (entry.t === 'const') return entry.v;
-        var v = style[entry.f];
-        if (v === undefined || v === null) return undefined;
-        if (entry.t === 'blend') { var mode = blendModeOf(v); return (mode === null) ? undefined : mode; }   // inconnu : déjà refusé en amont
-        if (entry.t === 'color') return [v[0], v[1], v[2], 1];
-        if (entry.t === 'bool') return v ? 1 : 0;
-        if (entry.t === 'map') return entry.m.hasOwnProperty(v) ? entry.m[v] : undefined;
-        return v;
-    }
-
-    function writeStyle(group, def, style) {
-        for (var i = 0; i < def.props.length; i++) {
-            var entry = def.props[i];
-            var value = styleValue(entry, style);
-            if (value === undefined) continue;
-            var prop = group.property(entry.p);
-            if (!prop) throw new Error('Propriété de style introuvable : ' + entry.p);
-            prop.setValue(value);
+    /** Rétablit la sélection de calques relevée par selectedIds (un calque disparu est sauté). */
+    function restoreSelection(comp, ids) {
+        deselectLayers(comp);
+        for (var i = 0; i < ids.length; i++) {
+            var layer = S.ae.findLayerById(comp, ids[i]);
+            if (!layer) continue;
+            try { layer.selected = true; } catch (e) { /* calque verrouillé ou disparu */ }
         }
     }
 
     /**
-     * Ajoute les styles au calque (par la commande de menu de chacun, sur le calque seul sélectionné)
-     * puis règle leurs propriétés. Renvoie le nombre de styles posés. Un style dont la commande est
-     * introuvable (autre langue d'After Effects), de sorte inconnue, nul, ou déjà posé (After n'en a
-     * qu'un de chaque sorte) est sauté sans message : à l'appelant de comparer au nombre attendu. Une
-     * propriété introuvable ou une écriture refusée lève une erreur. La sélection de l'utilisateur est
-     * rétablie à la fin (le calque de forme n'y reste que s'il y était).
+     * Le groupe « ADBE Layer Styles » est-il visible ? Un calque sans style actif l'a « masqué » : lui donner
+     * `selected` lève une erreur (la propriété ou une propriété parent est masquée) ; c'est le test fiable. Le
+     * groupe est laissé désélectionné.
      */
-    function applyStyles(comp, layer, styles) {
-        var done = 0, seen = {}, i;
-        // app.executeCommand agit sur la compo active : jamais sur une autre que celle du calque
-        if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
-        var kept = comp.selectedLayers, keptIndexes = [];
-        for (i = 0; i < kept.length; i++) keptIndexes.push(kept[i].index);
+    function stylesGroupVisible(group) {
+        if (!group) return false;
+        try { group.selected = true; } catch (e) { return false; }
+        try { group.selected = false; } catch (e2) { /* déjà fait */ }
+        return true;
+    }
+
+    /**
+     * Copie les styles de calque de `from` sur `to` (les mêmes, réglages compris, options de fusion et opacité du
+     * fond comprises) : Copier sur le groupe « ADBE Layer Styles » de `from`, Coller sur `to`. Écrase le
+     * presse-papiers de l'utilisateur. Renvoie false, sans rien lancer, si `from` n'a aucun style (son groupe est
+     * alors masqué : le sélectionner lève une erreur). Lève une erreur si la compo n'est pas la compo active
+     * (app.executeCommand n'agit que sur elle) ou si le collage n'a rien donné (le groupe de `to` reste masqué).
+     * La sélection de l'utilisateur est rétablie à la fin.
+     */
+    function copyLayerStyles(comp, from, to) {
+        var kept = selectedIds(comp);
         try {
-            for (i = 0; i < styles.length; i++) {
-                var style = styles[i];
-                if (!style) continue;
-                var def = STYLE_TABLE.hasOwnProperty(style.kind) ? STYLE_TABLE[style.kind] : null;
-                if (!def || seen[style.kind]) continue;
-                seen[style.kind] = true;
-                var id = commandId(def.menu);
-                if (!id) continue;
-                deselectLayers(comp);
-                layer.selected = true;
-                if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
-                app.executeCommand(id);
-                var group = styleGroup(layer, def.group);
-                if (!group) continue;
-                writeStyle(group, def, style);
-                done++;
-            }
-        } finally {
             deselectLayers(comp);
-            for (i = 0; i < keptIndexes.length; i++) {
-                try { comp.layer(keptIndexes[i]).selected = true; } catch (e) { /* calque disparu */ }
+            var source = from.property('ADBE Layer Styles');
+            try { source.selected = true; } catch (e) { return false; }     // groupe masqué : aucun style
+            if (!isActiveComp(comp)) {
+                source.selected = false;
+                throw new Error('Compo non active dans le visualiseur : ' + comp.name);
             }
+            app.executeCommand(COMMAND_COPY);
+            source.selected = false;
+            deselectLayers(comp);
+            to.selected = true;
+            app.executeCommand(COMMAND_PASTE);
+            if (!stylesGroupVisible(to.property('ADBE Layer Styles'))) throw new Error('Styles de calque non collés : la commande Coller est restée sans effet');
+            return true;
+        } finally {
+            restoreSelection(comp, kept);
         }
-        return done;
     }
 
     var lastFailure = null;
@@ -512,13 +443,21 @@
     /**
      * Coin haut gauche, en coordonnées du document, du métrage d'un calque PSD, ou null s'il ne correspond
      * pas au JSON. After rogne un calque de pixels à sa boîte (coin = box), mais importe un calque de forme à
-     * la taille du document, son tracé en masque (coin = [0, 0]) : shape.canvas donne cette taille.
+     * la taille du document, son tracé en masque (coin = [0, 0]) : shape.canvas donne cette taille. Une boîte
+     * qui déborde du document (un fond plus grand que la planche) : le métrage est soit la boîte entière, soit
+     * sa part dans le document (coin = celui de cette part) ; le cas qui n'a pas lieu dans After ne correspond à rien.
      */
     function footageOrigin(src, shape) {
         if (!(src instanceof FootageItem) || !isFiniteNumber(src.width) || !isFiniteNumber(src.height)) return null;
-        if (sameSize(src, shape.box.right - shape.box.left, shape.box.bottom - shape.box.top)) return [shape.box.left, shape.box.top];
-        var canvas = shape.canvas;
-        if (canvas && isFiniteNumber(canvas.width) && isFiniteNumber(canvas.height) && sameSize(src, canvas.width, canvas.height)) return [0, 0];
+        var box = shape.box, canvas = shape.canvas;
+        var hasCanvas = !!canvas && isFiniteNumber(canvas.width) && isFiniteNumber(canvas.height);
+        if (hasCanvas) {
+            var left = Math.max(box.left, 0), top = Math.max(box.top, 0);
+            var right = Math.min(box.right, canvas.width), bottom = Math.min(box.bottom, canvas.height);
+            if (right > left && bottom > top && sameSize(src, right - left, bottom - top)) return [left, top];
+        }
+        if (sameSize(src, box.right - box.left, box.bottom - box.top)) return [box.left, box.top];
+        if (hasCanvas && sameSize(src, canvas.width, canvas.height)) return [0, 0];
         return null;
     }
 
@@ -529,17 +468,21 @@
      * du PSD et que l'utilisateur a pu retoucher) : shape.opacity et shape.hidden ne servent pas ici.
      * Ancre [0, 0] et position = décalage du calque PSD dans la compo (position - ancre - coin haut
      * gauche de sa boîte) ; les tracés restent en coordonnées du document. Un seul groupe : tous les
-     * sous-tracés, puis le contour (un seul sous-tracé), puis le remplissage, puis les styles de calque.
+     * sous-tracés, puis le contour (un seul sous-tracé), puis le remplissage (un dégradé : sa couleur de départ,
+     * puis l'effet Dégradé sur le calque), puis les styles de calque, recopiés du calque PSD s'il en a. Avec des
+     * styles, remplissage et contour sont à 100 % (l'opacité du fond voyage avec les options de fusion copiées,
+     * sinon elle s'appliquerait deux fois) ; sans style, ils prennent shape.fillOpacity.
      *
      * Renvoie le calque de forme, ou null. Deux sortes de null :
      *  - un refus voulu, silencieux (calque PSD mis à l'échelle ou tourné, JSON non reproductible :
-     *    dégradé (fond ou incrustation), style en double ou inconnu, contour non centré, mode de fusion inconnu,
-     *    boîte illisible…) : lastFailure() = null ;
-     *  - une panne : le métrage du calque PSD n'a ni la taille de shape.box ni celle de shape.canvas (à 1 px près : After a pu fusionner
-     *    les styles dans les pixels, ou le JSON est celui d'un autre calque), ou une panne imprévue en cours de
+     *    dégradé autre qu'un dégradé linéaire à deux couleurs, ou avec un contour, contour non centré, mode de
+     *    fusion inconnu, boîte illisible…) : lastFailure() = null ;
+     *  - une panne : le métrage du calque PSD n'a ni la taille de shape.box (ou de sa part dans le document) ni celle
+     *    de shape.canvas (à 1 px près : After a pu fusionner les styles dans les pixels, ou le JSON est celui d'un
+     *    autre calque), ou une panne imprévue en cours de
      *    construction (le calque de forme à demi fait est retiré) ; le calque PSD reste, et
      *    lastFailure() = { name, message } (remis à zéro à chaque appel).
-     *    Les styles de calque (shape.styles) sont posés ici, par le menu : commande introuvable = panne.
+     *    Les styles de calque sont recopiés ici : un collage sans effet = panne.
      * N'ouvre pas de groupe d'annulation : c'est l'appelant qui le fait.
      */
     function replaceWithShape(comp, layer, shape) {
@@ -567,6 +510,7 @@
         var wasLocked = layer.locked;
         var made = comp.layers.addShape();
         try {
+            if (wasLocked) layer.locked = false;     // le calque PSD se copie et se supprime déverrouillé (rétabli en cas de panne)
             made.name = layer.name;
             made.startTime = layer.startTime;
             made.inPoint = layer.inPoint;
@@ -575,6 +519,7 @@
             if (parent) made.parent = parent;
             made.enabled = layer.enabled;
             made.blendingMode = blend;
+            made.label = layer.label;
             var madeTr = made.property('ADBE Transform Group');
             madeTr.property('ADBE Anchor Point').setValue([0, 0]);
             madeTr.property('ADBE Position').setValue([dx, dy]);
@@ -583,21 +528,20 @@
             made.property('ADBE Root Vectors Group').addProperty('ADBE Vector Group');
             for (var i = 0; i < shape.paths.length; i++) addPath(made, 1, shape.paths[i]);
             if (shape.stroke) addStroke(made, 1, shape.stroke, fillOpacity);
-            if (shape.fill) addFill(made, 1, shape.fill, fillOpacity);
-
-            // Styles : par le menu, sur le calque de forme, avant de toucher à l'original. Un style non posé
-            // (commande introuvable : autre langue d'After) est une panne systématique que l'utilisateur doit voir.
-            var styles = shape.styles || [];
-            if (styles.length > 0) {
-                var applied = applyStyles(comp, made, styles);
-                if (applied < styles.length) {
-                    throw new Error('Styles de calque posés : ' + applied + ' sur ' + styles.length +
-                        ' (commande de menu Calque › Styles de calque introuvable : autre langue d\'After Effects ?)');
-                }
+            if (shape.fill) {
+                addFill(made, 1, shape.fill, fillOpacity);
+                if (shape.fill.type === 'ramp') addRamp(made, shape.fill);
+            }
+            // Styles de calque : ceux que After a importés avec le PSD, recopiés tels quels (options de fusion comprises,
+            // donc l'opacité du fond) ; remplissage et contour repassent alors à 100 %. Avant de toucher à l'original :
+            // un collage sans effet est une panne que l'utilisateur doit voir.
+            if (copyLayerStyles(comp, layer, made)) {
+                var paints = itemsOf(made, 1);
+                if (shape.stroke) paints.property('ADBE Vector Graphic - Stroke').property('ADBE Vector Stroke Opacity').setValue(100);
+                if (shape.fill) paints.property('ADBE Vector Graphic - Fill').property('ADBE Vector Fill Opacity').setValue(100);
             }
 
             made.moveBefore(layer);
-            if (wasLocked) layer.locked = false;
             layer.remove();
         } catch (e) {
             // calque de forme à demi construit : on le retire, le calque PSD reste
@@ -615,23 +559,41 @@
     // ------------------------------------------------------------------------
 
     var UNDO_NAME = 'Boîte à outils : importer les PSD';
-    var PROJECT_ASSET = '02_ASSET';
+    var PROJECT_ASSET = '02_ASSET';   // chutier de dépose par défaut (réglage « Chutier de dépose »)
 
     function isRootItem(item) {
         var p = item.parentFolder;
         return !p || p.id === app.project.rootFolder.id;
     }
 
-    /** Dossier 02_ASSET du panneau Projet : celui de la racine, sinon le premier trouvé ailleurs, sinon créé à la racine. */
-    function projectAssetFolder() {
+    /**
+     * Dossier du panneau Projet de ce nom directement sous parent (null = la racine), ou null. Sous la racine,
+     * anywhere : à défaut, le premier dossier de ce nom trouvé ailleurs dans le projet.
+     */
+    function childFolder(parent, name, anywhere) {
         var any = null;
         for (var i = 1; i <= app.project.numItems; i++) {
             var it = app.project.item(i);
-            if (!(it instanceof FolderItem) || it.name !== PROJECT_ASSET) continue;
-            if (isRootItem(it)) return it;
+            if (!(it instanceof FolderItem) || it.name !== name) continue;
+            if (parent ? (it.parentFolder && it.parentFolder.id === parent.id) : isRootItem(it)) return it;
             if (!any) any = it;
         }
-        return any || app.project.items.addFolder(PROJECT_ASSET);
+        return anywhere ? any : null;
+    }
+
+    /** Dossier du panneau Projet au bout de segments (['02_ASSET', 'VIDEO_A']) : réutilisé s'il existe (même nom,
+     *  même parent), sinon créé. Le premier segment, à défaut de la racine, est cherché ailleurs dans le projet. */
+    function projectFolderAt(segments) {
+        var parent = null;
+        for (var i = 0; i < segments.length; i++) {
+            var found = childFolder(parent, segments[i], i === 0);
+            if (!found) {
+                found = app.project.items.addFolder(segments[i]);
+                if (parent) found.parentFolder = parent;
+            }
+            parent = found;
+        }
+        return parent;
     }
 
     /** Identifiants des éléments du projet (id -> true). */
@@ -704,13 +666,14 @@
 
     function shapeKey(name, nth) { return 'k' + nth + ':' + name; }
 
-    // Débordement d'un style de calque hors de la boîte du calque (px) : les propriétés sommées, par groupe.
+    // Débordement d'un style de calque hors de la boîte du calque (px) : les propriétés sommées, par groupe (les
+    // groupes de styles s'appellent « <sorte>/enabled », `enabled` vrai quand le style est actif).
     // Les styles intérieurs (ombre et lueur internes, satin, incrustation) ne débordent pas.
     var STYLE_OVERFLOW = {
-        dropShadow: ['dropShadow/distance', 'dropShadow/blur'],
-        outerGlow: ['outerGlow/blur'],
-        bevelEmboss: ['bevelEmboss/blur'],
-        frameFX: ['frameFX/size']
+        'dropShadow/enabled': ['dropShadow/distance', 'dropShadow/blur'],
+        'outerGlow/enabled': ['outerGlow/blur'],
+        'bevelEmboss/enabled': ['bevelEmboss/blur'],
+        'frameFX/enabled': ['frameFX/size']
     };
     var MIN_COMP_SIZE = 4;      // px : plus petite compo qu'After accepte
 
@@ -836,31 +799,44 @@
     /**
      * Point d'ancrage de chaque calque de la compo au centre de sa boîte visible, sans rien déplacer à l'écran
      * (placeAnchor de Quick Tools, case 5). Calque verrouillé ou sans rien de visible : laissé tel quel.
-     * Renvoie le nombre de calques traités.
      */
     function centerAnchors(comp, placeAnchor) {
-        var done = 0;
         for (var i = 1; i <= comp.numLayers; i++) {
             var layer = comp.layer(i);
             if (layer.locked) continue;
             try {
                 placeAnchor(layer, 5, 0);
-                done++;
             } catch (e) { /* rien de visible (calque vide, masques hors du calque) : ancre laissée */ }
         }
-        return done;
+    }
+
+    /** Nom lisible du fichier d'un chemin (File.name est encodé : « %20 » pour une espace). */
+    function pathName(p) {
+        var f = new File(String(p));
+        return String(f.displayName || File.decode(f.name));
+    }
+
+    /** Texte d'une erreur attrapée. */
+    function messageOf(e) {
+        var m = (e && e.message !== undefined) ? e.message : e;
+        return String(m);
     }
 
     /**
-     * Importe un PSD en compo (calques rognés), range la compo et son dossier « N Calques » dans 02_ASSET,
-     * puis dans l'ordre : formes, textes, libellés, précompos recadrées sur leur contenu, points d'ancrage centrés. Chaque compo du parcours est ouverte dans le viewer avant
-     * ce qui passe par un menu (app.executeCommand agit sur la compo du viewer), et l'on vérifie qu'elle y est
-     * bien (focusComp) : sinon rien n'est lancé. Lève une erreur si le PSD n'a pas pu être importé ou traité
-     * (l'appelant le compte illisible et retire ce que l'import a créé).
+     * Importe un PSD en compo (calques rognés), range la compo et son dossier « N Calques » dans le chutier de
+     * dépose, puis dans l'ordre : formes, textes, libellés, précompos recadrées sur leur contenu, points d'ancrage
+     * centrés. Chaque compo du parcours est ouverte dans le viewer avant ce qui passe par un menu
+     * (app.executeCommand agit sur la compo du viewer), et l'on vérifie qu'elle y est bien (focusComp) : sinon
+     * rien n'est lancé.
+     * Lève une erreur seulement si le PSD n'a pas pu être importé ni rangé (l'appelant le compte illisible et
+     * retire ce que l'import a créé). Une étape qui échoue ensuite est sautée, pour la compo concernée : tally.warnings
+     * la compte et report en donne la raison, la compo importée reste.
      * before : les éléments du projet avant l'import (projectItemIds). tally reçoit les formes, textes, pannes de
-     * forme et, si la commande de conversion en texte manque, missing ; ctx.asset garde le dossier 02_ASSET.
+     * forme et, si la commande de conversion en texte manque, missing. cfg : { bin: segments du chutier de dépose,
+     * steps } ; le PSD est rangé dans bin + son dossier relatif (item.dir), les dossiers étant créés au besoin.
+     * report : liste des raisons (texte) à montrer à l'utilisateur.
      */
-    function importOne(item, before, ctx, rules, tally) {
+    function importOne(item, before, cfg, rules, tally, report) {
         var i;
         var file = new File(String(item.path));
         var options = new ImportOptions(file);
@@ -869,17 +845,24 @@
         var comp = app.project.importFile(options);
         if (!(comp instanceof CompItem)) throw new Error('Le PSD n\'a pas donné de composition : ' + file.fsName);
 
-        // ce que l'import a créé : compos (le parcours ne descend que dans celles-là) et éléments de la racine à ranger
-        var created = {}, toMove = [];
-        created[comp.id] = true;
+        // Ce que l'import a créé : compos (le parcours ne descend que dans celles-là) et éléments à ranger. After
+        // dépose ce qu'il importe à la racine du Projet ou dans le dossier sélectionné : on range tout élément
+        // neuf dont le parent n'est pas neuf (les métrages et précompos restent dans « N Calques »).
+        var created = {}, fresh = {}, news = [], toMove = [];
         for (i = 1; i <= app.project.numItems; i++) {
             var it = app.project.item(i);
             if (before[it.id]) continue;
+            fresh[it.id] = true;
+            news.push(it);
             if (it instanceof CompItem) created[it.id] = true;
-            if (isRootItem(it)) toMove.push(it);
         }
-        if (!ctx.asset) ctx.asset = projectAssetFolder();
-        for (i = 0; i < toMove.length; i++) toMove[i].parentFolder = ctx.asset;
+        created[comp.id] = true;
+        for (i = 0; i < news.length; i++) {
+            var parent = news[i].parentFolder;
+            if (!parent || !fresh[parent.id]) toMove.push(news[i]);
+        }
+        var target = projectFolderAt(cfg.bin.concat(dirSegments(item.dir)));
+        for (i = 0; i < toMove.length; i++) toMove[i].parentFolder = target;
 
         var fileName = String(file.displayName || File.decode(file.name));
         var plan = walkImport(comp, created, fileName);
@@ -888,34 +871,76 @@
         for (i = 0; i < list.length; i++) {
             if (list[i] && list[i].match) shapes[shapeKey(list[i].match.name, list[i].match.nth)] = list[i];
         }
-        var p, m;
-        for (p = 0; p < plan.length; p++) {          // formes d'abord : les index des calques ne bougent pas
-            var opened = false;
-            for (m = 0; m < plan[p].matches.length; m++) {
-                var match = plan[p].matches[m], shape = shapes[shapeKey(match.name, match.nth)];
-                if (!shape) continue;
-                var layer = S.ae.findLayerById(plan[p].comp, match.id);
-                if (!layer) continue;
-                if (!opened) { focusComp(plan[p].comp); opened = true; }
-                if (replaceWithShape(plan[p].comp, layer, shape)) tally.shapes++;
-                else if (lastFailure) tally.failed++;
+        // calques texte du PSD d'après le panneau ; sans cette liste, tous les calques du PSD sont essayés
+        var textKeys = null;
+        if (item.texts && typeof item.texts.length === 'number') {
+            textKeys = {};
+            for (i = 0; i < item.texts.length; i++) {
+                if (item.texts[i]) textKeys[shapeKey(item.texts[i].name, item.texts[i].nth)] = true;
             }
         }
-        var toolbox = S.getTool('toolbox'), labels = S.getTool('labels');
-        for (p = 0; p < plan.length; p++) {
-            if (plan[p].matches.length === 0 || !toolbox) continue;
-            focusComp(plan[p].comp);
-            var converted = toolbox._core.convertTextsIn(plan[p].comp, layersOf(plan[p].comp), false);
+
+        var toolbox = S.getTool('toolbox'), labels = S.getTool('labels'), quick = S.getTool('quicktools');
+        /** Où : le fichier, et la précompo si ce n'est pas la compo du PSD elle-même. */
+        function whereOf(entry) { return fileName + (entry === plan[0] ? '' : ' › ' + entry.comp.name); }
+        /** Exécute une étape pour une compo du parcours ; une erreur est notée et l'étape sautée pour cette compo. */
+        function attempt(entry, what, fn) {
+            try {
+                fn();
+            } catch (e) {
+                tally.warnings++;
+                report.push(whereOf(entry) + ' : ' + what + ' (' + messageOf(e) + ')');
+            }
+        }
+        function shapesIn(entry) {
+            var opened = false;
+            for (var m = 0; m < entry.matches.length; m++) {
+                var match = entry.matches[m], shape = shapes[shapeKey(match.name, match.nth)];
+                if (!shape) continue;
+                var layer = S.ae.findLayerById(entry.comp, match.id);
+                if (!layer) continue;
+                if (!opened) { focusComp(entry.comp); opened = true; }
+                if (replaceWithShape(entry.comp, layer, shape)) {
+                    tally.shapes++;
+                } else if (lastFailure) {
+                    tally.failed++;
+                    report.push(fileName + ' › ' + layer.name + ' : forme non recréée, ' + lastFailure.message);
+                }
+            }
+        }
+        function textsIn(entry) {
+            var layers = [];
+            if (textKeys) {
+                for (var m = 0; m < entry.matches.length; m++) {
+                    if (!textKeys[shapeKey(entry.matches[m].name, entry.matches[m].nth)]) continue;
+                    var layer = S.ae.findLayerById(entry.comp, entry.matches[m].id);
+                    if (layer) layers.push(layer);
+                }
+                if (layers.length === 0) return;
+            } else {
+                if (entry.matches.length === 0) return;
+                layers = layersOf(entry.comp);
+            }
+            focusComp(entry.comp);
+            // calques texte connus (lus dans le PSD) : un verrou ou un échec est signalé ; sinon, tous les calques sont
+            // essayés et l'erreur d'After sur ceux qui ne sont pas des textes reste muette
+            var known = textKeys !== null;
+            var converted = toolbox._core.convertTextsIn(entry.comp, layers, known, known);
             tally.texts += converted.done;
             if (converted.missing) tally.missing = true;
+            for (var s = 0; s < converted.skipped.length; s++) {
+                tally.warnings++;
+                report.push(whereOf(entry) + ' : texte non converti, ' + converted.skipped[s]);
+            }
         }
-        for (p = 0; p < plan.length && labels; p++) labels._core.labelLayers(layersOf(plan[p].comp), rules);
+
+        var p;
+        for (p = 0; p < plan.length && cfg.on.shapes; p++) attempt(plan[p], 'formes non recréées', function () { shapesIn(plan[p]); });   // formes d'abord : les index des calques ne bougent pas
+        for (p = 0; p < plan.length && toolbox && cfg.on.texts; p++) attempt(plan[p], 'textes non convertis', function () { textsIn(plan[p]); });
+        for (p = 0; p < plan.length && labels && cfg.on.labels; p++) attempt(plan[p], 'libellés non posés', function () { labels._core.labelLayers(layersOf(plan[p].comp), rules); });
         // précompos recadrées, les plus profondes d'abord (leur taille compte dans la boîte de la précompo au-dessus)
-        for (p = plan.length - 1; p >= 1; p--) {
-            if (cropPrecomp(plan[p].comp, holdersOf(plan, plan[p].comp))) tally.cropped++;
-        }
-        var quick = S.getTool('quicktools');
-        for (p = 0; p < plan.length && quick; p++) tally.anchors += centerAnchors(plan[p].comp, quick._core.placeAnchor);
+        for (p = plan.length - 1; p >= 1 && cfg.on.crop; p--) attempt(plan[p], 'précompo non recadrée', function () { cropPrecomp(plan[p].comp, holdersOf(plan, plan[p].comp)); });
+        for (p = 0; p < plan.length && quick && cfg.on.anchors; p++) attempt(plan[p], 'ancres non centrées', function () { centerAnchors(plan[p].comp, quick._core.placeAnchor); });
         return { name: comp.name, compId: comp.id };
     }
 
@@ -930,22 +955,27 @@
         if (args && args.folder) {
             folder = new Folder(String(args.folder));
             if (!folder.exists) {
-                return { folder: null, files: [], status: status('Dossier introuvable : choisis le dossier des PSD', 'warn') };
+                return { folder: null, hint: 'Dossier introuvable', files: [], status: status('Dossier introuvable : choisis le dossier des PSD', 'warn') };
             }
         } else {
             var start = projectFolder();
             if (!start) {
-                return { folder: null, files: [], status: status('Projet non enregistré : choisis le dossier des PSD', 'info') };
+                return { folder: null, hint: 'Projet non enregistré', files: [], status: status('Projet non enregistré : choisis le dossier des PSD', 'info') };
             }
-            folder = findAssetFolder(start);
+            var rel = (args && cleanRelPath(args.sourcePath)) || ASSET_PATH;
+            folder = findAssetFolder(start, rel);
             if (!folder) {
-                return { folder: null, start: start.fsName, files: [], status: status('Dossier ' + ASSET_PATH + ' introuvable : choisis le dossier des PSD', 'warn') };
+                return {
+                    folder: null, start: start.fsName, hint: rel + ' introuvable depuis le projet', files: [],
+                    status: status('Dossier ' + rel + ' introuvable : choisis le dossier des PSD', 'warn')
+                };
             }
         }
-        var files = listPsds(folder);
+        var found = listPsds(folder), files = found.files;
         var text = files.length === 0 ? 'Aucun PSD dans ce dossier' :
             (files.length === 1 ? '1 PSD trouvé' : files.length + ' PSD trouvés');
-        return { folder: folder.fsName, files: files, status: status(text, files.length === 0 ? 'warn' : 'ok') };
+        if (found.truncated) text += ' · lecture arrêtée après ' + MAX_LIST_ENTRIES + ' éléments : choisis un dossier plus précis';
+        return { folder: folder.fsName, files: files, status: status(text, (files.length === 0 || found.truncated) ? 'warn' : 'ok') };
     };
 
     api.pickFolder = function (args) {
@@ -961,37 +991,61 @@
     };
 
     /**
-     * importBatch({ items: [{ path, shapes: Shape[] | null, error? }], rules }) : importe les PSD (voir importOne),
-     * dans un seul groupe d'annulation. Un item avec error, sans chemin, ou dont le traitement lève une erreur
-     * compte comme PSD illisible ; le lot continue. La compo active au départ est rouverte à la fin.
-     * -> { imported: [{ name, compId }], status }
+     * importBatch({ items: [{ path, dir?, shapes, texts?, shapesError?, error? }], rules, bin?, steps? }) : importe les
+     * PSD (voir importOne), dans un seul groupe d'annulation. bin : chutier de dépose (relatif, « A/B » imbriqué ; vide
+     * ou invalide = 02_ASSET). steps : { shapes, texts, labels, crop, anchors } ; false = étape sautée.
+     * Un item avec error, sans chemin, ou dont l'import lève une erreur compte comme PSD illisible (le lot continue ;
+     * ce que cet import avait créé est retiré). shapesError : le panneau n'a pas pu lire les formes de ce PSD, qui
+     * est importé sans (avertissement). Une étape qui échoue après l'import est sautée (avertissement).
+     * La compo active au départ est rouverte à la fin.
+     * -> { imported: [{ name, compId }], status, report: { skipped: [raison…] } } : report.skipped dit, par PSD,
+     * calque ou compo, ce qui n'a pas été fait et pourquoi (le panneau l'affiche dans une fenêtre).
      */
     api.importBatch = function (args) {
         var items = (args && args.items && typeof args.items.length === 'number') ? args.items : [];
         var rules = args ? args.rules : null;
-        var imported = [], tally = { shapes: 0, texts: 0, failed: 0, missing: false }, unreadable = 0, valid = [], i;
+        var cfg = {
+            bin: (cleanRelPath(args ? args.bin : null) || PROJECT_ASSET).split('/'),
+            steps: args ? args.steps : null,
+            on: {}
+        };
+        var STEP_IDS = ['texts', 'shapes', 'labels', 'crop', 'anchors'];
+        for (var n = 0; n < STEP_IDS.length; n++) cfg.on[STEP_IDS[n]] = stepOn(cfg.steps, STEP_IDS[n]);
+        var imported = [], tally = { shapes: 0, texts: 0, failed: 0, warnings: 0, missing: false };
+        var unreadable = 0, valid = [], report = [], i;
         for (i = 0; i < items.length; i++) {
-            if (items[i] && !items[i].error && items[i].path) valid.push(items[i]);
-            else unreadable++;
+            if (items[i] && !items[i].error && items[i].path) {
+                valid.push(items[i]);
+            } else {
+                unreadable++;
+                report.push(items[i] && items[i].path
+                    ? pathName(items[i].path) + ' : ' + messageOf(items[i].error)
+                    : 'Un PSD sans chemin n\'a pas été transmis');
+            }
         }
         if (valid.length > 0) {
             // seule une compo se rouvre dans le viewer : un autre élément actif (métrage…) n'est pas rétabli
             var active = app.project.activeItem, activeId = (active instanceof CompItem) ? active.id : null;
-            var ctx = { asset: null };
             try {
                 S.ae.undo(UNDO_NAME, function () {
                     for (var k = 0; k < valid.length; k++) {
-                        var mine = { shapes: 0, texts: 0, failed: 0, missing: false, anchors: 0, cropped: 0 }, before = projectItemIds();
+                        var mine = { shapes: 0, texts: 0, failed: 0, warnings: 0, missing: false }, mineReport = [], before = projectItemIds();
                         try {
-                            imported.push(importOne(valid[k], before, ctx, rules, mine));
+                            imported.push(importOne(valid[k], before, cfg, rules, mine, mineReport));
                             tally.shapes += mine.shapes;
                             tally.texts += mine.texts;
                             tally.failed += mine.failed;
+                            tally.warnings += mine.warnings;
                             if (mine.missing) tally.missing = true;
+                            if (cfg.on.shapes && valid[k].shapesError) {
+                                tally.warnings++;
+                                mineReport.unshift(pathName(valid[k].path) + ' : formes non recréées (' + messageOf(valid[k].shapesError) + ')');
+                            }
+                            report = report.concat(mineReport);
                         } catch (e) {
                             unreadable++;
-                            removeNewItems(before);        // pas de PSD à demi importé dans le projet
-                            ctx.asset = null;              // peut être le 02_ASSET qu'on vient de retirer
+                            report.push(pathName(valid[k].path) + ' : ' + messageOf(e));
+                            removeNewItems(before);        // pas de PSD à demi importé dans le projet (chutiers créés compris)
                         }
                     }
                 });
@@ -1000,21 +1054,26 @@
                 if (back) { try { back.openInViewer(); } catch (e2) { /* compo disparue */ } }
             }
         }
-        var text = S.plural(imported.length, 'PSD importé', 'PSD importés') + ' · ' +
-            S.plural(tally.texts, 'texte', 'textes') + ' · ' + S.plural(tally.shapes, 'forme', 'formes');
+        var text = S.plural(imported.length, 'PSD importé', 'PSD importés');
+        if (tally.texts > 0) text += ' · ' + S.plural(tally.texts, 'texte', 'textes');
+        if (tally.shapes > 0) text += ' · ' + S.plural(tally.shapes, 'forme', 'formes');
         if (unreadable > 0) text += ' · ' + S.plural(unreadable, 'PSD illisible', 'PSD illisibles');
         if (tally.failed > 0) text += ' · ' + S.plural(tally.failed, 'forme en erreur', 'formes en erreur');
+        if (tally.warnings > 0) text += ' · ' + S.plural(tally.warnings, 'avertissement', 'avertissements');
         if (tally.missing) text += ' · textes non convertis (commande introuvable dans cette langue d\'After Effects)';
-        if (valid.length > 0) text += ' · Ctrl+Z pour annuler';
-        return { imported: imported, status: status(text, (unreadable > 0 || tally.failed > 0 || tally.missing) ? 'warn' : 'ok') };
+        if (imported.length > 0) text += ' · Ctrl+Z pour annuler';
+        var warn = unreadable > 0 || tally.failed > 0 || tally.warnings > 0 || tally.missing;
+        return { imported: imported, status: status(text, warn ? 'warn' : 'ok'), report: { skipped: report } };
     };
 
     api._core = {
         naturalCompare: naturalCompare,
         isPsdName: isPsdName,
         findAssetFolder: findAssetFolder,
+        cleanRelPath: cleanRelPath,
         replaceWithShape: replaceWithShape,
-        applyStyles: applyStyles,
+        copyLayerStyles: copyLayerStyles,
+        styleOverflow: styleOverflow,
         cropPrecomp: cropPrecomp,
         lastFailure: function () { return lastFailure; }
     };

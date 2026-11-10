@@ -47,15 +47,23 @@ module.exports = function (test) {
         assert.ok(/SIMING\.boot\('standalone'\)/.test(fs.readFileSync(path.join(CLIENT, 'tool.html'), 'utf8')));
     });
 
-    test('pages : index.html et tool.html chargent le lecteur de PSD (reader, styles, shapes) après bridge.js', () => {
+    test('pages : index.html et tool.html chargent le lecteur de PSD (reader, shapes) après bridge.js', () => {
         for (const page of ['index.html', 'tool.html']) {
             const html = fs.readFileSync(path.join(CLIENT, page), 'utf8');
             const srcs = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
             const at = (f) => srcs.indexOf(f);
             assert.ok(at('js/bridge.js') >= 0, page);
             assert.ok(at('js/psd/reader.js') > at('js/bridge.js'), page + ' : reader.js après bridge.js');
-            assert.ok(at('js/psd/styles.js') > at('js/psd/reader.js'), page + ' : styles.js après reader.js');
-            assert.ok(at('js/psd/shapes.js') > at('js/psd/styles.js'), page + ' : shapes.js après styles.js');
+            assert.ok(at('js/psd/shapes.js') > at('js/psd/reader.js'), page + ' : shapes.js après reader.js');
+        }
+    });
+
+    test('pages : index.html et tool.html chargent les réglages de l\'import des PSD (js/psd/settings.js), avant hub.js', () => {
+        for (const page of ['index.html', 'tool.html']) {
+            const html = fs.readFileSync(path.join(CLIENT, page), 'utf8');
+            const srcs = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+            assert.ok(srcs.indexOf('js/psd/settings.js') > srcs.indexOf('js/siming.js'), page + ' : settings.js après siming.js');
+            assert.ok(srcs.indexOf('js/psd/settings.js') < srcs.indexOf('js/hub.js'), page + ' : settings.js avant hub.js');
         }
     });
 

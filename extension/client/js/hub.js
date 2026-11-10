@@ -72,7 +72,8 @@
         root.replaceChildren(h('div', { class: 's-app' }, rail, stack, status));
         rail.setOrder(tools.map((t) => t.id), hidden);
 
-        const ctx = { bridge, ui, status, settings: SIMING.settings, keys };
+        // openSettings(onglet?) : ouvre Réglages (sur cet onglet) ; un outil l'utilise pour ses propres réglages
+        const ctx = { bridge, ui, status, settings: SIMING.settings, keys, openSettings: (tab) => hub.openSettings(tab) };
         for (const meta of list.tools) {
             const view = h('section', { class: 's-view', 'data-tool': meta.id, tabindex: '-1', hidden: true });
             stack.append(view);
@@ -86,7 +87,10 @@
         stack.append(settingsView);
         views.set(SETTINGS, settingsView);
 
-        const hub = { show, status, rail, views, mounted, current: null, ready: null, tools: () => tools.slice(), hidden: () => hidden.slice() };
+        const hub = {
+            show, status, rail, views, mounted, current: null, ready: null, tools: () => tools.slice(), hidden: () => hidden.slice(),
+            openSettings(tab) { if (tab) settings.selectTab(tab); show(SETTINGS); },
+        };
 
         function show(id) {
             if (!views.has(id) || hidden.includes(id)) id = shown().length ? shown()[0].id : SETTINGS;
@@ -166,13 +170,16 @@
      *                du rail, touche de chaque outil ; recherche dès SEARCH_FROM outils.
      *   Raccourcis : recherche + actions groupées par outil, rétablir.
      *   Général    : outil au lancement (menu déroulant), à propos.
+     *   Import PSD : dossier des PSD, chutier de dépose et étapes de l'import (si js/psd/settings.js est chargé).
      *   Claude     : laisser Claude Code agir dans After Effects (si js/mcp/settings.js est chargé).
      *  tools() / hidden() : état courant ; onOrder(ids), onHidden(id, masqué) ; onKeys() après un raccourci. */
     function buildSettings(view, { list, status, tools, hidden, onOrder, onHidden, onKeys, claude }) {
         const keys = SIMING.keys;
         const doc = view.ownerDocument;
         const withClaude = !!(SIMING.mcp && SIMING.mcp.settingsPane);
+        const withPsd = !!(SIMING.psdSettings && SIMING.psdSettings.pane);
         const TABS = [{ id: 'tools', label: 'Outils' }, { id: 'keys', label: 'Raccourcis' }, { id: 'general', label: 'Général' }]
+            .concat(withPsd ? [{ id: 'psd', label: 'Import PSD' }] : [])
             .concat(withClaude ? [{ id: 'claude', label: 'Claude' }] : []);
         const panes = {};
         const tabs = ui.segmented({
@@ -187,6 +194,7 @@
         function selectTab(id) {
             if (!panes[id]) id = 'tools';
             tabs.select(TABS.findIndex((t) => t.id === id));
+            if (id === 'psd' && psdPane) psdPane.refresh();   // réglages relus à chaque ouverture de l'onglet
             for (const k of Object.keys(panes)) panes[k].hidden = k !== id;
             SIMING.settings.set('settingsTab', id);
         }
@@ -308,6 +316,9 @@
                 .concat(tools().filter((t) => !off.includes(t.id)).map((t) => ({ value: t.id, label: t.name })));
             startSelect.setOptions(options, options.some((o) => o.value === current) ? current : 'last');
         }
+
+        // --- Import PSD : dossiers et étapes de Boîte à outils › Importer les PSD ------------
+        const psdPane = withPsd ? SIMING.psdSettings.pane(panes.psd, { status }) : null;
 
         // --- Claude : service MCP pour Claude Code ---------------------------------------
         if (withClaude) SIMING.mcp.settingsPane(panes.claude, { status, env: claude || null });

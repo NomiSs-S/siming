@@ -1,10 +1,9 @@
 'use strict';
-/* Import PSD, formes (js/psd/shapes.js) : calques vectoriels -> sous-tracés, remplissage, contour, styles. */
+/* Import PSD, formes (js/psd/shapes.js) : calques vectoriels -> sous-tracés, remplissage (uni ou dégradé « ramp »), contour. */
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { read } = require('../extension/client/js/psd/reader.js');
-require('../extension/client/js/psd/styles.js');
 const shapes = require('../extension/client/js/psd/shapes.js');
 
 const FIXTURE = path.join(__dirname, 'fixtures/psd/planche-test.psd');
@@ -77,7 +76,7 @@ const vstk = (extra) => Object.assign({
 function layer(name, extra) {
     return Object.assign({
         id: null, name, box: { left: 10, top: 20, right: 110, bottom: 70 }, opacity: 255, blend: 'norm', hidden: false,
-        clipped: false, masked: false, kind: 'layer', artboard: null,
+        clipped: false, masked: false, kind: 'layer',
         blocks: {
             TySh: false, unreadable: [], vscgKind: 'SoCo',
             vogk: { _class: 'null', keyDescriptorList: [rectOrigin(10, 20, 110, 70)] },
@@ -93,7 +92,7 @@ const withBlocks = (name, blocks, extra) => {
     return l;
 };
 const docOf = (...layers) => ({ width: 1000, height: 500, layers });
-const group = (name, ...children) => ({ id: null, name, box: { left: 0, top: 0, right: 0, bottom: 0 }, opacity: 255, blend: 'pass', hidden: false, kind: 'group', artboard: null, children, blocks: { TySh: false, unreadable: [] } });
+const group = (name, ...children) => ({ id: null, name, box: { left: 0, top: 0, right: 0, bottom: 0 }, opacity: 255, blend: 'pass', hidden: false, kind: 'group', children, blocks: { TySh: false, unreadable: [] } });
 
 const gradient = (extra) => Object.assign({
     _class: 'null', gradientsInterpolationMethod: { enum: 'gradientInterpolationMethodType', v: 'Smoo' }, Angl: { unit: '#Ang', v: 90 }, Type: { enum: 'GrdT', v: 'Lnr ' },
@@ -103,7 +102,7 @@ const gradient = (extra) => Object.assign({
             { _class: 'Clrt', 'Clr ': { _class: 'RGBC', 'Rd  ': 0, 'Grn ': 0, 'Bl  ': 0 }, Lctn: 0 },
             { _class: 'Clrt', 'Clr ': { _class: 'RGBC', 'Rd  ': 255, 'Grn ': 255, 'Bl  ': 255 }, Lctn: 4096 },
         ],
-        Trns: [{ _class: 'TrnS', Opct: { unit: '#Prc', v: 100 }, Lctn: 0 }, { _class: 'TrnS', Opct: { unit: '#Prc', v: 50 }, Lctn: 2048 }],
+        Trns: [{ _class: 'TrnS', Opct: { unit: '#Prc', v: 100 }, Lctn: 0 }, { _class: 'TrnS', Opct: { unit: '#Prc', v: 100 }, Lctn: 4096 }],
     },
 }, extra);
 
@@ -121,7 +120,7 @@ module.exports = function (test) {
         assert.strictEqual(r1.fill.type, 'solid');
         near(r1.fill.color, [9.9455 / 255, 107.2685 / 255, 169 / 255], 0.01, 'couleur');
         assert.strictEqual(r1.stroke, null);
-        assert.deepStrictEqual(r1.styles, []);
+        assert.ok(!('styles' in r1), 'le JSON ne parle plus des styles');
         assert.deepStrictEqual(r1.box, { left: 759, top: 272, right: 1620, bottom: 477 });
         assert.strictEqual(r1.opacity, 100);
         assert.strictEqual(r1.blend, 'normal');
@@ -146,21 +145,22 @@ module.exports = function (test) {
         near(paths[1].size, [176, 176], 0.01, 'taille 2');
     });
 
-    test('formes : planche test, ellipse au dégradé linéaire (Ellipse 1)', () => {
+    test('formes : planche test, ellipse au dégradé linéaire (Ellipse 1) = ramp, géométrie mesurée dans After', () => {
         const e = byName(shapes(planche()), 'Ellipse 1');
         assert.strictEqual(e.paths.length, 1);
         assert.strictEqual(e.paths[0].type, 'ellipse');
         near(e.paths[0].center, [360.5, 369.5], 0.01, 'centre');
         near(e.paths[0].size, [351, 351], 0.01, 'taille');
         assert.ok(Math.abs(e.paths[0].rotation) < 0.01);
-        assert.strictEqual(e.fill.type, 'gradient');
-        assert.strictEqual(e.fill.kind, 'linear');
-        assert.strictEqual(e.fill.angle, 129);
-        assert.strictEqual(e.fill.stops.length, 2);
-        assert.strictEqual(e.fill.stops[0].pos, 0);
-        assert.strictEqual(e.fill.stops[1].pos, 1);
-        near(e.fill.stops[0].color, [9.9455 / 255, 107.2685 / 255, 169 / 255], 0.01, 'départ');
-        assert.deepStrictEqual(e.fill.opacityStops, [{ pos: 0, opacity: 1 }, { pos: 1, opacity: 1 }]);
+        assert.deepStrictEqual(Object.keys(e.fill).sort(), ['end', 'endColor', 'start', 'startColor', 'type']);
+        assert.strictEqual(e.fill.type, 'ramp');
+        // boîte 184,193 -> 537,546 (353 × 353), angle 129° : direction (cos, -sin), L = 353 (|cos| + |sin|) = 496,5,
+        // départ = centre - dir L/2, arrivée = centre + dir L/2 (centre 360,5 ; 369,5)
+        near(e.fill.start, [516.72, 562.42], 0.01, 'départ');
+        near(e.fill.end, [204.28, 176.58], 0.01, 'arrivée');
+        near(e.fill.startColor, [9.9455 / 255, 107.2685 / 255, 169 / 255], 0.01, 'bleu au départ');
+        near(e.fill.endColor, [241.0934 / 255, 242.0817 / 255, 243 / 255], 0.01, 'gris à l\'arrivée');
+        assert.ok(!('stops' in e.fill) && !('kind' in e.fill), 'plus de type gradient');
     });
 
     test('formes : planche test, polygone = tracé fermé de 5 sommets (Polygone 1)', () => {
@@ -190,7 +190,6 @@ module.exports = function (test) {
         assert.strictEqual(fond.fill.type, 'solid');
         near(fond.fill.color, [243 / 255, 0, 24 / 255], 1e-9, 'couleur');
         assert.strictEqual(fond.stroke, null);
-        assert.deepStrictEqual(fond.styles, []);
     });
 
     test('formes : calque de pixels uni mais détouré, masqué ou au mode inconnu -> absent', () => {
@@ -310,35 +309,97 @@ module.exports = function (test) {
         assert.strictEqual(s.fill.type, 'solid');
     });
 
-    test('formes : dégradé radial, inversé, opacités', () => {
-        const make = (extra) => docOf(withBlocks('G', { vscgKind: 'GdFl', vscg: gradient(extra) }));
-        const lin = shapes(make({}))[0].fill;
-        assert.strictEqual(lin.kind, 'linear');
-        assert.strictEqual(lin.angle, 90);
-        assert.deepStrictEqual(lin.opacityStops, [{ pos: 0, opacity: 1 }, { pos: 0.5, opacity: 0.5 }]);
-        assert.deepStrictEqual(lin.stops.map((s) => s.pos), [0, 1]);
-        assert.strictEqual(shapes(make({ Type: { enum: 'GrdT', v: 'Rdl ' } }))[0].fill.kind, 'radial');
-        const rev = shapes(make({ Rvrs: true }))[0].fill;
-        assert.deepStrictEqual(rev.stops.map((s) => s.pos), [0, 1]);
-        near(rev.stops[0].color, [1, 1, 1], 0.001, 'inversé : blanc d\'abord');
-        assert.deepStrictEqual(rev.opacityStops, [{ pos: 0.5, opacity: 0.5 }, { pos: 1, opacity: 1 }]);
+    // Boîte 10,20 -> 110,70 (100 × 50), centre (60, 45)
+    const ramp = (extra, edit) => {
+        const g = gradient(extra);
+        if (edit) edit(g);
+        const list = shapes(docOf(withBlocks('G', { vscgKind: 'GdFl', vscg: g })));
+        return list.length ? list[0].fill : null;
+    };
+
+    test('formes : dégradé linéaire à 90 degrés = du bas vers le haut, longueur = hauteur de la boîte', () => {
+        const f = ramp({});
+        assert.strictEqual(f.type, 'ramp');
+        near(f.start, [60, 70], 1e-9, 'départ en bas');
+        near(f.end, [60, 20], 1e-9, 'arrivée en haut');
+        near(f.startColor, [0, 0, 0], 1e-9, 'noir');
+        near(f.endColor, [1, 1, 1], 1e-9, 'blanc');
     });
 
-    test('formes : calques laissés en PSD (blocs illisibles, motif, styles non reproductibles, dégradés exotiques)', () => {
+    test('formes : dégradé linéaire à 0 degré = de gauche à droite ; 180 = de droite à gauche ; longueur = largeur', () => {
+        const a = ramp({ Angl: { unit: '#Ang', v: 0 } });
+        near(a.start, [10, 45], 1e-9, '0 : départ');
+        near(a.end, [110, 45], 1e-9, '0 : arrivée');
+        const b = ramp({ Angl: { unit: '#Ang', v: 180 } });
+        near(b.start, [110, 45], 1e-9, '180 : départ');
+        near(b.end, [10, 45], 1e-9, '180 : arrivée');
+        const c = ramp({ Angl: { unit: '#Ang', v: -90 } });
+        near(c.start, [60, 20], 1e-9, '-90 : départ en haut');
+    });
+
+    test('formes : dégradé incliné à 45 degrés, longueur |l cos| + |h sin|, centré sur la boîte', () => {
+        const f = ramp({ Angl: { unit: '#Ang', v: 45 } });
+        const L = 100 * Math.SQRT1_2 + 50 * Math.SQRT1_2;
+        near(f.start, [60 - Math.SQRT1_2 * L / 2, 45 + Math.SQRT1_2 * L / 2], 1e-9, 'départ');
+        near(f.end, [60 + Math.SQRT1_2 * L / 2, 45 - Math.SQRT1_2 * L / 2], 1e-9, 'arrivée');
+    });
+
+    test('formes : dégradé inversé (Rvrs) = couleurs échangées, mêmes points', () => {
+        const f = ramp({ Rvrs: true });
+        near(f.start, [60, 70], 1e-9, 'départ');
+        near(f.end, [60, 20], 1e-9, 'arrivée');
+        near(f.startColor, [1, 1, 1], 1e-9, 'blanc d\'abord');
+        near(f.endColor, [0, 0, 0], 1e-9, 'noir ensuite');
+    });
+
+    test('formes : arrêts de couleur en retrait (25 % et 75 %) = points rapprochés, la couleur reste au-delà', () => {
+        const f = ramp({}, (g) => { g.Grad.Clrs[0].Lctn = 1024; g.Grad.Clrs[1].Lctn = 3072; });
+        near(f.start, [60, 57.5], 1e-9, '25 % de la longueur 50, depuis le bas');
+        near(f.end, [60, 32.5], 1e-9, '75 %');
+        // arrêts donnés dans le désordre : triés
+        const g = ramp({}, (d) => { d.Grad.Clrs.reverse(); });
+        near(g.startColor, [0, 0, 0], 1e-9);
+        // deux arrêts au même endroit : pas de dégradé
+        assert.strictEqual(ramp({}, (d) => { d.Grad.Clrs[1].Lctn = 0; }), null);
+    });
+
+    test('formes : dégradé non reproductible (radial, angulaire, trois arrêts, transparence, non aligné…) = calque laissé en PSD', () => {
+        assert.notStrictEqual(ramp({}), null, 'témoin');
+        assert.strictEqual(ramp({ Type: { enum: 'GrdT', v: 'Rdl ' } }), null, 'radial');
+        assert.strictEqual(ramp({ Type: { enum: 'GrdT', v: 'Angl' } }), null, 'angulaire');
+        assert.strictEqual(ramp({ Type: { enum: 'GrdT', v: 'Rflc' } }), null, 'réfléchi');
+        assert.strictEqual(ramp({ Type: undefined }), null, 'type absent');
+        const mid = { _class: 'Clrt', 'Clr ': { _class: 'RGBC', 'Rd  ': 255, 'Grn ': 0, 'Bl  ': 0 }, Lctn: 2048 };
+        assert.strictEqual(ramp({}, (g) => { g.Grad.Clrs.splice(1, 0, mid); }), null, 'trois arrêts');
+        assert.strictEqual(ramp({}, (g) => { g.Grad.Clrs.pop(); }), null, 'un seul arrêt');
+        assert.strictEqual(ramp({}, (g) => { g.Grad.Trns[1].Opct = { unit: '#Prc', v: 99 }; }), null, 'transparence à la fin');
+        assert.strictEqual(ramp({}, (g) => { g.Grad.Trns[0].Opct = { unit: '#Prc', v: 0 }; }), null, 'transparence au début');
+        assert.strictEqual(ramp({ Algn: false }), null, 'non aligné sur le calque');
+        assert.notStrictEqual(ramp({ Algn: true }), null, 'aligné');
+        assert.strictEqual(ramp({ 'Scl ': { unit: '#Prc', v: 150 } }), null, 'mis à l\'échelle');
+        assert.notStrictEqual(ramp({ 'Scl ': { unit: '#Prc', v: 100 } }), null, 'échelle 100');
+        const hsb = { _class: 'HSBC', 'H   ': { unit: '#Ang', v: 10 }, Strt: 50, Brgh: 50 };
+        assert.strictEqual(ramp({}, (g) => { g.Grad.Clrs[1]['Clr '] = hsb; }), null, 'arrêt HSB');
+        assert.strictEqual(ramp({}, (g) => { g.Grad.Clrs[0].Type = { enum: 'Clry', v: 'FrgC' }; }), null, 'couleur de premier plan');
+    });
+
+    test('formes : dégradé avec un contour = calque laissé en PSD (l\'effet Dégradé colorerait le contour)', () => {
+        const g = gradient({});
+        const withStroke = (strokeEnabled) => shapes(docOf(withBlocks('G', { vscgKind: 'GdFl', vscg: g, vstk: vstk({ strokeEnabled }) }))).length;
+        assert.strictEqual(withStroke(false), 1);
+        assert.strictEqual(withStroke(true), 0);
+    });
+
+    test('formes : calques laissés en PSD (blocs illisibles, motif, couleurs non RVB)', () => {
         const one = (blocks, extra) => shapes(docOf(withBlocks('L', blocks, extra))).length;
         assert.strictEqual(one({}), 1);
-        ['vogk', 'vsms', 'vscg', 'vstk', 'lfx2'].forEach((k) => {
+        ['vogk', 'vsms', 'vscg', 'vstk'].forEach((k) => {
             assert.strictEqual(one({ unreadable: [k] }), 0, k);
         });
+        assert.strictEqual(one({ unreadable: ['lfx2'] }), 1, 'styles illisibles : After les a importés, on les recopie');
         assert.strictEqual(one({ vscgKind: 'PtFl' }), 0, 'motif');
-        assert.strictEqual(one({ vscgKind: 'GdFl', vscg: gradient({ Type: { enum: 'GrdT', v: 'Angl' } }) }), 0, 'dégradé angulaire');
-        assert.strictEqual(one({ vscgKind: 'GdFl', vscg: gradient({ Type: { enum: 'GrdT', v: 'Rflc' } }) }), 0, 'dégradé réfléchi');
         const hsb = { _class: 'HSBC', 'H   ': { unit: '#Ang', v: 10 }, Strt: 50, Brgh: 50 };
         assert.strictEqual(one({ vscg: { 'Clr ': hsb } }), 0, 'couleur HSB');
-        const bad = gradient({});
-        bad.Grad.Clrs[1]['Clr '] = hsb;
-        assert.strictEqual(one({ vscgKind: 'GdFl', vscg: bad }), 0, 'arrêt HSB');
-        assert.strictEqual(one({ vscgKind: 'GdFl', vscg: gradient({ 'Scl ': { unit: '#Prc', v: 150 } }) }), 0, 'dégradé mis à l\'échelle');
         assert.strictEqual(one({ vscgKind: 'XxXx' }), 0, 'genre inconnu');
         assert.strictEqual(one({ vogk: undefined }), 0, 'sans forme d\'origine');
         assert.strictEqual(one({ vscg: undefined, vstk: vstk({ fillEnabled: true }) }), 0, 'remplissage actif sans vscg');
@@ -372,15 +433,14 @@ module.exports = function (test) {
         });
     });
 
-    test('formes : opacité du fond (iOpa) reportée, calque laissé en PSD si des styles sont actifs', () => {
+    test('formes : opacité du fond (iOpa) reportée dans fillOpacity, avec ou sans styles (l\'hôte tranche)', () => {
         const lfx2 = { masterFXSwitch: true, SoFi: { _class: 'SoFi', enab: true, 'Md  ': { enum: 'BlnM', v: 'normal' }, 'Clr ': RED, Opct: { unit: '#Prc', v: 50 } } };
         assert.strictEqual(shapes(docOf(layer('F')))[0].fillOpacity, 100);
         const half = shapes(docOf(withBlocks('F', { iOpa: 128 })))[0];
         assert.ok(Math.abs(half.fillOpacity - 128 / 255 * 100) < 0.001);
-        assert.strictEqual(shapes(docOf(withBlocks('F', { iOpa: 128, lfx2 }))).length, 0, 'fond translucide et styles');
-        const full = shapes(docOf(withBlocks('F', { iOpa: 255, lfx2 })));
-        assert.strictEqual(full.length, 1);
-        assert.strictEqual(full[0].fillOpacity, 100);
+        const styled = shapes(docOf(withBlocks('F', { iOpa: 128, lfx2 })));
+        assert.strictEqual(styled.length, 1, 'fond translucide et styles : plus un refus');
+        assert.ok(Math.abs(styled[0].fillOpacity - 128 / 255 * 100) < 0.001);
     });
 
     test('formes : calque détouré ou avec masque de calque = laissé en PSD', () => {
@@ -402,49 +462,35 @@ module.exports = function (test) {
         assert.strictEqual(shapes(docOf(withBlocks('S', { vstk: vstk(cap('strokeStyleRoundCap')) }))).length, 1);
     });
 
-    test('formes : la conversion de couleur vient de styles.js (SIMING.psd.color)', () => {
-        assert.strictEqual(typeof globalThis.SIMING.psd.color, 'function');
-        near(globalThis.SIMING.psd.color({ 'Rd  ': 255, 'Grn ': 0, 'Bl  ': 51 }), [1, 0, 0.2], 0.001, 'rvb');
-        assert.strictEqual(globalThis.SIMING.psd.color({ _class: 'HSBC' }), null);
+    test('formes : texts liste les calques texte (TySh) avec le même rang nth que les formes, groupes exclus, en profondeur', () => {
+        const text = (name) => withBlocks(name, { TySh: true });
+        const doc = docOf(layer('A'), text('Titre'), group('G', text('Titre'), layer('Titre'), text('Titre')));
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(doc), [{ name: 'Titre', nth: 0 }, { name: 'Titre', nth: 1 }, { name: 'Titre', nth: 3 }]);
+        assert.deepStrictEqual(shapes(doc).map((x) => x.match.name + x.match.nth), ['A0', 'Titre0', 'Titre1', 'Titre2', 'Titre3'], 'mêmes rangs que les formes');
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(docOf(layer('A'))), []);
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(docOf()), []);
+        // un calque détouré ou base de détourage reste compté (son rang compte, comme pour les formes)
+        const clip = docOf(withBlocks('Haut', {}, { clipped: true }), text('Base'));
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(clip), [{ name: 'Base', nth: 0 }]);
+        assert.strictEqual(shapes(clip).length, 0, 'ni le calque détouré ni sa base ne sont des formes');
     });
 
-    test('formes : styles(lfx2) null = calque absent, styles actifs recopiés', () => {
+    test('formes : les styles de calque ne font pas refuser le calque (motif, illisible, lmfx, lfxs, couleur HSB)', () => {
         const pattern = { patternFill: { _class: 'patternFill', enab: true } };
-        assert.strictEqual(shapes(docOf(withBlocks('M', { lfx2: pattern }))).length, 0);
-        const lfx2 = {
-            masterFXSwitch: true,
-            SoFi: { _class: 'SoFi', enab: true, 'Md  ': { enum: 'BlnM', v: 'normal' }, 'Clr ': { _class: 'RGBC', 'Rd  ': 255, 'Grn ': 0, 'Bl  ': 0 }, Opct: { unit: '#Prc', v: 50 } },
-        };
-        const s = shapes(docOf(withBlocks('E', { lfx2 })))[0];
-        assert.strictEqual(s.styles.length, 1);
-        assert.strictEqual(s.styles[0].kind, 'colorOverlay');
+        const lfx2 = { masterFXSwitch: true, SoFi: { _class: 'SoFi', enab: true, 'Md  ': { enum: 'BlnM', v: 'normal' }, 'Clr ': { _class: 'HSBC' }, Opct: { unit: '#Prc', v: 50 } } };
+        for (const blocks of [{ lfx2: pattern }, { lfx2 }, { unreadable: ['lfx2'] }, { lmfx: true }, { lfxs: true }]) {
+            const out = shapes(docOf(withBlocks('M', blocks)));
+            assert.strictEqual(out.length, 1, JSON.stringify(blocks));
+        }
+        // le fond uni aussi
+        const fond = planche();
+        findLayer(fond.layers, 'Calque 0').blocks.unreadable = ['lfx2'];
+        assert.ok(byName(shapes(fond), 'Calque 0'), 'fond uni à styles illisibles');
     });
 
     test('formes : document sans calque ou groupes vides', () => {
         assert.deepStrictEqual(shapes(docOf()), []);
         assert.deepStrictEqual(shapes(docOf(group('G'))), []);
-    });
-
-    test('formes : lumière globale, angle et altitude du document remplacent ceux du style', () => {
-        const ang = (v) => ({ unit: '#Ang', v });
-        const base = { enab: true, 'Md  ': { enum: 'BlnM', v: 'multiply' }, 'Clr ': RED, Opct: { unit: '#Prc', v: 50 } };
-        const lfx2 = {
-            masterFXSwitch: true,
-            DrSh: Object.assign({ _class: 'DrSh', uglg: true, lagl: ang(120) }, base),
-            IrSh: Object.assign({ _class: 'IrSh', uglg: false, lagl: ang(45) }, base),
-            ebbl: Object.assign({ _class: 'ebbl', uglg: true, lagl: ang(120), Lald: ang(30), hglC: RED, sdwC: RED }, { enab: true }),
-        };
-        const doc = docOf(withBlocks('G', { lfx2 }));
-        const plain = shapes(doc)[0].styles;
-        assert.deepStrictEqual(plain.map((x) => x.angle), [120, 45, 120], 'document sans angle global : valeurs du style');
-        doc.globalAngle = 90;
-        doc.globalAltitude = 20;
-        const s = shapes(doc)[0].styles;
-        assert.strictEqual(s[0].angle, 90, 'ombre portée en lumière globale');
-        assert.strictEqual(s[1].angle, 45, 'ombre interne en lumière locale : inchangée');
-        assert.strictEqual(s[2].angle, 90);
-        assert.strictEqual(s[2].altitude, 20);
-        assert.strictEqual(s[2].kind, 'bevelEmboss');
     });
 
     // ---- Revue finale (I3) : origine crue seulement si chaque nœud est à sa place ----
@@ -537,11 +583,6 @@ module.exports = function (test) {
         const stroke = (extra) => shapes(docOf(withBlocks('S', { vstk: vstk(Object.assign({ strokeEnabled: true }, extra)) })))[0].stroke;
         assert.strictEqual(stroke({}).miterLimit, 100);
         assert.strictEqual(stroke({ strokeStyleMiterLimit: 4 }).miterLimit, 4);
-    });
-
-    test('formes : I6, styles rangés dans lmfx ou lfxs (non décodés) = laissé en PSD', () => {
-        assert.strictEqual(shapes(docOf(withBlocks('M', { lmfx: true }))).length, 0);
-        assert.strictEqual(shapes(docOf(withBlocks('M', { lfxs: true }))).length, 0);
     });
 
     test('formes : I3, « Rectangle » de 7.psd (8 nœuds, rayon 59) reste un rectangle arrondi (sauté si le fichier manque)', () => {

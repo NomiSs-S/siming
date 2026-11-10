@@ -139,6 +139,24 @@
         return el;
     };
 
+    /** Champ de texte (30 px, pleine largeur) pour une valeur courte (un chemin…). onCommit(texte) quand
+     *  la saisie est validée (Entrée, ou sortie du champ après une modification) ; Échap rend la valeur d'avant.
+     *  el.input, el.value, el.set(texte) (sans appeler onCommit). */
+    ui.textField = function ({ value, placeholder, onCommit, role, label }) {
+        const input = h('input', { class: 's-field-input', type: 'text', placeholder: placeholder || '', 'aria-label': label || placeholder || 'Texte', spellcheck: 'false', autocomplete: 'off' });
+        const el = h('div', { class: 's-field', 'data-role': role || 'text-field' }, input);
+        let kept = '';
+        el.set = (text) => { kept = String(text === undefined || text === null ? '' : text); input.value = kept; };
+        input.addEventListener('change', () => { if (onCommit) onCommit(input.value); });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && input.value !== kept) { e.preventDefault(); e.stopPropagation(); input.value = kept; }
+        });
+        el.input = input;
+        Object.defineProperty(el, 'value', { get: () => input.value });
+        el.set(value);
+        return el;
+    };
+
     /** Menu déroulant (30 px, pleine largeur) : options [{ value, label }].
      *  onChange(value) au choix. el.setOptions(options, value), el.value. */
     ui.select = function ({ options, value, onChange, role, label }) {
@@ -182,7 +200,8 @@
      *  une case change (à la main ou par setAll), pas à setRows. el.setRows(rows, vide?) : vide remplace
      *  emptyText pour cette liste-là. el.checked() : clés cochées, dans l'ordre des lignes ;
      *  el.setAll(bool) : tout cocher / décocher. allLabel (facultatif) : une ligne « tout » en tête, case à
-     *  trois états et compte « cochés / total ». */
+     *  trois états et compte « cochés / total ». Une ligne { heading: 'texte' } est un intitulé de groupe,
+     *  sans case, qui ne compte pas. */
     ui.checkList = function ({ onChange, emptyText, role, allLabel }) {
         const el = h('div', { class: 's-rows', 'data-role': role || 'check-list' });
         const boxes = () => Array.from(el.querySelectorAll('.s-check-row:not(.is-all) input'));
@@ -211,6 +230,10 @@
                     h('span', { class: 's-row-name', text: allLabel }), allCount));
             }
             for (const row of rows) {
+                if (row.heading !== undefined) {
+                    el.append(h('div', { class: 's-check-group', 'data-role': 'check-group', title: row.title || row.heading, text: row.heading }));
+                    continue;
+                }
                 const box = h('input', { type: 'checkbox', 'aria-label': row.name, onchange: changed });
                 box.checked = !!row.checked;
                 el.append(h('label', { class: 's-check-row', 'data-key': row.key, title: row.title },

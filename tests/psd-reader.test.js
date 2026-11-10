@@ -40,16 +40,12 @@ function record(o) {
 const lsct = (type) => block('lsct', u32(type));
 
 /** PSD minimal : en-tête, sections vides, puis les enregistrements (de bas en haut). */
-function makePsd(records, version, resources) {
+function makePsd(records, version) {
     const header = Buffer.concat([ascii('8BPS'), u16(version || 1), Buffer.alloc(6), u16(3), u32(100), u32(200), u16(8), u16(3)]);
     const info = Buffer.concat([u16(records.length), ...records]);
     const layerInfo = Buffer.concat([u32(info.length), info]);
-    const res = resources || Buffer.alloc(0);
-    return Buffer.concat([header, u32(0), u32(res.length), res, u32(layerInfo.length), layerInfo]);
+    return Buffer.concat([header, u32(0), u32(0), u32(layerInfo.length), layerInfo]);
 }
-
-/** Ressource d'image : 8BIM, identifiant, nom vide (2 octets), taille, données (remplies à un nombre pair). */
-const resource = (id, data) => Buffer.concat([ascii('8BIM'), u16(id), Buffer.from([0, 0]), u32(data.length), data, Buffer.alloc(data.length % 2)]);
 
 const names = (ls) => ls.map((l) => l.name);
 
@@ -163,9 +159,7 @@ module.exports = function (test) {
         assert.throws(() => descriptor(buf, 0), /Type de descripteur inconnu : Wxyz/);
     });
 
-    test('psd : groupes imbriqués, calque masqué, nom Unicode, plan de travail, opacité', () => {
-        const rect = obj('classFloatRect', [['Top ', 'doub', f64(10)], ['Left', 'doub', f64(20)], ['Btom', 'doub', f64(300)], ['Rght', 'doub', f64(400)]]);
-        const artb = block('artb', Buffer.concat([u32(16), obj('artb', [['artboardRect', 'Objc', rect]])]));
+    test('psd : groupes imbriqués, calque masqué, nom Unicode, opacité', () => {
         const doc = read(makePsd([
             record({ name: 'bas', box: [0, 0, 50, 60], opacity: 128, blend: 'mul ', blocks: [block('lyid', u32(7))] }),
             record({ name: '</Layer group>', blocks: [lsct(3)] }),
@@ -173,15 +167,13 @@ module.exports = function (test) {
             record({ name: '</Layer group>', blocks: [lsct(3)] }),
             record({ name: 'profond', box: [5, 6, 7, 8] }),
             record({ name: 'Interne', blocks: [lsct(1)] }),
-            record({ name: 'Planche', blocks: [lsct(2), artb] }),
+            record({ name: 'Planche', blocks: [lsct(2)] }),
             record({ name: 'haut' }),
         ]));
         assert.deepStrictEqual(names(doc.layers), ['haut', 'Planche', 'bas']);
         const [haut, planche, bas] = doc.layers;
         assert.strictEqual(haut.kind, 'layer');
-        assert.strictEqual(haut.artboard, null);
         assert.strictEqual(planche.kind, 'group');
-        assert.deepStrictEqual(planche.artboard, { left: 20, top: 10, right: 400, bottom: 300 });
         assert.deepStrictEqual(names(planche.children), ['Interne', 'caché é']);
         const [interne, cache] = planche.children;
         assert.strictEqual(interne.kind, 'group');
@@ -197,7 +189,7 @@ module.exports = function (test) {
         assert.strictEqual(bas.id, 7);
     });
 
-    test('psd : blocs vscg, vstk, lfx2, vsms décodés, bloc illisible = undefined', () => {
+    test('psd : blocs vscg, vstk, vsms décodés, bloc illisible = undefined ; lfx2 (styles de calque) n\'est pas décodé', () => {
         const color = obj('RGBC', [['Rd  ', 'doub', f64(255)], ['Grn ', 'doub', f64(0)], ['Bl  ', 'doub', f64(0)]]);
         const path8 = Buffer.concat([u32(0), u32(0)]);
         const node = (type, ...xy) => Buffer.concat([u16(type), ...xy.map((v) => i32(Math.round(v * (1 << 24))))]);
@@ -215,28 +207,24 @@ module.exports = function (test) {
         const l = doc.layers[0];
         assert.deepStrictEqual(l.blocks.vscg['Clr '], { _class: 'RGBC', 'Rd  ': 255, 'Grn ': 0, 'Bl  ': 0 });
         assert.deepStrictEqual(l.blocks.vstk.strokeStyleLineWidth, { unit: '#Pxl', v: 4 });
-        assert.deepStrictEqual(l.blocks.lfx2['Scl '], { unit: '#Prc', v: 100 });
+        assert.strictEqual(l.blocks.lfx2, undefined, 'After importe les styles, on ne les lit pas');
         assert.deepStrictEqual(l.blocks.vsms, [{ type: 0, op: 1 }, { type: 1, r: [0.5, 0.25, 0.5, 0.25, 0.5, 0.25] }, { type: 3, op: -1 }]);
         assert.strictEqual(l.blocks.vogk, undefined);
     });
 
-    test('psd : drapeaux du tracé (vsmsFlags), remplissage initial (type 8), présence de lmfx / lfxs', () => {
+    test('psd : drapeaux du tracé (vsmsFlags), remplissage initial (type 8)', () => {
         const node = (type, ...xy) => Buffer.concat([u16(type), ...xy.map((v) => i32(Math.round(v * (1 << 24))))]);
         const lengthRecord = (type, count, op) => Buffer.concat([u16(type), u16(count), u16(op & 0xffff), Buffer.alloc(20)]);
         const fillRule = (v) => Buffer.concat([u16(8), u16(v), Buffer.alloc(22)]);
         const vsms = (flags) => block('vsms', Buffer.concat([u32(3), u32(flags), fillRule(1), lengthRecord(0, 1, 1), node(1, 0.5, 0.25, 0.5, 0.25, 0.5, 0.25)]));
-        const fx = (k) => block(k, Buffer.concat([u32(0), u32(16), obj('null', [['Scl ', 'UntF', Buffer.concat([ascii('#Prc'), f64(100)])]])]));
         const doc = read(makePsd([
             record({ name: 'inverse', blocks: [vsms(1)] }),
-            record({ name: 'multi', blocks: [fx('lmfx'), fx('lfxs')] }),
             record({ name: 'simple', blocks: [vsms(0)] }),
         ]));
-        const [simple, multi, inverse] = doc.layers;
+        const [simple, inverse] = doc.layers;
         assert.strictEqual(simple.blocks.vsmsFlags, 0);
         assert.strictEqual(inverse.blocks.vsmsFlags, 1);
         assert.deepStrictEqual(simple.blocks.vsms, [{ type: 8, fill: 1 }, { type: 0, op: 1 }, { type: 1, r: [0.5, 0.25, 0.5, 0.25, 0.5, 0.25] }]);
-        assert.deepStrictEqual([multi.blocks.lmfx, multi.blocks.lfxs], [true, true]);
-        assert.deepStrictEqual([simple.blocks.lmfx, simple.blocks.lfxs], [undefined, undefined]);
     });
 
     test('psd : vscgKind (SoCo, GdFl, PtFl) et unreadable (blocs illisibles)', () => {
@@ -248,7 +236,7 @@ module.exports = function (test) {
             record({ name: 'degrade', blocks: [vscg('GdFl')] }),
             record({ name: 'motif', blocks: [vscg('PtFl')] }),
             record({ name: 'rien' }),
-            record({ name: 'casse', blocks: [truncated('vogk'), truncated('vstk'), block('vsms', Buffer.alloc(0)), truncated('lfx2'), block('vscg', Buffer.concat([ascii('SoCo'), u32(16), u32(0), ascii('Wxyz')]))] }),
+            record({ name: 'casse', blocks: [truncated('vogk'), truncated('vstk'), block('vsms', Buffer.alloc(0)), block('vscg', Buffer.concat([ascii('SoCo'), u32(16), u32(0), ascii('Wxyz')]))] }),
         ]));
         const byName = {};
         doc.layers.forEach((l) => { byName[l.name] = l; });
@@ -258,7 +246,7 @@ module.exports = function (test) {
         assert.strictEqual(byName.rien.blocks.vscgKind, undefined);
         assert.deepStrictEqual(byName.sain.blocks.unreadable, []);
         assert.deepStrictEqual(byName.rien.blocks.unreadable, []);
-        assert.deepStrictEqual(byName.casse.blocks.unreadable.slice().sort(), ['lfx2', 'vogk', 'vscg', 'vstk']);
+        assert.deepStrictEqual(byName.casse.blocks.unreadable.slice().sort(), ['vogk', 'vscg', 'vstk']);
         assert.strictEqual(byName.casse.blocks.vscgKind, 'SoCo');
     });
 
@@ -297,24 +285,5 @@ module.exports = function (test) {
         const header = makePsd([]).subarray(0, 26);
         const vide = read(Buffer.concat([header, u32(0), u32(0), u32(0)]));
         assert.deepStrictEqual([vide.width, vide.height, vide.layers.length], [200, 100, 0]);
-    });
-
-    test('psd : planche test, angle et altitude globaux des styles (ressources 1037 et 1049)', () => {
-        const doc = read(fs.readFileSync(FIXTURE));
-        assert.strictEqual(doc.globalAngle, 90);
-        assert.strictEqual(doc.globalAltitude, 30);
-    });
-
-    test('psd : angle et altitude globaux lus parmi d autres ressources (remplissage pair), défauts 120 et 30 sans eux', () => {
-        const res = Buffer.concat([resource(1005, Buffer.from([1, 2, 3])), resource(1037, i32(45)), resource(1049, i32(60))]);
-        const doc = read(makePsd([], 1, res));
-        assert.deepStrictEqual([doc.globalAngle, doc.globalAltitude], [45, 60]);
-        const seul = read(makePsd([], 1, resource(1037, i32(-30))));
-        assert.deepStrictEqual([seul.globalAngle, seul.globalAltitude], [-30, 30]);
-        const none = read(makePsd([record({ name: 'A' })]));
-        assert.deepStrictEqual([none.globalAngle, none.globalAltitude], [120, 30]);
-        // ressource tronquée : défauts, pas d'erreur
-        const abimee = read(makePsd([], 1, Buffer.concat([ascii('8BIM'), u16(1037), Buffer.from([0, 0]), u32(4), Buffer.from([0, 0])])));
-        assert.deepStrictEqual([abimee.globalAngle, abimee.globalAltitude], [120, 30]);
     });
 };

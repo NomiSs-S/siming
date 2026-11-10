@@ -165,10 +165,13 @@ Rectangle + Arrondi ; sinon → Tracé à l'identique.
 
 ## Lots et erreurs
 
-Un PSD qui échoue (illisible par le lecteur, import refusé par After) n'arrête pas le lot :
-les autres sont importés, et le statut l'ajoute en fin de ligne (« · 1 PSD illisible »),
-niveau `warn`. Le panneau lit tous les PSD cochés puis envoie le lot entier à l'hôte en un
-seul appel (un seul groupe d'annulation).
+Un PSD dont After refuse l'import n'arrête pas le lot : les autres sont importés, et le
+statut l'ajoute en fin de ligne (« · 1 PSD illisible »), niveau `warn` ; ce que ce PSD avait
+créé est retiré. Un PSD que le lecteur du panneau ne sait pas lire est importé quand même,
+sans formes (« · 1 avertissement »), et une étape qui échoue après l'import est sautée pour
+la compo concernée (même avertissement) : la compo importée reste. Les raisons (fichier,
+calque, message) sont données par la fenêtre « Éléments ignorés ». Le panneau lit tous les PSD
+cochés puis envoie le lot entier à l'hôte en un seul appel (un seul groupe d'annulation).
 
 ## Tests
 

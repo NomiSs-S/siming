@@ -350,8 +350,10 @@
      * app.executeCommand agit sur la composition du viewer : comp doit y être ouverte (comp.openInViewer()).
      * N'ouvre pas de groupe d'annulation (l'appelant le fait). Commande introuvable (autre langue d'AE) : rien
      * n'est lancé et rep.missing vaut true (s'il y avait des calques à convertir). Renvoie { done, skipped, missing? }.
+     * After lève une erreur sur un calque qui n'est pas un texte (« des données de texte non compatibles avec
+     * Photoshop ont été trouvées ») : elle n'est citée que si reportErrors (l'appelant sait que ce sont des textes).
      */
-    function convertTextsIn(comp, layers, reportLocked) {
+    function convertTextsIn(comp, layers, reportLocked, reportErrors) {
         var targets = psdTextTargets(layers, reportLocked), todo = targets.todo;
         var rep = { done: 0, skipped: targets.skipped };
         var id = todo.length ? commandId(CONVERT_NAMES, 0) : 0;
@@ -366,7 +368,7 @@
             try {
                 app.executeCommand(id);
             } catch (e) {
-                rep.skipped.push(todo[t].name + ' : ' + e.message);
+                if (reportErrors) rep.skipped.push(todo[t].name + ' : ' + e.message);
                 continue;
             }
             if (countText(comp) > before) rep.done++;

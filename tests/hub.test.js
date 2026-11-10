@@ -4,7 +4,7 @@ const assert = require('assert');
 const { loadHost, makeDom, hostEvalScript } = require('./helpers');
 
 const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/ui/rail.js',
-    'js/bridge.js', 'js/keys.js', 'js/hub.js', 'tools/unparent.js'];
+    'js/bridge.js', 'js/keys.js', 'js/psd/settings.js', 'js/hub.js', 'tools/unparent.js'];
 
 const LIST = {
     version: '1.0.0', repository: 'OWNER/siming',
@@ -20,7 +20,7 @@ function setup(opts) {
     opts = opts || {};
     const { sandbox } = loadHost();
     const win = opts.win || makeDom(SCRIPTS);
-    win.SIMING.registerTool('demo', { help: 'aide démo', mount(view) { view.append('vue démo'); return {}; } });
+    win.SIMING.registerTool('demo', { help: 'aide démo', mount(view, ctx) { view.append('vue démo'); win.demoCtx = ctx; return {}; } });
     win.SIMING.registerTool('casse', { help: '', mount() { throw new Error('boum'); } });
     const opened = [];
     const hub = win.SIMING.startHub({
@@ -326,5 +326,50 @@ module.exports = function (test) {
         color = { red: 30, green: 30, blue: 30 };
         handlers[0][1]();
         assert.strictEqual(style.getPropertyValue('--bg-panel'), 'rgb(30, 30, 30)');
+    });
+
+    test('hub : Réglages › onglet « Import PSD » (dossier des PSD, chutier, étapes) avec ses valeurs par défaut', () => {
+        const t = setup();
+        const tabs = Array.from(t.win.document.querySelectorAll('[data-role=settings-tabs] .s-seg-btn')).map((b) => b.textContent);
+        assert.deepEqual(tabs, ['Outils', 'Raccourcis', 'Général', 'Import PSD']);
+        const pane = t.$('[data-pane=psd]');
+        assert.ok(pane);
+        assert.strictEqual(pane.querySelector('[data-role=psd-sourcePath] input').value, '02_RESSOURCES/02_ASSET');
+        assert.strictEqual(pane.querySelector('[data-role=psd-bin] input').value, '02_ASSET');
+        assert.strictEqual(pane.querySelectorAll('[data-role=psd-steps] input:checked').length, 5);
+        // un réglage change : relu quand les réglages sont rafraîchis (ordre ou masquage d'un outil)
+        t.win.localStorage.setItem('siming.psd.bin', 'Dépose');
+        t.hub.openSettings('psd');
+        assert.strictEqual(pane.querySelector('[data-role=psd-bin] input').value, 'Dépose', 'relu à l\'ouverture de l\'onglet');
+        pane.querySelector('[data-role=psd-bin] input').value = 'Autre';
+        pane.querySelector('[data-role=psd-bin] input').dispatchEvent(new t.win.Event('change', { bubbles: true }));
+        assert.strictEqual(t.win.localStorage.getItem('siming.psd.bin'), 'Autre');
+    });
+
+    test('hub : sans js/psd/settings.js, pas d\'onglet « Import PSD »', () => {
+        const win = makeDom(SCRIPTS.filter((s) => s !== 'js/psd/settings.js'));
+        const t = setup({ win });
+        const tabs = Array.from(win.document.querySelectorAll('[data-role=settings-tabs] .s-seg-btn')).map((b) => b.textContent);
+        assert.deepEqual(tabs, ['Outils', 'Raccourcis', 'Général']);
+        assert.strictEqual(t.$('[data-pane=psd]'), null);
+    });
+
+    test('hub : ctx.openSettings(onglet) d\'un outil ouvre Réglages sur cet onglet (mémorisé) ; sans onglet, celui d\'avant', () => {
+        const t = setup();
+        t.$('.s-rail-btn[data-tool=demo]').click();
+        assert.strictEqual(typeof t.win.demoCtx.openSettings, 'function');
+        t.win.demoCtx.openSettings('psd');
+        assert.strictEqual(t.hub.current, '__settings');
+        assert.deepEqual(visible(t.hub), ['__settings']);
+        assert.strictEqual(t.$('[data-pane=psd]').hidden, false);
+        assert.strictEqual(t.$('[data-pane=tools]').hidden, true);
+        assert.strictEqual(t.win.localStorage.getItem('siming.settingsTab'), 'psd');
+        assert.ok(t.$('[data-role=settings-tabs] .s-seg-btn:nth-child(4)').classList.contains('is-on'));
+        t.$('.s-rail-btn[data-tool=demo]').click();
+        t.win.demoCtx.openSettings();
+        assert.strictEqual(t.hub.current, '__settings');
+        assert.strictEqual(t.$('[data-pane=psd]').hidden, false, 'même onglet qu\'avant');
+        t.win.demoCtx.openSettings('claude');   // onglet absent : repli sur le premier
+        assert.strictEqual(t.$('[data-pane=tools]').hidden, false);
     });
 };

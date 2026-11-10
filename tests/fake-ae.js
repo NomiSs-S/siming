@@ -438,7 +438,7 @@ class FakeComp extends CompItem {
     /** État neuf d'un calque (non rangé dans la pile). */
     _state(name, opts) {
         const o = opts || {};
-        return Object.assign(
+        const state = Object.assign(
             {
                 id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1,
                 kind: o.kind || 'av', threeD: !!o.threeD, enabled: true, blendingMode: BlendingMode.NORMAL,
@@ -449,6 +449,9 @@ class FakeComp extends CompItem {
             },
             o
         );
+        // styles : [nom | { style, values }] -> groupe « ADBE Layer Styles » avec ces styles actifs (voir P.makeLayerStyles)
+        if (o.styles) { state.layerStyles = P.makeLayerStyles(o.styles); delete state.styles; }
+        return state;
     }
     select(...states) { this.selection = states; }
     removeLayer(state) {
@@ -473,15 +476,10 @@ const DEFAULT_LABEL_NAMES = [
 
 const SCRIPT_WRITE_KEY = 'Pref_SCRIPTING_FILE_NETWORK_SECURITY';
 
-/** Commandes de menu connues (noms anglais, comme un After Effects en anglais). */
+/** Commandes de menu connues par leur nom (anglais, comme un After Effects en anglais). */
 const MENU_COMMANDS = { 'Convert to Editable Text': 3799, 'Reveal Layer Source in Project': 2517 };
-/** Commandes Calque › Styles de calque : id -> groupe de style (ajouté au calque sélectionné). */
-const STYLE_COMMANDS = {};
-for (const group of Object.keys(P.LAYER_STYLE_DEFS)) {
-    const def = P.LAYER_STYLE_DEFS[group];
-    MENU_COMMANDS[def.menu] = def.id;
-    STYLE_COMMANDS[def.id] = group;
-}
+/** Identifiants numériques, indépendants de la langue : Édition › Copier et Édition › Coller. */
+const COMMAND_COPY = 19, COMMAND_PASTE = 20;
 
 /** Faux app.preferences : getPrefAsString renvoie les 4 octets ARGB sous forme de
  *  caractères, comme After Effects en encodage BINARY. `labels[i]` = étiquette n° i + 1. */
@@ -544,12 +542,14 @@ class ImportOptions {
     }
 }
 
-/** Taille par défaut d'un métrage de calque PSD importé : la boîte 861 × 205 de « Rectangle 1 » (planche test). */
+/** Taille par défaut d'un métrage de calque de pixels importé : la boîte 861 × 205 de « Rectangle 1 » (planche test). */
 const FOOTAGE_SIZE = [861, 205];
+/** Boîte [gauche, haut, droite, bas] de « Rectangle 1 » dans la planche test (un calque de forme Photoshop). */
+const RECTANGLE_BOX = [759, 272, 1620, 477];
 
-/** Recette d'import d'un PSD, par défaut : compo « <nom> » > précompo « <nom> » > Rectangle 1, PourQUOI ??? (texte), Calque 0. */
+/** Recette d'import d'un PSD, par défaut : compo « <nom> » > précompo « <nom> » > Rectangle 1 (forme), PourQUOI ??? (texte), Calque 0 (pixels). */
 function defaultRecipe(base) {
-    return { layers: [{ name: base, group: { layers: [{ name: 'Rectangle 1' }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
+    return { layers: [{ name: base, group: { layers: [{ name: 'Rectangle 1', vector: RECTANGLE_BOX }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
 }
 
 /**
@@ -557,9 +557,14 @@ function defaultRecipe(base) {
  * `app.importRecipes[chemin]` (défaut : defaultRecipe) : une compo « <nom> », un dossier « <nom> Calques » qui
  * range les métrages (« <calque>/<fichier>.psd », source = le PSD) et les précompos des groupes. Recette :
  *  { throws: 'message' }  -> After lève cette erreur ;
- *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size? } :
+ *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size?, vector?, styles? } :
  *  group = précompo des calques donnés ; psdText = calque texte du PSD ; from = autre fichier pour le métrage ;
- *  size = [largeur, hauteur] du métrage (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests).
+ *  size = [largeur, hauteur] du métrage d'un calque de pixels (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests) ;
+ *  vector = [gauche, haut, droite, bas] : calque de forme Photoshop, que After (26.2) importe en métrage de la taille du
+ *  document (celle de la compo importée), ancre et position au centre, son tracé en masque (ici le rectangle donné) ;
+ *  styles = styles de calque actifs que After a importés avec le PSD (['outerGlow', { style: 'dropShadow', values: { blur: 12 } }]).
+ * Où After dépose la compo et le dossier « N Calques » : à la racine du Projet, ou dans app.importFolder (le dossier
+ * sélectionné du panneau Projet) s'il est donné.
  * Les calques sont donnés du haut vers le bas. Renvoie la compo (ou un métrage en import FOOTAGE).
  */
 function importFile(opts) {
@@ -572,13 +577,19 @@ function importFile(opts) {
         app.project.items.push(f);
         return f;
     }
-    const calques = new FolderItem(base + ' Calques', null);
+    const calques = new FolderItem(base + ' Calques', app.importFolder);
     app.project.items.push(calques);
+    const root = new FakeComp(nextId++, recipe.comp || base, { parentFolder: app.importFolder });
     const fill = (comp, layers) => {
         for (const spec of layers) {
             const extra = {};
             if (spec.psdText !== undefined) extra.psdText = spec.psdText;
             if (spec.locked) extra.locked = true;
+            if (spec.styles) extra.styles = spec.styles;
+            if (spec.vector) {
+                const [l, t, r, b] = spec.vector;
+                extra.masks = [{ mode: 'ADD', vertices: [[l, t], [r, t], [r, b], [l, b]] }];
+            }
             if (spec.group) {
                 const sub = new FakeComp(nextId++, spec.name, { parentFolder: calques });
                 fill(sub, spec.group.layers);
@@ -586,17 +597,19 @@ function importFile(opts) {
                 comp.addLayer(spec.name, Object.assign({ source: sub }, extra));
             } else {
                 const from = spec.from ? new FakeFile(path.join(path.dirname(file.fsName), spec.from)) : file;
-                const size = spec.size || FOOTAGE_SIZE;
+                const size = spec.vector ? [root.width, root.height] : (spec.size || FOOTAGE_SIZE);
                 const footage = new FootageItem(spec.name + '/' + from.name, new FileSource(from, true), { parentFolder: calques, width: size[0], height: size[1] });
                 app.project.items.push(footage);
-                comp.addLayer(spec.name, Object.assign({ source: footage }, extra));
+                const st = comp.addLayer(spec.name, Object.assign({ source: footage }, extra));
+                if (spec.vector) {
+                    for (const m of ['ADBE Anchor Point', 'ADBE Position']) st.transform.children.find((c) => c.matchName === m).value = [size[0] / 2, size[1] / 2];
+                }
             }
         }
     };
-    const comp = new FakeComp(nextId++, recipe.comp || base);
-    fill(comp, recipe.layers);
-    app.project.items.push(comp);
-    return comp;
+    fill(root, recipe.layers);
+    app.project.items.push(root);
+    return root;
 }
 
 const app = {
@@ -620,23 +633,44 @@ const app = {
     undoGroups: [],
     commands: [],          // identifiants passés à executeCommand
     importRecipes: {},     // chemin du PSD -> recette de importFile (voir importFile)
+    importFolder: null,    // dossier du Projet où importFile dépose compo et « N Calques » (null : la racine)
     viewerOpens: [],       // id des comps ouvertes par openInViewer, dans l'ordre
     menuNames: MENU_COMMANDS,
+    layerStylesClipboard: null,   // presse-papiers des styles de calque (commandes 19 et 20)
     beginUndoGroup(name) { this.undoDepth++; this.undoGroups.push(name); },
     endUndoGroup() { this.undoDepth--; },
     /** 0 si le nom n'est pas celui d'une commande (autre langue d'AE). */
     findMenuCommandId(name) { return this.menuNames[name] || 0; },
     /** 3799 « Convert to Editable Text » : chaque calque sélectionné marqué psdText devient
-     *  un calque texte (sa source disparaît). Les autres commandes sont seulement notées. */
+     *  un calque texte (sa source disparaît). 19 (Copier) : le groupe « ADBE Layer Styles » sélectionné
+     *  d'un calque de la compo active va au presse-papiers (copie de son état) ; 20 (Coller) : il remplace
+     *  les styles de chaque calque sélectionné. Les autres commandes sont seulement notées. */
     executeCommand(id) {
         this.commands.push(id);
         const comp = this.project.activeItem;
-        if (STYLE_COMMANDS[id] && comp && comp.selection) {
-            for (const st of comp.selection) P.addLayerStyle(st, STYLE_COMMANDS[id]);
+        if (id === COMMAND_COPY || id === COMMAND_PASTE) {
+            if (!comp || !comp.layers) return;
+            if (id === COMMAND_COPY) {
+                const from = comp.layers.filter((st) => st.layerStyles && st.layerStyles.selected)[0];
+                if (from) this.layerStylesClipboard = P.cloneState(from.layerStyles, null);
+            } else if (this.layerStylesClipboard) {
+                for (const st of comp.selection) {
+                    // à la place, dans le groupe existant : une poignée prise avant le collage reste valable
+                    if (!st.layerStyles) st.layerStyles = P.makeLayerStyles();
+                    const root = st.layerStyles, clone = P.cloneState(this.layerStylesClipboard, null);
+                    root.children = clone.children;
+                    root.children.forEach((c) => { c.parent = root; });
+                    root.selected = false;
+                }
+            }
             return;
         }
         if (id !== 3799 || !comp || !comp.selection) return;
         for (const st of comp.selection) {
+            // comme After : un calque d'un PSD qui n'est pas un texte fait lever la commande
+            if (!st.psdText && st.source && /\.psd$/i.test(String(st.source.name))) {
+                throw new Error('After Effects (erreur) : des données de texte non compatibles avec Photoshop ont été trouvées.');
+            }
             if (!st.psdText) continue;
             st.kind = 'text';
             st.text = st.psdText;
@@ -654,8 +688,10 @@ const app = {
         this.undoGroups = [];
         this.commands = [];
         this.importRecipes = {};
+        this.importFolder = null;
         this.viewerOpens = [];
         this.menuNames = MENU_COMMANDS;
+        this.layerStylesClipboard = null;
         FakeFolder.selectResult = null;
         FakeFolder.selectCalls = [];
     },
@@ -701,6 +737,7 @@ class FakeFile {
 class FakeFolder {
     constructor(p) { this.path = normalize(p); }
     get name() { return path.basename(this.path); }
+    get displayName() { return decodeURIComponent(this.name); }   // comme File : name est encodé, displayName lisible
     get fsName() { return this.path; }
     get absoluteURI() { return this.path.replace(/\\/g, '/'); }
     get exists() { return fs.existsSync(this.path) && fs.statSync(this.path).isDirectory(); }

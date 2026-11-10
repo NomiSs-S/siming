@@ -3,6 +3,7 @@
  * Ni navigateur ni Node : testé tel quel, sans After Effects.
  *
  *   SIMING.psd.shapes(doc) -> Shape[]     doc : le résultat de SIMING.psd.read
+ *   SIMING.psd.texts(doc)  -> [{ name, nth }]   les calques texte (même rang nth que les formes)
  *
  * Un calque de pixels d'une seule couleur, opaque sur toute sa boîte (le fond d'une planche), devient
  * aussi une forme : un rectangle plein de sa boîte (voir uniformOf).
@@ -10,10 +11,11 @@
  * Une entrée par calque vectoriel que l'on sait reproduire fidèlement, dans l'ordre du panneau
  * Calques (le plus haut d'abord, les enfants d'un groupe à leur place). Un calque qu'on ne sait pas
  * reproduire est simplement absent : il reste un calque PSD. C'est le cas quand
- *   - un des blocs vogk, vsms, vscg, vstk, lfx2 est illisible (blocks.unreadable) ;
- *   - le remplissage est un motif, un dégradé qui n'est ni linéaire ni radial (ou mis à
- *     l'échelle, décalé, à milieux d'arrêt déplacés, interpolé autrement que « Classique »), ou
- *     une couleur qui n'est pas RVB ;
+ *   - un des blocs vogk, vsms, vscg, vstk est illisible (blocks.unreadable) ;
+ *   - le remplissage est un motif, une couleur qui n'est pas RVB, ou un dégradé qui n'est pas un
+ *     dégradé linéaire à deux couleurs RVB, opaque, aligné sur le calque, sans échelle ni décalage ni
+ *     milieu d'arrêt déplacé, interpolé en « Classique » (voir rampFill) ; un dégradé avec un
+ *     contour reste aussi en PSD (l'effet Dégradé d'After colorerait le contour) ;
  *   - le contour est en pointillés, translucide, au dégradé ou au motif, de couleur non RVB, ou à
  *     bouts / jointures autres que plat / onglet ;
  *   - un sous-tracé a une opération booléenne autre que « combiner » (soustraire, intersecter…) ;
@@ -21,12 +23,11 @@
  *     porte un masque de calque ;
  *   - le tracé est inversé ou désactivé (blocks.vsmsFlags), ou son remplissage initial est « tous
  *     les pixels » ;
- *   - le mode de fusion du calque est inconnu ;
- *   - le calque a des blocs d'effets lmfx ou lfxs (effets multiples, non décodés) ;
- *   - l'opacité du fond est inférieure à 100 % et des styles sont actifs ;
- *   - SIMING.psd.styles rend null (style de calque non reproductible).
+ *   - le mode de fusion du calque est inconnu.
+ * Les styles de calque ne comptent pas : After les importe avec le PSD, l'hôte les recopie tels quels
+ * du calque PSD sur la forme (copier-coller). Le JSON n'en dit rien.
  *
- * Shape = { match: { name, nth }, box, opacity (0-100), blend, hidden, fillOpacity, paths, fill, stroke, styles }
+ * Shape = { match: { name, nth }, box, opacity (0-100), blend, hidden, fillOpacity, paths, fill, stroke }
  *   match.nth   rang (0, 1…) parmi les calques du même nom, groupes exclus (un groupe devient un
  *               précomp côté After), parcours haut -> bas en profondeur
  *   fillOpacity opacité du fond (0-100, « Fond » de Photoshop), 100 si absente
@@ -38,11 +39,10 @@
  *               { type: 'ellipse', center, size, rotation }
  *               { type: 'path', vertices, inTangents, outTangents (relatives au sommet), closed }
  *   Fill        { type: 'solid', color [r, g, b] (0-1) }
- *               { type: 'gradient', kind: 'linear' | 'radial', angle, stops [{ pos, color }],
- *                 opacityStops [{ pos, opacity (0-1) }] }   pos de 0 à 1, dans l'ordre croissant
+ *               { type: 'ramp', start [x, y], end [x, y], startColor [r, g, b], endColor [r, g, b] }
+ *                 dégradé linéaire à deux couleurs, en coordonnées du document : l'hôte le pose avec
+ *                 l'effet Dégradé d'After (les couleurs d'un dégradé de forme sont inaccessibles par script)
  *   Stroke      { width, color, align: 'center' | 'inside' | 'outside', miterLimit } ; null si coupé
- *   styles      voir SIMING.psd.styles ; un style en lumière globale (useGlobalLight) reçoit l'angle (et le
- *               biseautage l'altitude) du document : doc.globalAngle, doc.globalAltitude
  *
  * Rectangle et ellipse : on ne croit la « forme d'origine » (vogk) que si ses coins (déjà
  * transformés par Photoshop) forment un rectangle et que CHAQUE nœud du tracé réel (vsms) est, à
@@ -71,7 +71,7 @@
     const ORIGIN_ROUNDED_RECT = 2;
     const ORIGIN_ELLIPSE = 5;
 
-    // Modes de fusion d'un calque : clé de 4 lettres -> nom (même vocabulaire que les styles).
+    // Modes de fusion d'un calque : clé de 4 lettres -> nom.
     const BLEND_MODES = {
         'norm': 'normal', 'diss': 'dissolve', 'dark': 'darken', 'mul ': 'multiply', 'idiv': 'colorBurn',
         'lbrn': 'linearBurn', 'dkCl': 'darkerColor', 'lite': 'lighten', 'scrn': 'screen', 'div ': 'colorDodge',
@@ -83,7 +83,6 @@
     const STROKE_ALIGNMENTS = {
         strokeStyleAlignCenter: 'center', strokeStyleAlignInside: 'inside', strokeStyleAlignOutside: 'outside',
     };
-    const GRADIENT_KINDS = { 'Lnr ': 'linear', 'Rdl ': 'radial' };
 
     /** Valeur numérique d'un champ : nombre natif ou { unit, v }. */
     const num = (u, fallback) => {
@@ -94,54 +93,75 @@
     const clamp01 = (n) => Math.min(1, Math.max(0, n));
     const enumValue = (e) => (e && typeof e === 'object' ? e.v : undefined);
 
-    /** Couleur RGBC -> [r, g, b] (0-1), null si elle n'est pas RVB : voir SIMING.psd.color (styles.js). */
-    const color = (c) => SIMING.psd.color(c);
+    /** Couleur RGBC : 0-255 (`Rd  `, `Grn `, `Bl  `) ou 0-1 (`redFloat`…) -> [r, g, b] entre 0 et 1 ; null si elle n'est pas RVB. */
+    function color(c) {
+        if (!c || typeof c !== 'object') return null;
+        if (typeof c.redFloat === 'number') {
+            return [clamp01(c.redFloat), clamp01(c.greenFloat), clamp01(c.blueFloat)];
+        }
+        if (typeof c['Rd  '] === 'number') {
+            return [clamp01(c['Rd  '] / 255), clamp01(c['Grn '] / 255), clamp01(c['Bl  '] / 255)];
+        }
+        return null;
+    }
 
     // ---- Remplissage et contour ----
 
-    /** Dégradé (GdFl) ; null s'il n'est pas reproductible. */
-    function gradientFill(d) {
-        const kind = GRADIENT_KINDS[enumValue(d.Type)];
+    /**
+     * Dégradé (GdFl) -> { type: 'ramp', start, end, startColor, endColor } ; null s'il n'est pas reproductible
+     * par l'effet Dégradé d'After : linéaire, exactement deux arrêts de couleur RVB, tous les arrêts d'opacité à
+     * 100 %, sans échelle ni décalage, milieux à 50, méthode « Classique » (ou absente), aligné sur le calque.
+     * Géométrie d'un dégradé aligné (mesurée dans After sur la planche test) : centré sur le centre de la boîte du
+     * calque, direction (cos θ, −sin θ) (y vers le bas), longueur L = |l·cos θ| + |h·sin θ| (l, h : taille de la
+     * boîte) ; le premier arrêt (position p0, de 0 à 1) est à centre − dir·L/2 + dir·L·p0, le dernier (p1) de
+     * même : au-delà, la couleur reste celle de l'arrêt, comme dans Photoshop.
+     */
+    function rampFill(d, box) {
         const g = d.Grad;
-        if (!kind || !g || !Array.isArray(g.Clrs) || g.Clrs.length === 0) return null;
+        if (enumValue(d.Type) !== 'Lnr ' || !g || !Array.isArray(g.Clrs) || g.Clrs.length !== 2) return null;
         if (d['Scl '] !== undefined && Math.abs(num(d['Scl '], 100) - 100) > 0.01) return null;
-        // Décalage du dégradé (Ofst : point en %) : After n'a pas d'équivalent sur le remplissage.
+        // Décalage du dégradé (Ofst : point en %) : la géométrie mesurée est celle d'un dégradé centré.
         if (d.Ofst && (Math.abs(num(d.Ofst.Hrzn, 0)) > EPSILON || Math.abs(num(d.Ofst.Vrtc, 0)) > EPSILON)) return null;
-        // Interpolation : la rampe d'After mélange les couleurs linéairement dans l'espace de la
-        // composition, comme la méthode « Classique » (Smoo) de Photoshop, la seule que l'on
-        // reproduit. Perceptuel (Perc) et Linéaire (Lnr ) donnent d'autres dégradés : calque PSD.
+        // Aligné sur le calque (Algn absent ou vrai) : seule géométrie mesurée.
+        if (d.Algn !== undefined && d.Algn !== true) return null;
+        // Interpolation : l'effet Dégradé mélange les couleurs linéairement dans l'espace de la composition,
+        // comme la méthode « Classique » (Smoo) de Photoshop, la seule que l'on reproduit (au lissage près,
+        // qui adoucit les extrémités : écart d'une dizaine de niveaux sur 255, accepté). Perceptuel (Perc) et
+        // Linéaire (Lnr ) donnent d'autres dégradés : calque PSD.
         const method = enumValue(d.gradientsInterpolationMethod);
         if (method !== undefined && method !== 'Smoo') return null;
-        // Milieu d'un arrêt (Mdpn, 50 par défaut) : After ne sait pas déplacer le milieu d'un arrêt.
-        const stopsAll = g.Clrs.concat(Array.isArray(g.Trns) ? g.Trns : []);
-        if (stopsAll.some((s) => Math.abs(num(s.Mdpn, 50) - 50) > 0.01)) return null;
-        const stops = [];
+        // Transparence : l'effet ne sait pas faire varier l'opacité le long du dégradé.
+        const opacities = Array.isArray(g.Trns) ? g.Trns : [];
+        if (opacities.some((s) => Math.abs(num(s.Opct, 100) - 100) > 0.01)) return null;
+        // Milieu d'un arrêt (Mdpn, 50 par défaut) : l'effet ne sait pas le déplacer.
+        if (g.Clrs.concat(opacities).some((s) => Math.abs(num(s.Mdpn, 50) - 50) > 0.01)) return null;
+        let stops = [];
         for (const s of g.Clrs) {
             const type = enumValue(s.Type);
             const c = color(s['Clr ']);
             if (!c || (type !== undefined && type !== 'UsrS')) return null;   // couleur de premier plan, nuancier…
             stops.push({ pos: clamp01(num(s.Lctn, 0) / GRADIENT_SCALE), color: c });
         }
-        const opacityStops = (Array.isArray(g.Trns) ? g.Trns : []).map((s) => ({
-            pos: clamp01(num(s.Lctn, 0) / GRADIENT_SCALE),
-            opacity: clamp01(num(s.Opct, 100) / 100),
-        }));
-        if (d.Rvrs === true) {
-            for (const s of stops) s.pos = 1 - s.pos;
-            for (const s of opacityStops) s.pos = 1 - s.pos;
-            stops.reverse();
-            opacityStops.reverse();
-        }
-        return { type: 'gradient', kind, angle: num(d.Angl, 0), stops, opacityStops };
+        if (d.Rvrs === true) stops = stops.map((s) => ({ pos: 1 - s.pos, color: s.color }));
+        stops.sort((a, b) => a.pos - b.pos);
+        if (stops[1].pos - stops[0].pos < EPSILON) return null;
+        const l = box.right - box.left, h = box.bottom - box.top;
+        const angle = num(d.Angl, 0) * Math.PI / 180;
+        const dir = [Math.cos(angle), -Math.sin(angle)];
+        const length = Math.abs(l * dir[0]) + Math.abs(h * dir[1]);
+        if (!(l > 0 && h > 0 && length > EPSILON)) return null;
+        const center = [(box.left + box.right) / 2, (box.top + box.bottom) / 2];
+        const at = (pos) => [center[0] + dir[0] * length * (pos - 0.5), center[1] + dir[1] * length * (pos - 0.5)];
+        return { type: 'ramp', start: at(stops[0].pos), end: at(stops[1].pos), startColor: stops[0].color, endColor: stops[1].color };
     }
 
     /** Remplissage du calque (bloc vscg) ; null = pas reproductible (le calque reste en PSD). */
-    function readFill(blocks) {
+    function readFill(blocks, box) {
         if (blocks.vscgKind === 'SoCo') {
             const c = blocks.vscg && color(blocks.vscg['Clr ']);
             return c ? { type: 'solid', color: c } : null;
         }
-        if (blocks.vscgKind === 'GdFl') return blocks.vscg ? gradientFill(blocks.vscg) : null;
+        if (blocks.vscgKind === 'GdFl') return blocks.vscg ? rampFill(blocks.vscg, box) : null;
         return null;
     }
 
@@ -335,33 +355,18 @@
 
     // ---- Calque ----
 
-    /** Styles en lumière globale : angle (et altitude du biseautage) pris dans le document, quand il les donne. */
-    function resolveGlobalLight(list, doc) {
-        const hasAngle = typeof doc.globalAngle === 'number', hasAltitude = typeof doc.globalAltitude === 'number';
-        for (const style of list) {
-            if (style.useGlobalLight !== true) continue;
-            if (hasAngle) style.angle = doc.globalAngle;
-            if (hasAltitude && style.kind === 'bevelEmboss') style.altitude = doc.globalAltitude;
-        }
-        return list;
-    }
-
-    const SKIPPED_IF_UNREADABLE = ['vogk', 'vsms', 'vscg', 'vstk', 'lfx2'];
+    const SKIPPED_IF_UNREADABLE = ['vogk', 'vsms', 'vscg', 'vstk'];
     const PATH_INVERTED = 1, PATH_DISABLED = 4;     // drapeaux du tracé (vsms, vmsk)
 
     /**
      * Calque de pixels d'une seule couleur, opaque sur toute sa boîte (layer.uniform, voir reader.js) : un
      * rectangle plein de cette boîte, le fond d'une planche le plus souvent. null s'il n'est pas reproductible.
      */
-    function uniformOf(layer, nth, doc, styles) {
+    function uniformOf(layer, nth, doc) {
         const blocks = layer.blocks || {};
         if (!Array.isArray(layer.uniform) || layer.clipped === true || layer.masked === true) return null;
-        if (Array.isArray(blocks.unreadable) && blocks.unreadable.indexOf('lfx2') >= 0) return null;
         if (!Object.prototype.hasOwnProperty.call(BLEND_MODES, layer.blend)) return null;
-        const list = styles(blocks.lfx2);
-        if (list === null) return null;
         const fillOpacity = blocks.iOpa === undefined ? 100 : blocks.iOpa / 255 * 100;
-        if (fillOpacity < 100 - EPSILON && list.length > 0) return null;
         const b = layer.box;
         return {
             match: { name: layer.name, nth },
@@ -374,14 +379,13 @@
             paths: [{ type: 'rect', center: [(b.left + b.right) / 2, (b.top + b.bottom) / 2], size: [b.right - b.left, b.bottom - b.top], rotation: 0, roundness: 0 }],
             fill: { type: 'solid', color: layer.uniform.slice(0, 3) },
             stroke: null,
-            styles: resolveGlobalLight(list, doc),
         };
     }
 
     /** Forme d'un calque ; null si le calque n'est pas une forme, ou pas reproductible. */
-    function shapeOf(layer, nth, doc, styles) {
+    function shapeOf(layer, nth, doc) {
         const blocks = layer.blocks;
-        if (blocks && !blocks.vogk && layer.uniform) return uniformOf(layer, nth, doc, styles);
+        if (blocks && !blocks.vogk && layer.uniform) return uniformOf(layer, nth, doc);
         if (!blocks || !blocks.vogk || !Array.isArray(blocks.vsms)) return null;
         const unreadable = Array.isArray(blocks.unreadable) ? blocks.unreadable : [];
         if (SKIPPED_IF_UNREADABLE.some((k) => unreadable.indexOf(k) >= 0)) return null;
@@ -392,26 +396,22 @@
         const flags = typeof blocks.vsmsFlags === 'number' ? blocks.vsmsFlags : 0;
         if ((flags & (PATH_INVERTED | PATH_DISABLED)) !== 0) return null;
         if (blocks.vsms.some((r) => r.type === 8 && r.fill !== 0)) return null;
-        // Effets multiples (lmfx, lfxs) : non décodés, on ne sait pas ce qu'ils ajoutent à lfx2.
-        if (blocks.lmfx || blocks.lfxs) return null;
         if (!Object.prototype.hasOwnProperty.call(BLEND_MODES, layer.blend)) return null;
         // Opération booléenne de chaque sous-tracé : seul « combiner » (1) est une union fidèle.
         if (blocks.vsms.some((r) => (r.type === 0 || r.type === 3) && r.op !== 1)) return null;
 
-        const list = styles(blocks.lfx2);
-        if (list === null) return null;
-
         const vstk = blocks.vstk;
         const fillEnabled = !vstk || vstk.fillEnabled !== false;
-        const fill = fillEnabled ? readFill(blocks) : null;
+        const fill = fillEnabled ? readFill(blocks, layer.box) : null;
         if (fillEnabled && !fill) return null;
         const stroke = vstk && vstk.strokeEnabled === true ? readStroke(vstk) : null;
         if (vstk && vstk.strokeEnabled === true && !stroke) return null;
+        // L'effet Dégradé colore tout le calque, contour compris : un dégradé avec un contour reste en PSD.
+        if (fill && fill.type === 'ramp' && stroke) return null;
 
-        // Opacité du fond (iOpa) : elle n'atténue pas les styles, ce que la forme recréée ne sait
-        // pas séparer. Sans style actif, elle est simplement reportée dans fillOpacity.
+        // Opacité du fond (iOpa) : reportée dans fillOpacity ; l'hôte l'applique au remplissage et au contour,
+        // sauf si le calque a des styles, qu'il recopie avec leurs options de fusion (qui la contiennent déjà).
         const fillOpacity = blocks.iOpa === undefined ? 100 : blocks.iOpa / 255 * 100;
-        if (fillOpacity < 100 - EPSILON && list.length > 0) return null;
 
         const paths = readPaths(blocks, doc.width, doc.height);
         if (paths.length === 0) return null;
@@ -426,34 +426,49 @@
             paths,
             fill,
             stroke,
-            styles: resolveGlobalLight(list, doc),
         };
     }
 
-    function shapes(doc) {
-        const styles = SIMING.psd && SIMING.psd.styles;
-        if (typeof styles !== 'function' || typeof SIMING.psd.color !== 'function') throw new Error('styles.js doit être chargé avant SIMING.psd.shapes');
+    /**
+     * Parcours des calques (groupes exclus), le plus haut d'abord et en profondeur : visit(layer, nth, isBase), nth
+     * étant le rang du calque parmi ceux du même nom. Base d'un détourage : calque juste sous un calque détouré,
+     * l'ordre étant haut -> bas.
+     */
+    function walkLayers(doc, visit) {
         const counts = Object.create(null);   // sans prototype : un calque peut s'appeler « constructor »
-        const out = [];
         const walk = (layers) => {
             layers.forEach((layer, i) => {
                 if (layer.kind !== 'group') {
                     // Seuls les calques comptent : un groupe devient un précomp, que l'hôte ne cherche pas.
                     const nth = counts[layer.name] || 0;
                     counts[layer.name] = nth + 1;
-                    // Base d'un détourage (juste sous un calque détouré, l'ordre étant haut -> bas) : la
-                    // remplacer changerait ce que détourent les calques au-dessus. Son rang compte quand même.
-                    const isBase = layer.clipped !== true && i > 0 && layers[i - 1].clipped === true;
-                    const shape = isBase ? null : shapeOf(layer, nth, doc, styles);
-                    if (shape) out.push(shape);
+                    visit(layer, nth, layer.clipped !== true && i > 0 && layers[i - 1].clipped === true);
                 }
                 if (layer.children) walk(layer.children);
             });
         };
         walk(doc.layers);
+    }
+
+    function shapes(doc) {
+        const out = [];
+        // Base d'un détourage : la remplacer changerait ce que détourent les calques au-dessus (son rang compte quand même).
+        walkLayers(doc, (layer, nth, isBase) => {
+            const shape = isBase ? null : shapeOf(layer, nth, doc);
+            if (shape) out.push(shape);
+        });
         return out;
     }
 
-    SIMING.psd = Object.assign(SIMING.psd || {}, { shapes });
+    /** Calques texte du PSD (bloc TySh) : [{ name, nth }], le rang étant celui de shapes (match.nth). */
+    function texts(doc) {
+        const out = [];
+        walkLayers(doc, (layer, nth) => {
+            if (layer.blocks && layer.blocks.TySh === true) out.push({ name: layer.name, nth });
+        });
+        return out;
+    }
+
+    SIMING.psd = Object.assign(SIMING.psd || {}, { shapes, texts });
     if (typeof module !== 'undefined' && module.exports) module.exports = shapes;
 })(typeof window !== 'undefined' ? window : globalThis);
