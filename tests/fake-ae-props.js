@@ -134,36 +134,65 @@ const VECTOR_ITEMS = {
     ]),
 };
 
-/** Styles de calque (groupe « ADBE Layer Styles ») : menu anglais, matchName du groupe et de ses propriétés
- *  (« groupe/propriété »). Un style n'apparaît qu'après sa commande de menu. Noms non vérifiés dans After. */
-const LAYER_STYLE_DEFS = {
-    dropShadow:   { menu: 'Drop Shadow',          id: 9101, props: ['mode2', 'color', 'opacity', 'useGlobalAngle', 'localLightingAngle', 'distance', 'chokeMatte', 'blur', 'noise', 'layerConceals'] },
-    innerShadow:  { menu: 'Inner Shadow',         id: 9102, props: ['mode2', 'color', 'opacity', 'useGlobalAngle', 'localLightingAngle', 'distance', 'chokeMatte', 'blur', 'noise'] },
-    outerGlow:    { menu: 'Outer Glow',           id: 9103, props: ['mode2', 'color', 'opacity', 'noise', 'glowTechnique', 'chokeMatte', 'blur', 'inputRange', 'shadingNoise'] },
-    innerGlow:    { menu: 'Inner Glow',           id: 9104, props: ['mode2', 'color', 'opacity', 'noise', 'glowTechnique', 'innerGlowSource', 'chokeMatte', 'blur', 'inputRange', 'shadingNoise'] },
-    bevelEmboss:  { menu: 'Bevel and Emboss',     id: 9105, props: ['bevelStyle', 'bevelTechnique', 'bevelDirection', 'highlightMode', 'highlightColor', 'highlightOpacity', 'shadowMode', 'shadowColor', 'shadowOpacity', 'useGlobalAngle', 'localLightingAngle', 'localLightingAltitude', 'strengthRatio', 'blur', 'softness'] },
-    chromeFX:     { menu: 'Satin',                id: 9106, props: ['mode2', 'color', 'opacity', 'localLightingAngle', 'distance', 'blur', 'invert'] },
-    solidFill:    { menu: 'Color Overlay',        id: 9107, props: ['mode2', 'color', 'opacity'] },
-    gradientFill: { menu: 'Gradient Overlay',     id: 9108, props: ['mode2', 'opacity'] },
-    frameFX:      { menu: 'Stroke',               id: 9109, props: ['mode2', 'color', 'opacity', 'size', 'style'] },
+/**
+ * Styles de calque (groupe « ADBE Layer Styles »), tels qu'After les expose (relevé par script dans After 26.2) :
+ * un groupe par sorte de style, nommé « <sorte>/enabled », qui existe toujours ; `enabled` dit s'il est actif.
+ * Sans aucun style actif, tout le groupe « ADBE Layer Styles » est masqué : `selected = …` lève une erreur.
+ * Propriétés connues : celles que l'hôte lit (distance, flou, taille) ; les autres ne sont pas relevées.
+ * Les options de fusion (« ADBE Blend Options Group ») portent l'opacité du fond et l'angle global.
+ */
+const LAYER_STYLE_PROPS = {
+    dropShadow: ['distance', 'blur'], innerShadow: [], outerGlow: ['blur'], innerGlow: [], bevelEmboss: ['blur'],
+    chromeFX: [], solidFill: [], gradientFill: [], patternFill: [], frameFX: ['size'],
+};
+/** Noms affichés (anglais) : jamais égaux au matchName, comme dans After. */
+const LAYER_STYLE_NAMES = {
+    dropShadow: 'Drop Shadow', innerShadow: 'Inner Shadow', outerGlow: 'Outer Glow', innerGlow: 'Inner Glow', bevelEmboss: 'Bevel and Emboss',
+    chromeFX: 'Satin', solidFill: 'Color Overlay', gradientFill: 'Gradient Overlay', patternFill: 'Pattern Overlay', frameFX: 'Stroke',
 };
 
-function makeLayerStyles() {
-    return makeGroupState({ name: 'Layer Styles', matchName: 'ADBE Layer Styles' }, []);
+/** actifs : [nom de style | { style, values: { propriété: valeur } }] -> groupe « ADBE Layer Styles ». */
+function makeLayerStyles(actifs) {
+    const active = {};
+    (actifs || []).forEach((a) => {
+        const name = typeof a === 'string' ? a : a && a.style;
+        if (!Object.prototype.hasOwnProperty.call(LAYER_STYLE_PROPS, name)) throw new Error('Style de calque inconnu du faux After : ' + name);
+        active[name] = (a && a.values) || {};
+    });
+    const blend = makeGroupState({ name: 'Blend Options', matchName: 'ADBE Blend Options Group' }, [
+        makeGroupState({ name: 'Advanced Blending', matchName: 'ADBE Adv Blend Group' }, [
+            makePropState({ name: 'Fill Opacity', matchName: 'ADBE Layer Fill Opacity2', value: 100 }),
+        ]),
+        makePropState({ name: 'Global Light Angle', matchName: 'ADBE Global Angle2', value: 120 }),
+        makePropState({ name: 'Global Light Altitude', matchName: 'ADBE Global Altitude2', value: 30 }),
+    ]);
+    const groups = Object.keys(LAYER_STYLE_PROPS).map((kind) => {
+        const g = makeGroupState({ name: LAYER_STYLE_NAMES[kind], matchName: kind + '/enabled' }, LAYER_STYLE_PROPS[kind].map((p) => makePropState({
+            name: p, matchName: kind + '/' + p, value: Object.prototype.hasOwnProperty.call(active[kind] || {}, p) ? active[kind][p] : 0,
+        })));
+        g.enabled = Object.prototype.hasOwnProperty.call(active, kind);
+        return g;
+    });
+    return makeGroupState({ name: 'Layer Styles', matchName: 'ADBE Layer Styles' }, [blend].concat(groups));
 }
 
-/** Ajoute le style (groupe) au groupe Styles de calque d'un état de calque, une seule fois. */
-function addLayerStyle(layerState, group) {
-    const def = LAYER_STYLE_DEFS[group];
-    if (!layerState.layerStyles) layerState.layerStyles = makeLayerStyles();
-    const root = layerState.layerStyles;
-    if (root.children.some((c) => c.matchName === group)) return;
-    const colorLike = /color$/i;
-    const g = makeGroupState({ name: def.menu, matchName: group }, def.props.map((p) => makePropState({
-        name: p, matchName: group + '/' + p, value: colorLike.test(p) ? [0, 0, 0, 1] : 0,
-    })));
-    g.parent = root;
-    root.children.push(g);
+/** Aucun style actif : After masque tout le groupe « ADBE Layer Styles ». */
+function layerStylesHidden(root) {
+    return !root.children.some((c) => /\/enabled$/.test(c.matchName) && c.enabled === true);
+}
+
+/** L'effet « Dégradé » (ADBE Ramp) : point et couleur de départ, point et couleur d'arrivée, forme (1 linéaire, 2 radial), dispersion, part de l'original. */
+function makeRamp(comp) {
+    const w = comp ? comp.width : 1920, h = comp ? comp.height : 1080;
+    return makeGroupState({ name: 'Ramp', matchName: 'ADBE Ramp' }, [
+        makePropState({ name: 'Start of Ramp', matchName: 'ADBE Ramp-0001', value: [w / 2, 0], spatial: true }),
+        makePropState({ name: 'Start Color', matchName: 'ADBE Ramp-0002', value: [0, 0, 0, 1] }),
+        makePropState({ name: 'End of Ramp', matchName: 'ADBE Ramp-0003', value: [w / 2, h], spatial: true }),
+        makePropState({ name: 'End Color', matchName: 'ADBE Ramp-0004', value: [1, 1, 1, 1] }),
+        makePropState({ name: 'Ramp Shape', matchName: 'ADBE Ramp-0005', value: 1 }),
+        makePropState({ name: 'Ramp Scatter', matchName: 'ADBE Ramp-0006', value: 0 }),
+        makePropState({ name: 'Blend With Original', matchName: 'ADBE Ramp-0007', value: 0 }),
+    ]);
 }
 
 /** Toutes les propriétés (états) d'un groupe, cachées comprises. */
@@ -436,6 +465,16 @@ class GroupRef {
     get propertyDepth() { return depthOf(this._state); }
     propertyGroup(n) { return ancestor(this._state, this._ctx, n === undefined ? 1 : n); }
     get selected() { return this._state.selected; }
+    /** Sans style actif, « ADBE Layer Styles » est masqué : comme dans After, on ne peut pas le sélectionner. */
+    set selected(v) {
+        if (this._state.matchName === 'ADBE Layer Styles' && layerStylesHidden(this._state)) {
+            throw new Error('Unable to set selected: the property or a parent property is hidden');
+        }
+        this._state.selected = !!v;
+    }
+    /** Interrupteur du groupe (un style de calque actif ou non) ; vrai pour les autres groupes. */
+    get enabled() { return this._state.enabled !== false; }
+    set enabled(v) { this._state.enabled = !!v; }
     get numProperties() { return visibleChildren(this._state).length; }
     get canSetExpression() { return false; }
     /** property(index 1..n | nom | matchName) -> poignée, ou null. */
@@ -455,6 +494,7 @@ class GroupRef {
         if (this._state.matchName === 'ADBE Effect Parade') {
             if (matchName === 'ADBE Slider Control') item = makeSliderControl();
             else if (matchName === 'Pseudo/MDS Elastic Controller') item = makeElasticController();
+            else if (matchName === 'ADBE Ramp') item = makeRamp(this._ctx.comp);
             else throw new Error('Unknown effect: ' + matchName);
         } else if (VECTOR_PARENTS.includes(this._state.matchName)) {
             if (!VECTOR_ITEMS[matchName]) throw new Error('Unknown shape item: ' + matchName);
@@ -496,5 +536,5 @@ function selectedStates(root) {
 module.exports = {
     KeyframeInterpolationType, PropertyValueType, PropertyType, KeyframeEase,
     PropertyRef, GroupRef, refFor, makePropState, makeGroupState, makeTransform, makeEffects,
-    makeElasticController, makeSliderControl, makeShapeContents, makeLayerStyles, addLayerStyle, LAYER_STYLE_DEFS, allProps, selectedStates, visibleChildren, cloneState,
+    makeElasticController, makeSliderControl, makeShapeContents, makeLayerStyles, layerStylesHidden, makeRamp, allProps, selectedStates, visibleChildren, cloneState,
 };

@@ -415,7 +415,7 @@ module.exports = function (test) {
         }
     });
 
-    test('Import PSD : replaceWithShape, dégradé -> refus (null) sans rien créer ; panne distincte du refus (lastFailure)', () => {
+    test('Import PSD : replaceWithShape, ancien type de dégradé (gradient) -> refus (null) sans rien créer ; panne distincte du refus (lastFailure)', () => {
         const { comp, st, core, run } = psdScene();
         const grad = { type: 'gradient', kind: 'linear', angle: 0, stops: [{ pos: 0, color: [1, 0, 0] }, { pos: 1, color: [0, 0, 1] }], opacityStops: [] };
         assert.strictEqual(run(shapeOf({ fill: grad })), null);
@@ -477,226 +477,240 @@ module.exports = function (test) {
         }
     });
     // ------------------------------------------------------------------------
-    //  Styles de calque (menu Calque › Styles de calque, puis valeurs par matchName)
+    //  Styles de calque : recopiés du calque PSD (Copier, Coller), remplissage et contour à 100 %
     // ------------------------------------------------------------------------
 
-    const styleGlow = (over) => Object.assign({ kind: 'outerGlow', scale: 100, blend: 'screen', color: [1, 1, 1], opacity: 43,
-        technique: 'softer', size: 8, spread: 5, range: 50, jitter: 10, noise: 3 }, over || {});
-    const styleShadow = (over) => Object.assign({ kind: 'dropShadow', scale: 100, blend: 'multiply', color: [0, 0.5, 1], opacity: 60,
-        angle: 120, useGlobalLight: true, distance: 6, size: 9, spread: 20, noise: 4, layerConceals: true }, over || {});
-    const lsGroup = (layer, g) => layer.property('ADBE Layer Styles').property(g);
-    const lsVal = (layer, g, p) => plain(lsGroup(layer, g).property(g + '/' + p).value);
-    /** Scène des PSD + un calque de forme vide (index 1) pour tester applyStyles seul. */
-    function styleScene() {
-        const s = psdScene();
-        s.comp.addLayer('Forme', { kind: 'shape' });
-        s.comp.layers.unshift(s.comp.layers.pop());
-        return Object.assign(s, { shapeLayer: s.comp.layer(1) });
+    /** Styles que After a importés avec le PSD (voir FakeComp._state) : un blur de 29 à la lueur externe, une incrustation couleur. */
+    const GLOW_AND_FILL = [{ style: 'outerGlow', values: { blur: 29 } }, 'solidFill'];
+    /** Les styles d'un calque de forme : leur groupe, rendu visible (il l'est ou la lecture lève). */
+    const stylesOf = (layer) => {
+        const root = layer.property('ADBE Layer Styles');
+        root.selected = true;
+        root.selected = false;
+        return root;
+    };
+    const hiddenStyles = (layer) => {
+        try { layer.property('ADBE Layer Styles').selected = true; } catch (e) { return true; }
+        return false;
+    };
+    /** Coller (commande 20) reste sans effet : le presse-papiers d'After refuse, ou la commande n'a rien à coller. */
+    function withPasteIgnored(fn) {
+        const real = app.executeCommand;
+        app.executeCommand = function (id) { if (id === 20) { this.commands.push(id); return; } return real.call(this, id); };
+        try { return fn(); } finally { app.executeCommand = real; }
     }
+    const fillOpacityOf = (layer) => itemOf(layer, 1, 'ADBE Vector Graphic - Fill').property('ADBE Vector Fill Opacity').value;
+    const strokeOpacityOf = (layer) => itemOf(layer, 1, 'ADBE Vector Graphic - Stroke').property('ADBE Vector Stroke Opacity').value;
 
-    test('Import PSD : applyStyles, lueur externe -> commande « Outer Glow » lancée une fois, valeurs posées, retour 1', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, [styleGlow()]), 1);
-        assert.deepStrictEqual(app.commands, [9103]);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'opacity'), 43);
-        assert.deepStrictEqual(lsVal(shapeLayer, 'outerGlow', 'color'), [1, 1, 1, 1]);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'mode2'), BlendingMode.SCREEN);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'blur'), 8);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'chokeMatte'), 5);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'inputRange'), 50);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'shadingNoise'), 10);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'noise'), 3);
-        assert.strictEqual(lsVal(shapeLayer, 'outerGlow', 'glowTechnique'), 1);
-        assert.strictEqual(comp.selection.length, 0, 'sélection rendue vide');
-    });
-
-    test('Import PSD : applyStyles, aucun style -> aucune commande, 0', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, []), 0);
-        assert.deepStrictEqual(app.commands, []);
-    });
-
-    test('Import PSD : applyStyles, menus d\'une autre langue (noms inconnus) -> 0, sans erreur ni commande', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        app.menuNames = {};
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, [styleGlow(), styleShadow()]), 0);
-        assert.deepStrictEqual(app.commands, []);
-    });
-
-    test('Import PSD : applyStyles, noms français des menus reconnus', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        app.menuNames = { 'Lueur externe': 9103, 'Ombre portée': 9101 };
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, [styleShadow(), styleGlow()]), 2);
-        assert.deepStrictEqual(app.commands, [9101, 9103]);
-    });
-
-    test('Import PSD : applyStyles, ombre portée -> mode, couleur, angle (lumière globale), distance, étendue, taille, bruit, creusement', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, [styleShadow()]), 1);
-        const v = (p) => lsVal(shapeLayer, 'dropShadow', p);
-        assert.strictEqual(v('mode2'), BlendingMode.MULTIPLY);
-        assert.deepStrictEqual(v('color'), [0, 0.5, 1, 1]);
-        assert.strictEqual(v('opacity'), 60);
-        assert.strictEqual(v('useGlobalAngle'), 0, 'angle toujours local');
-        assert.strictEqual(v('localLightingAngle'), 120);
-        assert.strictEqual(v('distance'), 6);
-        assert.strictEqual(v('chokeMatte'), 20);
-        assert.strictEqual(v('blur'), 9);
-        assert.strictEqual(v('noise'), 4);
-        assert.strictEqual(v('layerConceals'), 1);
-    });
-
-    test('Import PSD : applyStyles, les six autres sortes de style, dans l\'ordre donné', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        const styles = [
-            styleShadow({ kind: 'innerShadow', layerConceals: undefined, useGlobalLight: false }),
-            styleGlow({ kind: 'innerGlow', source: 'edge', technique: 'precise' }),
-            { kind: 'bevelEmboss', scale: 100, blend: 'screen', color: [1, 1, 1], opacity: 75, shadowBlend: 'multiply', shadowColor: [0, 0, 0], shadowOpacity: 50,
-                style: 'inner', technique: 'smooth', direction: 'up', angle: 120, altitude: 30, useGlobalLight: true, size: 5, depth: 100, soften: 2 },
-            { kind: 'satin', scale: 100, blend: 'multiply', color: [0, 0, 0], opacity: 50, angle: 19, distance: 11, size: 14, invert: true },
-            { kind: 'colorOverlay', scale: 100, blend: 'normal', color: [1, 0, 0], opacity: 80 },
-            { kind: 'stroke', scale: 100, blend: 'normal', color: [0, 1, 0], opacity: 90, size: 3, position: 'center' },
-        ];
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, styles), 6);
-        assert.deepStrictEqual(app.commands, [9102, 9104, 9105, 9106, 9107, 9109]);
-        assert.strictEqual(lsVal(shapeLayer, 'innerShadow', 'useGlobalAngle'), 0);
-        assert.strictEqual(lsVal(shapeLayer, 'innerGlow', 'glowTechnique'), 2);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'highlightOpacity'), 75);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'shadowOpacity'), 50);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'shadowMode'), BlendingMode.MULTIPLY);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'localLightingAltitude'), 30);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'strengthRatio'), 100);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'softness'), 2);
-        assert.strictEqual(lsVal(shapeLayer, 'chromeFX', 'distance'), 11);
-        assert.strictEqual(lsVal(shapeLayer, 'chromeFX', 'invert'), 1);
-        assert.deepStrictEqual(lsVal(shapeLayer, 'solidFill', 'color'), [1, 0, 0, 1]);
-        assert.strictEqual(lsVal(shapeLayer, 'solidFill', 'opacity'), 80);
-        assert.strictEqual(lsVal(shapeLayer, 'frameFX', 'size'), 3);
-        assert.strictEqual(lsVal(shapeLayer, 'frameFX', 'style'), 3);
-    });
-
-    test('Import PSD : replaceWithShape + lueur externe -> la forme a la lueur (opacité 43), l\'original est supprimé', () => {
-        const { comp, st, core, run } = psdScene();
-        const out = run(shapeOf({ styles: [styleGlow()] }));
-        assert.ok(out);
+    test('Import PSD : replaceWithShape, calque PSD à styles -> styles copiés (Copier puis Coller), remplissage et contour à 100 %', () => {
+        const { comp, st, core, run } = psdScene({ layer: { styles: GLOW_AND_FILL } });
+        const out = run(shapeOf({ fillOpacity: 40 }));
+        assert.ok(out, 'une forme');
         assert.strictEqual(core.lastFailure(), null);
+        assert.deepStrictEqual(app.commands, [19, 20], 'Copier puis Coller, rien d\'autre');
         assert.ok(comp.layers.indexOf(st) < 0, 'original supprimé');
         assert.deepStrictEqual(names(comp), ['Haut', 'Rectangle 1', 'Bas']);
         const layer = comp.layer(2);
-        assert.strictEqual(lsVal(layer, 'outerGlow', 'opacity'), 43);
-        assert.deepStrictEqual(app.commands, [9103]);
-        assert.strictEqual(comp.selection.length, 0);
+        assert.strictEqual(layer._state.kind, 'shape');
+        const root = stylesOf(layer);
+        assert.strictEqual(root.property('outerGlow/enabled').enabled, true);
+        assert.strictEqual(root.property('outerGlow/enabled').property('outerGlow/blur').value, 29, 'réglages copiés');
+        assert.strictEqual(root.property('solidFill/enabled').enabled, true);
+        assert.strictEqual(root.property('dropShadow/enabled').enabled, false);
+        assert.strictEqual(fillOpacityOf(layer), 100, 'l\'opacité du fond est dans les options de fusion copiées');
+        assert.strictEqual(strokeOpacityOf(layer), 100);
+        assert.strictEqual(comp.selection.length, 0, 'sélection rétablie');
     });
 
-    test('Import PSD : replaceWithShape, menus inconnus -> original gardé, forme retirée, panne notée', () => {
-        const { comp, st, core, run } = psdScene();
-        app.menuNames = {};
-        assert.strictEqual(run(shapeOf({ styles: [styleGlow()] })), null);
-        const f = core.lastFailure();
-        assert.ok(f && f.message.length > 0, 'systématique : l\'utilisateur doit le voir');
-        assert.strictEqual(comp.numLayers, 3);
-        assert.strictEqual(comp.layers[1], st);
-        assert.strictEqual(comp.selection.length, 0);
+    test('Import PSD : replaceWithShape, calque PSD sans style -> rien de copié, remplissage et contour à l\'opacité du fond', () => {
+        const { comp, core, run } = psdScene();
+        assert.ok(run(shapeOf({ fillOpacity: 40 })));
+        assert.strictEqual(core.lastFailure(), null);
+        assert.deepStrictEqual(app.commands, [], 'ni Copier ni Coller : le presse-papiers n\'est pas touché');
+        const layer = comp.layer(2);
+        assert.strictEqual(hiddenStyles(layer), true, 'la forme n\'a pas de style');
+        assert.strictEqual(fillOpacityOf(layer), 40);
+        assert.strictEqual(strokeOpacityOf(layer), 40);
     });
 
-    test('Import PSD : replaceWithShape, propriété de style introuvable (matchName faux) -> retour arrière, original gardé, panne notée', () => {
-        const defs = require('./fake-ae-props').LAYER_STYLE_DEFS.solidFill;
-        const saved = defs.props;
-        defs.props = saved.filter((p) => p !== 'opacity');   // le faux After n'a pas « solidFill/opacity »
-        try {
-            const { comp, st, core, run } = psdScene({ layer: { locked: true } });
-            assert.strictEqual(run(shapeOf({ styles: [{ kind: 'colorOverlay', blend: 'normal', color: [1, 0, 0], opacity: 50 }] })), null);
-            const f = core.lastFailure();
-            assert.ok(f && /solidFill\/opacity/.test(f.message), f && f.message);
-            assert.strictEqual(comp.numLayers, 3);
-            assert.strictEqual(comp.layers[1], st);
-            assert.strictEqual(st.locked, true);
-            assert.strictEqual(comp.selection.length, 0);
-        } finally {
-            defs.props = saved;
+    test('Import PSD : replaceWithShape, calque PSD verrouillé à styles -> forme à styles, verrou reporté', () => {
+        const { comp, st, run } = psdScene({ layer: { locked: true, styles: ['frameFX'] } });
+        assert.ok(run(shapeOf()));
+        assert.ok(comp.layers.indexOf(st) < 0);
+        const layer = comp.layer(2);
+        assert.strictEqual(layer.locked, true);
+        assert.strictEqual(stylesOf(layer).property('frameFX/enabled').enabled, true);
+    });
+
+    test('Import PSD : replaceWithShape, la sélection de l\'utilisateur est rétablie (styles copiés ou non)', () => {
+        for (const layerOpts of [{ styles: ['outerGlow'] }, {}]) {
+            const { comp, run } = psdScene({ layer: layerOpts });
+            comp.layer(1).selected = true;
+            comp.layer(3).selected = true;
+            assert.ok(run(shapeOf()));
+            assert.deepStrictEqual(comp.selectedLayers.map((l) => l.name).sort(), ['Bas', 'Haut'], JSON.stringify(layerOpts));
         }
     });
 
-    test('Import PSD : replaceWithShape, incrustation en dégradé, style inconnu ou deux styles de même sorte -> refus silencieux', () => {
-        const grad = { kind: 'gradientOverlay', scale: 100, blend: 'normal', opacity: 100, angle: 90, reverse: false, gradientType: 'linear',
-            gradientScale: 100, align: true, offset: [0, 0], stops: [{ location: 0, color: [0, 0, 0] }, { location: 1, color: [1, 1, 1] }], opacityStops: [] };
-        const cases = [[grad], [styleGlow(), grad], [{ kind: 'nimporte' }], [styleGlow(), styleGlow({ opacity: 10 })]];
-        for (const styles of cases) {
-            const { comp, st, core, run } = psdScene();
-            assert.strictEqual(run(shapeOf({ styles })), null);
-            assert.strictEqual(core.lastFailure(), null, 'refus, pas panne');
-            assert.deepStrictEqual(app.commands, [], 'rien n\'a été lancé');
-            assert.strictEqual(comp.numLayers, 3);
-            assert.strictEqual(comp.layers[1], st);
-        }
-    });
-    // ---- Tour de correction 1 : champs de style refusés ou reportés, lumière globale, blend de la forme ----
-
-    const bevelOf = (over) => Object.assign({ kind: 'bevelEmboss', scale: 100, blend: 'screen', color: [1, 1, 1], opacity: 75, shadowBlend: 'multiply',
-        shadowColor: [0, 0, 0], shadowOpacity: 50, style: 'inner', technique: 'smooth', direction: 'up', angle: 120, altitude: 30,
-        useGlobalLight: false, size: 5, depth: 100, soften: 0 }, over || {});
-
-    test('Import PSD : applyStyles, biseautage hors défauts (extérieur, ciseau dur, vers le bas) et lueur interne depuis le centre -> reportés', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        const styles = [bevelOf({ style: 'strokeEmboss', technique: 'chiselHard', direction: 'down' }), styleGlow({ kind: 'innerGlow', source: 'center' })];
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, styles), 2);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'bevelStyle'), 5);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'bevelTechnique'), 2);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'bevelDirection'), 2);
-        assert.strictEqual(lsVal(shapeLayer, 'innerGlow', 'innerGlowSource'), 1);
-        // valeurs par défaut de Photoshop
-        const b = styleScene();
-        assert.strictEqual(b.core.applyStyles(b.comp, b.shapeLayer, [bevelOf({ style: 'outer' }), styleGlow({ kind: 'innerGlow', source: 'edge' })]), 2);
-        assert.strictEqual(lsVal(b.shapeLayer, 'bevelEmboss', 'bevelStyle'), 1);
-        assert.strictEqual(lsVal(b.shapeLayer, 'bevelEmboss', 'bevelTechnique'), 1);
-        assert.strictEqual(lsVal(b.shapeLayer, 'bevelEmboss', 'bevelDirection'), 1);
-        assert.strictEqual(lsVal(b.shapeLayer, 'innerGlow', 'innerGlowSource'), 2);
-    });
-
-    test('Import PSD : replaceWithShape, valeur de style sans équivalent (biseautage, lueur, mode de fusion inconnu) -> refus silencieux', () => {
-        const cases = [
-            [bevelOf({ style: 'inconnu' })], [bevelOf({ technique: 'inconnu' })], [bevelOf({ direction: 'inconnu' })],
-            [styleGlow({ kind: 'innerGlow', source: 'inconnu' })], [styleGlow({ technique: 'inconnu' })],
-            [styleGlow({ blend: 'nimporte' })], [styleShadow({ blend: 'Zzzz' })], [bevelOf({ shadowBlend: 'nimporte' })], [bevelOf({ blend: 'subtract' })],
-            [{ kind: 'stroke', blend: 'normal', color: [0, 0, 0], opacity: 100, size: 3, position: 'inconnu' }],
-        ];
-        for (const styles of cases) {
-            const { comp, st, core, run } = psdScene();
-            assert.strictEqual(run(shapeOf({ styles })), null, JSON.stringify(styles[0]));
-            assert.strictEqual(core.lastFailure(), null, 'refus, pas panne');
-            assert.deepStrictEqual(app.commands, [], 'rien n\'a été lancé');
-            assert.strictEqual(comp.numLayers, 3);
-            assert.strictEqual(comp.layers[1], st);
-        }
-        // un mode connu d'After (« subtract » n'existe pas dans ce faux After, « overlay » si) reste accepté
-        const ok = psdScene();
-        assert.ok(ok.run(shapeOf({ styles: [styleGlow({ blend: 'overlay' })] })));
-    });
-
-    test('Import PSD : lumière globale, l\'angle est toujours écrit en local, « utiliser l\'angle global » coupé', () => {
-        const { comp, core, shapeLayer } = styleScene();
-        const styles = [styleShadow({ useGlobalLight: true, angle: 90 }), bevelOf({ useGlobalLight: true, angle: 90, altitude: 20 })];
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, styles), 2);
-        assert.strictEqual(lsVal(shapeLayer, 'dropShadow', 'useGlobalAngle'), 0);
-        assert.strictEqual(lsVal(shapeLayer, 'dropShadow', 'localLightingAngle'), 90);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'useGlobalAngle'), 0);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'localLightingAngle'), 90);
-        assert.strictEqual(lsVal(shapeLayer, 'bevelEmboss', 'localLightingAltitude'), 20);
-    });
-
-    test('Import PSD : applyStyles ignore les entrées nulles et rend la sélection de l\'utilisateur', () => {
-        const { comp, core, shapeLayer } = styleScene();
+    test('Import PSD : replaceWithShape, Coller sans effet -> panne visible, forme retirée, original intact (verrou compris), sélection rétablie', () => {
+        const { comp, st, core, run } = psdScene({ layer: { locked: true, styles: ['outerGlow'] } });
         comp.layer(3).selected = true;
-        comp.layer(4).selected = true;
-        const before = comp.selectedLayers.map((l) => l.index).sort();
-        assert.strictEqual(core.applyStyles(comp, shapeLayer, [null, undefined, styleGlow(), null]), 1);
-        assert.deepStrictEqual(comp.selectedLayers.map((l) => l.index).sort(), before);
-        assert.strictEqual(comp.selectedLayers.some((l) => l.index === 1), false, 'le calque de forme n\'est pas resté sélectionné');
+        const out = withPasteIgnored(() => run(shapeOf()));
+        assert.strictEqual(out, null);
+        const f = core.lastFailure();
+        assert.ok(f && /Coller/.test(f.message), 'panne notée : ' + JSON.stringify(f));
+        assert.deepStrictEqual(app.commands, [19, 20]);
+        assert.strictEqual(comp.numLayers, 3, 'pas de forme à demi faite');
+        assert.strictEqual(comp.layers[1], st, 'original resté en place');
+        assert.strictEqual(st.locked, true);
+        assert.deepStrictEqual(comp.selectedLayers.map((l) => l.name), ['Bas']);
+    });
+
+    test('Import PSD : replaceWithShape, la compo n\'est pas la compo active -> panne visible, ni Copier ni Coller lancés', () => {
+        const { comp, st, core, run } = psdScene({ layer: { styles: ['outerGlow'] } });
+        app.project.activeItem = new FakeComp(77, 'Autre');
+        assert.strictEqual(run(shapeOf()), null);
+        assert.ok(core.lastFailure(), 'panne visible');
+        assert.deepStrictEqual(app.commands, []);
+        assert.strictEqual(comp.layers[1], st);
+        assert.strictEqual(comp.numLayers, 3);
+    });
+
+    test('Import PSD : copyLayerStyles, true avec des styles (groupe de la cible visible), false sans, rien lancé dans ce cas', () => {
+        const { comp, core } = psdScene({ layer: { styles: ['bevelEmboss'] } });
+        const target = comp.layer(1);
+        assert.strictEqual(core.copyLayerStyles(comp, comp.layer(3), target), false, 'Bas n\'a aucun style');
+        assert.deepStrictEqual(app.commands, []);
+        assert.strictEqual(hiddenStyles(target), true);
+        assert.strictEqual(core.copyLayerStyles(comp, comp.layer(2), target), true);
+        assert.deepStrictEqual(app.commands, [19, 20]);
+        assert.strictEqual(stylesOf(target).property('bevelEmboss/enabled').enabled, true);
+        assert.strictEqual(hiddenStyles(comp.layer(3)), true, 'les autres calques n\'ont rien reçu');
+        assert.strictEqual(comp.selection.length, 0);
+    });
+
+    test('Import PSD : copyLayerStyles, le presse-papiers d\'une copie précédente ne donne pas le succès d\'un collage sans effet', () => {
+        const { comp, core } = psdScene({ layer: { styles: ['outerGlow'] } });
+        assert.strictEqual(core.copyLayerStyles(comp, comp.layer(2), comp.layer(1)), true);   // remplit le presse-papiers
+        // Coller ignoré : la cible n'a toujours rien, l'échec est détecté (pas de succès supposé)
+        assert.throws(() => withPasteIgnored(() => core.copyLayerStyles(comp, comp.layer(2), comp.layer(3))), /Coller/);
+        assert.strictEqual(hiddenStyles(comp.layer(3)), true);
+    });
+
+    // ------------------------------------------------------------------------
+    //  Dégradé linéaire à deux couleurs : remplissage de la couleur de départ + effet Dégradé
+    // ------------------------------------------------------------------------
+
+    const rampOf = (over) => Object.assign({ type: 'ramp', start: [1000, 500], end: [1400, 300], startColor: [1, 0, 0], endColor: [0, 0, 1] }, over || {});
+    const rampFx = (layer) => layer.property('ADBE Effect Parade').property('ADBE Ramp');
+    const fx = (layer, n) => plain(rampFx(layer).property('ADBE Ramp-000' + n).value);
+
+    test('Import PSD : replaceWithShape, dégradé (ramp) -> remplissage de la couleur de départ et effet Dégradé aux bons paramètres', () => {
+        const { comp, core, run } = psdScene();
+        assert.ok(run(shapeOf({ fill: rampOf(), stroke: null })));
+        assert.strictEqual(core.lastFailure(), null);
+        const layer = comp.layer(2);
+        assert.deepStrictEqual(fillOf(layer), [1, 0, 0, 1], 'couleur de départ');
+        assert.strictEqual(fillOpacityOf(layer), 100);
+        assert.ok(rampFx(layer), 'effet Dégradé posé');
+        assert.deepStrictEqual(fx(layer, 1), [1000, 500], 'point de départ tel quel');
+        assert.deepStrictEqual(fx(layer, 2), [1, 0, 0, 1]);
+        assert.deepStrictEqual(fx(layer, 3), [1400, 300], 'point d\'arrivée tel quel');
+        assert.deepStrictEqual(fx(layer, 4), [0, 0, 1, 1]);
+        assert.strictEqual(fx(layer, 5), 1, 'linéaire');
+        assert.strictEqual(fx(layer, 6), 0, 'sans dispersion');
+        assert.strictEqual(fx(layer, 7), 0, 'rien de l\'original');
+        assert.strictEqual(layer.property('ADBE Effect Parade').numProperties, 1);
+        // l'ancre du calque de forme est [0, 0] : les points (coordonnées du document) valent dans l'espace du calque
+        assert.deepStrictEqual(plain(layer.property('ADBE Transform Group').property('ADBE Anchor Point').value), [0, 0]);
+    });
+
+    test('Import PSD : replaceWithShape, dégradé, calque PSD décalé dans la compo -> les points restent en coordonnées du document, la forme suit par sa position', () => {
+        const { comp, run } = psdScene({ pos: [1289.5, 424.5] });
+        assert.ok(run(shapeOf({ fill: rampOf(), stroke: null })));
+        const layer = comp.layer(2);
+        assert.deepStrictEqual(plain(layer.property('ADBE Transform Group').property('ADBE Position').value), [100, 50]);
+        assert.deepStrictEqual(fx(layer, 1), [1000, 500]);
+        assert.deepStrictEqual(fx(layer, 3), [1400, 300]);
+    });
+
+    test('Import PSD : replaceWithShape, dégradé : opacité du fond sur le remplissage ; avec des styles, 100 % et styles copiés', () => {
+        const a = psdScene();
+        assert.ok(a.run(shapeOf({ fill: rampOf(), stroke: null, fillOpacity: 40 })));
+        assert.strictEqual(fillOpacityOf(a.comp.layer(2)), 40);
+        const b = psdScene({ layer: { styles: ['outerGlow'] } });
+        assert.ok(b.run(shapeOf({ fill: rampOf(), stroke: null, fillOpacity: 40 })));
+        assert.strictEqual(fillOpacityOf(b.comp.layer(2)), 100);
+        assert.ok(rampFx(b.comp.layer(2)), 'effet Dégradé aussi');
+        assert.strictEqual(stylesOf(b.comp.layer(2)).property('outerGlow/enabled').enabled, true);
+    });
+
+    test('Import PSD : replaceWithShape, dégradé avec un contour, ou incomplet, ou d\'un autre genre -> refus silencieux, calque intact', () => {
+        const cases = [
+            shapeOf({ fill: rampOf() }),                                              // contour présent
+            shapeOf({ fill: rampOf({ start: [1] }), stroke: null }),
+            shapeOf({ fill: rampOf({ end: undefined }), stroke: null }),
+            shapeOf({ fill: rampOf({ startColor: [1, 0] }), stroke: null }),
+            shapeOf({ fill: rampOf({ endColor: undefined }), stroke: null }),
+            shapeOf({ fill: { type: 'gradient', kind: 'radial', stops: [] }, stroke: null }),   // l'ancien genre n'existe plus
+            shapeOf({ fill: { type: 'pattern' } }),
+        ];
+        for (const shape of cases) {
+            const { comp, st, core, run } = psdScene();
+            assert.strictEqual(run(shape), null, JSON.stringify(shape.fill));
+            assert.strictEqual(core.lastFailure(), null, 'refus, pas panne');
+            assert.strictEqual(comp.numLayers, 3);
+            assert.strictEqual(comp.layers[1], st);
+        }
+    });
+
+    test('Import PSD : ellipse de la planche test (dégradé bleu -> gris) lue par shapes() puis recréée : effet Dégradé aux points mesurés dans After', () => {
+        const reader = require('../extension/client/js/psd/reader.js');
+        const shapesOf = require('../extension/client/js/psd/shapes.js');
+        const doc = reader.read(fs.readFileSync(path.join(__dirname, 'fixtures/psd/planche-test.psd')));
+        const shape = shapesOf(doc).filter((s) => s.match.name === 'Ellipse 1')[0];
+        assert.ok(shape && shape.fill.type === 'ramp', 'dégradé lu');
+        const { comp, core, run } = psdScene({ size: [shape.box.right - shape.box.left, shape.box.bottom - shape.box.top] });
+        assert.ok(run(shape), 'forme recréée');
+        assert.strictEqual(core.lastFailure(), null);
+        const layer = comp.layer(2);
+        const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 0.01);
+        assert.ok(near(fx(layer, 1), [516.72, 562.42]), JSON.stringify(fx(layer, 1)));
+        assert.ok(near(fx(layer, 3), [204.28, 176.58]), JSON.stringify(fx(layer, 3)));
+        assert.ok(near(fx(layer, 2), [9.9455 / 255, 107.2685 / 255, 169 / 255, 1]), 'bleu');
+        assert.ok(near(fx(layer, 4), [241.0934 / 255, 242.0817 / 255, 243 / 255, 1]), 'gris');
+    });
+
+    // ------------------------------------------------------------------------
+    //  Débordement des styles (précompos recadrées) : vrais noms de groupes
+    // ------------------------------------------------------------------------
+
+    test('Import PSD : styleOverflow lit les groupes « <sorte>/enabled » : distance + flou de l\'ombre, flou de la lueur, le plus grand ; styles coupés ignorés', () => {
+        const overflow = (styles) => { const s = psdScene({ layer: { styles } }); return s.core.styleOverflow(s.comp.layer(2)); };
+        const shadow = { style: 'dropShadow', values: { distance: 7, blur: 12 } };
+        assert.strictEqual(overflow([shadow, { style: 'outerGlow', values: { blur: 15 } }]), 19, 'ombre portée : 7 + 12');
+        assert.strictEqual(overflow([shadow, { style: 'outerGlow', values: { blur: 30 } }, { style: 'frameFX', values: { size: 4 } }]), 30, 'lueur externe');
+        assert.strictEqual(overflow([{ style: 'frameFX', values: { size: 4 } }]), 4, 'contour');
+        assert.strictEqual(overflow([{ style: 'bevelEmboss', values: { blur: 9 } }]), 9, 'biseautage');
+        // style coupé qui garde des valeurs : ignoré
+        const off = psdScene({ layer: { styles: ['solidFill'] } });
+        off.st.layerStyles.children.filter((c) => c.matchName === 'dropShadow/enabled')[0].children.forEach((c) => { c.value = 50; });
+        assert.strictEqual(off.core.styleOverflow(off.comp.layer(2)), 0);
+        // aucun style : 0
+        assert.strictEqual(overflow(undefined), 0);
+    });
+
+    test('Import PSD : cropPrecomp compte le débordement des styles (ombre portée) dans la boîte recadrée', () => {
+        const { sub, states, crop } = cropScene([
+            { name: 'A', rect: { left: 0, top: 0, width: 100, height: 100 }, pos: [300, 400], styles: [{ style: 'dropShadow', values: { distance: 7, blur: 12 } }] },
+        ]);
+        assert.strictEqual(crop(), true);
+        assert.deepStrictEqual([sub.width, sub.height], [138, 138], '100 + 2 × 19');
+        assert.deepStrictEqual(valueOf(states.A, 'ADBE Position'), [19, 19]);
     });
 
     test('Import PSD : replaceWithShape sur le vrai PSD (Rectangle 1) n\'est pas refusé pour son mode de fusion ; mul / scrn -> MULTIPLY / SCREEN', () => {
         const reader = require('../extension/client/js/psd/reader.js');
-        require('../extension/client/js/psd/styles.js');
         const shapesOf = require('../extension/client/js/psd/shapes.js');
         const bytes = fs.readFileSync(path.join(__dirname, 'fixtures/psd/planche-test.psd'));
         const rect1 = (doc) => shapesOf(doc).filter((s) => s.match.name === 'Rectangle 1' && s.match.nth === 0)[0];
@@ -719,40 +733,17 @@ module.exports = function (test) {
 
     // ---- Revue finale : vrais descripteurs jusqu'à l'hôte, taille du métrage, compo active, limite des angles ----
 
-    test('Import PSD : C1, lueur externe en code Photoshop (Md = Scrn) -> shapes() -> replaceWithShape pose une lueur en SCREEN', () => {
-        const reader = require('../extension/client/js/psd/reader.js');
-        require('../extension/client/js/psd/styles.js');
-        const shapesOf = require('../extension/client/js/psd/shapes.js');
-        const doc = reader.read(fs.readFileSync(path.join(__dirname, 'fixtures/psd/planche-test.psd')));
-        const layer = doc.layers.filter((l) => l.name === 'Rectangle 1')[0];
-        const linear = { _class: 'ShpC', 'Nm  ': 'Linéaire', 'Crv ': [{ _class: 'CrPt', Hrzn: 0, Vrtc: 0 }, { _class: 'CrPt', Hrzn: 255, Vrtc: 255 }] };
-        layer.blocks.lfx2 = { _class: 'null', masterFXSwitch: true, OrGl: {
-            _class: 'OrGl', enab: true, present: true, 'Md  ': { enum: 'BlnM', v: 'Scrn' },
-            'Clr ': { _class: 'RGBC', 'Rd  ': 255, 'Grn ': 255, 'Bl  ': 255 }, Opct: { unit: '#Prc', v: 43 },
-            GlwT: { enum: 'BETE', v: 'SfBL' }, Ckmt: { unit: '#Pxl', v: 0 }, blur: { unit: '#Pxl', v: 29 }, TrnS: linear,
-        } };
-        const shape = shapesOf(doc).filter((s) => s.match.name === 'Rectangle 1')[0];
-        assert.ok(shape, 'forme lue');
-        const { comp, core, run } = psdScene();
-        assert.ok(run(shape), 'forme recréée');
-        assert.strictEqual(core.lastFailure(), null);
-        assert.strictEqual(lsVal(comp.layer(2), 'outerGlow', 'mode2'), BlendingMode.SCREEN);
-        assert.strictEqual(lsVal(comp.layer(2), 'outerGlow', 'opacity'), 43);
-    });
-
-    test('Import PSD : C1, « Rectangle » de 7.psd (lueur en Écran) passe les contrôles de l\'hôte (sauté si le fichier manque)', () => {
+    test('Import PSD : C1, « Rectangle » de 7.psd passe les contrôles de l\'hôte, sans style lu (sauté si le fichier manque)', () => {
         const REAL = process.env.SIMING_PSD_SAMPLES ? process.env.SIMING_PSD_SAMPLES + '/7.psd' : '';
         if (!fs.existsSync(REAL)) return;
         const reader = require('../extension/client/js/psd/reader.js');
-        require('../extension/client/js/psd/styles.js');
         const shapesOf = require('../extension/client/js/psd/shapes.js');
         const shape = shapesOf(reader.read(fs.readFileSync(REAL))).filter((s) => s.match.name === 'Rectangle ')[0];
         assert.ok(shape, 'forme lue');
-        assert.deepStrictEqual(shape.styles.map((st) => [st.kind, st.blend]), [['outerGlow', 'screen']]);
-        const { comp, core, run } = psdScene({ size: [shape.box.right - shape.box.left, shape.box.bottom - shape.box.top] });
+        assert.ok(!('styles' in shape));
+        const { core, run } = psdScene({ size: [shape.box.right - shape.box.left, shape.box.bottom - shape.box.top], layer: { styles: ['outerGlow'] } });
         assert.ok(run(shape), 'non refusé');
         assert.strictEqual(core.lastFailure(), null);
-        assert.strictEqual(lsVal(comp.layer(2), 'outerGlow', 'mode2'), BlendingMode.SCREEN);
     });
 
     test('Import PSD : I4, métrage d\'une autre taille que la boîte du PSD -> panne visible, calque PSD gardé ; 1 px toléré', () => {
@@ -790,7 +781,7 @@ module.exports = function (test) {
             const { call, before } = importScene();
             before.addLayer('Animé', { psdText: 'Animé' });
             before.select(before.layers[0]);
-            const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf({ styles: [styleGlow()] })] }], rules: RULES });
+            const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
             assert.deepStrictEqual(r.status, { text: '0 PSD importés · 0 textes · 0 formes · 1 PSD illisible · Ctrl+Z pour annuler', level: 'warn' });
             assert.deepStrictEqual(app.commands, [], 'aucune commande de menu');
             assert.deepStrictEqual(kinds(before), ['av'], 'compo d\'avant intacte');
@@ -798,17 +789,6 @@ module.exports = function (test) {
         } finally {
             FakeComp.prototype.openInViewer = real;
         }
-    });
-
-    test('Import PSD : I5, applyStyles refuse de lancer un menu si la compo active n\'est pas celle du calque', () => {
-        const { comp, st, core, run } = psdScene();
-        const other = new FakeComp(77, 'Autre');
-        app.project.activeItem = other;
-        assert.strictEqual(run(shapeOf({ styles: [styleGlow()] })), null);
-        assert.ok(core.lastFailure(), 'panne visible');
-        assert.deepStrictEqual(app.commands, []);
-        assert.strictEqual(comp.layers[1], st);
-        assert.strictEqual(comp.numLayers, 3);
     });
 
     test('Import PSD : M6, limite des angles du contour reprise du PSD', () => {
@@ -824,7 +804,8 @@ module.exports = function (test) {
     const PSD_A = path.join(os.tmpdir(), 'siming-import-test', '1.psd');
     const PSD_B = path.join(os.tmpdir(), 'siming-import-test', '2.psd');
     const RULES = { words: [], types: { shape: 5, text: 6, precomp: 7, image: 8 } };
-    const TEXTS_ONLY = { 'Convert to Editable Text': 3799 };   // After sans les menus de styles de calque
+    /** Le PSD par défaut, dont « Rectangle 1 » a des styles de calque (After les importe avec le PSD). */
+    const STYLED_RECIPE = { layers: [{ name: '1', group: { layers: [{ name: 'Rectangle 1', styles: ['outerGlow'] }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
 
     /** Projet avec une compo « Avant » active ; `importRecipes` fabrique la compo importée de chaque chemin
      *  (par défaut : compo « <nom> » > précompo « <nom> » > Rectangle 1, PourQUOI ???, Calque 0). */
@@ -903,7 +884,7 @@ module.exports = function (test) {
         app.project.items.push(sub, main);
         const states = {};
         for (const l of layers) {
-            const st = sub.addLayer(l.name, { rect: l.rect });
+            const st = sub.addLayer(l.name, { rect: l.rect, styles: l.styles });
             setState(st, 'ADBE Position', l.pos);
             if (l.parent) st.parent = states[l.parent];
             states[l.name] = st;
@@ -1031,16 +1012,17 @@ module.exports = function (test) {
 
         app.reset();
         const { call } = importScene();
-        app.menuNames = TEXTS_ONLY;      // pas de menu de styles : panne systématique de la forme à styles
-        const b = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf({ styles: [styleGlow()] })] }], rules: RULES });
+        app.importRecipes[PSD_A] = STYLED_RECIPE;
+        // Coller sans effet : panne systématique de la forme à styles
+        const b = withPasteIgnored(() => call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES }));
         assert.deepStrictEqual(b.status, { text: '1 PSD importé · 1 texte · 0 formes · 1 forme en erreur · Ctrl+Z pour annuler', level: 'warn' });
         const inner = itemById(b.imported[0].compId).layers[0].source;
         assert.deepStrictEqual(kinds(inner), ['av', 'text', 'av'], 'le calque PSD reste');
         // refus et panne mêlés, avec un PSD illisible : l'ordre des morceaux est fixe
         app.reset();
         const c = importScene();
-        app.menuNames = TEXTS_ONLY;
-        const m = c.call('importBatch', { items: [{ path: PSD_B, shapes: null, error: 'x' }, { path: PSD_A, shapes: [shapeOf({ styles: [styleGlow()] })] }], rules: RULES });
+        app.importRecipes[PSD_A] = STYLED_RECIPE;
+        const m = withPasteIgnored(() => c.call('importBatch', { items: [{ path: PSD_B, shapes: null, error: 'x' }, { path: PSD_A, shapes: [shapeOf()] }], rules: RULES }));
         assert.strictEqual(m.status.text, '1 PSD importé · 1 texte · 0 formes · 1 PSD illisible · 1 forme en erreur · Ctrl+Z pour annuler');
     });
 
@@ -1080,14 +1062,24 @@ module.exports = function (test) {
         assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · 1 forme · Ctrl+Z pour annuler');
     });
 
-    test('Import PSD : importBatch, les styles de calque se posent sur la forme dans la compo importée (viewer), pas dans la compo active d\'avant', () => {
+    test('Import PSD : importBatch, les styles du calque PSD sont copiés sur la forme dans la compo importée (viewer), pas dans la compo active d\'avant', () => {
         const { call, before } = importScene();
-        const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf({ styles: [styleGlow()] })] }], rules: RULES });
+        app.importRecipes[PSD_A] = STYLED_RECIPE;
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
         assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · 1 forme · Ctrl+Z pour annuler');
         const inner = itemById(r.imported[0].compId).layers[0].source;
-        assert.strictEqual(lsVal(inner.layer(1), 'outerGlow', 'opacity'), 43);
+        assert.strictEqual(stylesOf(inner.layer(1)).property('outerGlow/enabled').enabled, true);
+        assert.deepStrictEqual(app.commands.filter((c) => c === 19 || c === 20), [19, 20]);
         assert.strictEqual(before.layers.length, 0);
         assert.strictEqual(app.project.activeItem, before);
+    });
+
+    test('Import PSD : importBatch, dégradé (ramp) : forme + effet Dégradé dans la compo importée', () => {
+        const { call } = importScene();
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf({ fill: rampOf(), stroke: null })] }], rules: RULES });
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · 1 forme · Ctrl+Z pour annuler');
+        const inner = itemById(r.imported[0].compId).layers[0].source;
+        assert.deepStrictEqual(fx(inner.layer(1), 3), [1400, 300]);
     });
 
     test('Import PSD : importBatch, commande « Convertir en texte modifiable » introuvable -> signalé une seule fois pour le lot, avertissement', () => {
@@ -1106,11 +1098,10 @@ module.exports = function (test) {
 
     test('Import PSD : importBatch, « formes en erreur » au pluriel', () => {
         const { call } = importScene();
-        app.menuNames = TEXTS_ONLY;
-        app.importRecipes[PSD_A] = { layers: [{ name: 'Rectangle 1' }, { name: 'Rectangle 1' }] };
-        const r = call('importBatch', { items: [{ path: PSD_A, shapes: [
-            shapeOf({ styles: [styleGlow()] }), shapeOf({ match: { name: 'Rectangle 1', nth: 1 }, styles: [styleGlow()] }),
-        ] }], rules: RULES });
+        app.importRecipes[PSD_A] = { layers: [{ name: 'Rectangle 1', styles: ['outerGlow'] }, { name: 'Rectangle 1', styles: ['outerGlow'] }] };
+        const r = withPasteIgnored(() => call('importBatch', { items: [{ path: PSD_A, shapes: [
+            shapeOf(), shapeOf({ match: { name: 'Rectangle 1', nth: 1 } }),
+        ] }], rules: RULES }));
         assert.strictEqual(r.status.text, '1 PSD importé · 0 textes · 0 formes · 2 formes en erreur · Ctrl+Z pour annuler');
     });
 

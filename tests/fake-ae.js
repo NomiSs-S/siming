@@ -438,7 +438,7 @@ class FakeComp extends CompItem {
     /** État neuf d'un calque (non rangé dans la pile). */
     _state(name, opts) {
         const o = opts || {};
-        return Object.assign(
+        const state = Object.assign(
             {
                 id: this.noIds ? undefined : nextId++, name, comment: '', locked: false, parent: null, label: 1,
                 kind: o.kind || 'av', threeD: !!o.threeD, enabled: true, blendingMode: BlendingMode.NORMAL,
@@ -449,6 +449,9 @@ class FakeComp extends CompItem {
             },
             o
         );
+        // styles : [nom | { style, values }] -> groupe « ADBE Layer Styles » avec ces styles actifs (voir P.makeLayerStyles)
+        if (o.styles) { state.layerStyles = P.makeLayerStyles(o.styles); delete state.styles; }
+        return state;
     }
     select(...states) { this.selection = states; }
     removeLayer(state) {
@@ -473,15 +476,10 @@ const DEFAULT_LABEL_NAMES = [
 
 const SCRIPT_WRITE_KEY = 'Pref_SCRIPTING_FILE_NETWORK_SECURITY';
 
-/** Commandes de menu connues (noms anglais, comme un After Effects en anglais). */
+/** Commandes de menu connues par leur nom (anglais, comme un After Effects en anglais). */
 const MENU_COMMANDS = { 'Convert to Editable Text': 3799, 'Reveal Layer Source in Project': 2517 };
-/** Commandes Calque › Styles de calque : id -> groupe de style (ajouté au calque sélectionné). */
-const STYLE_COMMANDS = {};
-for (const group of Object.keys(P.LAYER_STYLE_DEFS)) {
-    const def = P.LAYER_STYLE_DEFS[group];
-    MENU_COMMANDS[def.menu] = def.id;
-    STYLE_COMMANDS[def.id] = group;
-}
+/** Identifiants numériques, indépendants de la langue : Édition › Copier et Édition › Coller. */
+const COMMAND_COPY = 19, COMMAND_PASTE = 20;
 
 /** Faux app.preferences : getPrefAsString renvoie les 4 octets ARGB sous forme de
  *  caractères, comme After Effects en encodage BINARY. `labels[i]` = étiquette n° i + 1. */
@@ -557,9 +555,10 @@ function defaultRecipe(base) {
  * `app.importRecipes[chemin]` (défaut : defaultRecipe) : une compo « <nom> », un dossier « <nom> Calques » qui
  * range les métrages (« <calque>/<fichier>.psd », source = le PSD) et les précompos des groupes. Recette :
  *  { throws: 'message' }  -> After lève cette erreur ;
- *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size? } :
+ *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size?, styles? } :
  *  group = précompo des calques donnés ; psdText = calque texte du PSD ; from = autre fichier pour le métrage ;
- *  size = [largeur, hauteur] du métrage (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests).
+ *  size = [largeur, hauteur] du métrage (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests) ;
+ *  styles = styles de calque actifs que After a importés avec le PSD (['outerGlow', { style: 'dropShadow', values: { blur: 12 } }]).
  * Les calques sont donnés du haut vers le bas. Renvoie la compo (ou un métrage en import FOOTAGE).
  */
 function importFile(opts) {
@@ -579,6 +578,7 @@ function importFile(opts) {
             const extra = {};
             if (spec.psdText !== undefined) extra.psdText = spec.psdText;
             if (spec.locked) extra.locked = true;
+            if (spec.styles) extra.styles = spec.styles;
             if (spec.group) {
                 const sub = new FakeComp(nextId++, spec.name, { parentFolder: calques });
                 fill(sub, spec.group.layers);
@@ -622,17 +622,33 @@ const app = {
     importRecipes: {},     // chemin du PSD -> recette de importFile (voir importFile)
     viewerOpens: [],       // id des comps ouvertes par openInViewer, dans l'ordre
     menuNames: MENU_COMMANDS,
+    layerStylesClipboard: null,   // presse-papiers des styles de calque (commandes 19 et 20)
     beginUndoGroup(name) { this.undoDepth++; this.undoGroups.push(name); },
     endUndoGroup() { this.undoDepth--; },
     /** 0 si le nom n'est pas celui d'une commande (autre langue d'AE). */
     findMenuCommandId(name) { return this.menuNames[name] || 0; },
     /** 3799 « Convert to Editable Text » : chaque calque sélectionné marqué psdText devient
-     *  un calque texte (sa source disparaît). Les autres commandes sont seulement notées. */
+     *  un calque texte (sa source disparaît). 19 (Copier) : le groupe « ADBE Layer Styles » sélectionné
+     *  d'un calque de la compo active va au presse-papiers (copie de son état) ; 20 (Coller) : il remplace
+     *  les styles de chaque calque sélectionné. Les autres commandes sont seulement notées. */
     executeCommand(id) {
         this.commands.push(id);
         const comp = this.project.activeItem;
-        if (STYLE_COMMANDS[id] && comp && comp.selection) {
-            for (const st of comp.selection) P.addLayerStyle(st, STYLE_COMMANDS[id]);
+        if (id === COMMAND_COPY || id === COMMAND_PASTE) {
+            if (!comp || !comp.layers) return;
+            if (id === COMMAND_COPY) {
+                const from = comp.layers.filter((st) => st.layerStyles && st.layerStyles.selected)[0];
+                if (from) this.layerStylesClipboard = P.cloneState(from.layerStyles, null);
+            } else if (this.layerStylesClipboard) {
+                for (const st of comp.selection) {
+                    // à la place, dans le groupe existant : une poignée prise avant le collage reste valable
+                    if (!st.layerStyles) st.layerStyles = P.makeLayerStyles();
+                    const root = st.layerStyles, clone = P.cloneState(this.layerStylesClipboard, null);
+                    root.children = clone.children;
+                    root.children.forEach((c) => { c.parent = root; });
+                    root.selected = false;
+                }
+            }
             return;
         }
         if (id !== 3799 || !comp || !comp.selection) return;
@@ -656,6 +672,7 @@ const app = {
         this.importRecipes = {};
         this.viewerOpens = [];
         this.menuNames = MENU_COMMANDS;
+        this.layerStylesClipboard = null;
         FakeFolder.selectResult = null;
         FakeFolder.selectCalls = [];
     },

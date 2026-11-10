@@ -21,7 +21,6 @@ const FILES = [
     './labels-api.test.js',
     './labels-view.test.js',
     './psd-reader.test.js',
-    './psd-styles.test.js',
     './psd-shapes.test.js',
     './toolbox-core.test.js',
     './toolbox-api.test.js',

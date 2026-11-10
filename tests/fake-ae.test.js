@@ -2,7 +2,7 @@
 /* Le faux After Effects imite bien les pièges d'ExtendScript. */
 const assert = require('assert');
 const vm = require('vm');
-const { createSandbox, app, KeyframeEase, KeyframeInterpolationType, CameraLayerRef } = require('./fake-ae');
+const { createSandbox, app, KeyframeEase, KeyframeInterpolationType, CameraLayerRef, FakeComp, FakeFile, ImportOptions, ImportAsType } = require('./fake-ae');
 const { scene } = require('./helpers');
 
 module.exports = function (test) {
@@ -150,6 +150,101 @@ module.exports = function (test) {
         assert.ok(f instanceof FolderItem && f.parentFolder === null && app.project.items.indexOf(f) >= 0);
         app.project.items = [];
         assert.strictEqual(typeof app.project.items.addFolder, 'function', 'après un reset aussi');
+    });
+
+    // ---- Styles de calque : groupe masqué sans style, copier-coller (commandes 19 et 20), effet Dégradé ----
+
+    const styleComp = () => {
+        const comp = new FakeComp(1, 'C');
+        app.project.items.push(comp);
+        app.project.activeItem = comp;
+        return comp;
+    };
+
+    test('faux AE : sans style, « ADBE Layer Styles » est masqué (selected lève), sans que le groupe disparaisse', () => {
+        const comp = styleComp();
+        comp.addLayer('Nu');
+        const root = comp.layer(1).property('ADBE Layer Styles');
+        assert.ok(root, 'la propriété existe');
+        assert.throws(() => { root.selected = true; }, /hidden/);
+        assert.strictEqual(root.selected, false);
+    });
+
+    test('faux AE : un calque déclaré avec des styles les montre (groupes « nom/enabled », enabled vrai ou faux)', () => {
+        const comp = styleComp();
+        comp.addLayer('Avec', { styles: ['outerGlow', { style: 'dropShadow', values: { distance: 7, blur: 12 } }] });
+        const root = comp.layer(1).property('ADBE Layer Styles');
+        root.selected = true;
+        assert.strictEqual(root.selected, true);
+        assert.strictEqual(root.property('outerGlow/enabled').enabled, true);
+        assert.strictEqual(root.property('dropShadow/enabled').enabled, true);
+        assert.strictEqual(root.property('innerShadow/enabled').enabled, false);
+        for (const g of ['innerShadow', 'outerGlow', 'innerGlow', 'bevelEmboss', 'chromeFX', 'solidFill', 'gradientFill', 'patternFill', 'frameFX']) {
+            assert.ok(root.property(g + '/enabled'), g);
+        }
+        assert.ok(root.property('ADBE Blend Options Group').property('ADBE Adv Blend Group').property('ADBE Layer Fill Opacity2'));
+        assert.strictEqual(root.property('dropShadow/enabled').property('dropShadow/distance').value, 7);
+        assert.strictEqual(root.property('dropShadow/enabled').property('dropShadow/blur').value, 12);
+        assert.throws(() => comp.addLayer('Faux', { styles: ['nimporte'] }), /nimporte/);
+    });
+
+    test('faux AE : Copier (19) puis Coller (20) recopient les styles sélectionnés sur le calque sélectionné, valeurs comprises', () => {
+        const comp = styleComp();
+        comp.addLayer('Source', { styles: [{ style: 'outerGlow', values: { blur: 30 } }] });
+        comp.addLayer('Cible');
+        const src = comp.layer(1).property('ADBE Layer Styles'), dst = comp.layer(2).property('ADBE Layer Styles');
+        src.selected = true;
+        app.executeCommand(19);
+        src.selected = false;
+        comp.layer(2).selected = true;
+        app.executeCommand(20);
+        assert.deepStrictEqual(app.commands, [19, 20]);
+        dst.selected = true;                                    // n'est plus masqué
+        assert.strictEqual(dst.property('outerGlow/enabled').enabled, true);
+        assert.strictEqual(dst.property('outerGlow/enabled').property('outerGlow/blur').value, 30);
+        assert.strictEqual(dst.property('dropShadow/enabled').enabled, false);
+        // copie, pas partage : modifier la cible ne touche pas la source
+        dst.property('outerGlow/enabled').property('outerGlow/blur').setValue(5);
+        assert.strictEqual(src.property('outerGlow/enabled').property('outerGlow/blur').value, 30);
+    });
+
+    test('faux AE : Coller sans Copier, ou Copier sans groupe de styles sélectionné, ne fait rien', () => {
+        const comp = styleComp();
+        comp.addLayer('Source', { styles: ['outerGlow'] });
+        comp.addLayer('Cible');
+        comp.layer(2).selected = true;
+        app.executeCommand(20);                                 // presse-papiers vide
+        assert.throws(() => { comp.layer(2).property('ADBE Layer Styles').selected = true; }, /hidden/);
+        app.executeCommand(19);                                 // rien de sélectionné qui se copie
+        app.executeCommand(20);
+        assert.throws(() => { comp.layer(2).property('ADBE Layer Styles').selected = true; }, /hidden/);
+    });
+
+    test('faux AE : l\'effet « ADBE Ramp » se pose sur un calque de forme avec ses sept paramètres', () => {
+        const comp = styleComp();
+        const shape = comp.layers.addShape();
+        const fx = shape.property('ADBE Effect Parade').addProperty('ADBE Ramp');
+        assert.strictEqual(fx.matchName, 'ADBE Ramp');
+        for (let i = 1; i <= 7; i++) assert.ok(fx.property('ADBE Ramp-000' + i), 'ADBE Ramp-000' + i);
+        fx.property('ADBE Ramp-0001').setValue([10, 20]);
+        fx.property('ADBE Ramp-0002').setValue([1, 0, 0, 1]);
+        fx.property('ADBE Ramp-0003').setValue([30, 40]);
+        fx.property('ADBE Ramp-0004').setValue([0, 0, 1, 1]);
+        fx.property('ADBE Ramp-0005').setValue(1);
+        fx.property('ADBE Ramp-0006').setValue(0);
+        fx.property('ADBE Ramp-0007').setValue(0);
+        assert.deepStrictEqual(shape.property('ADBE Effect Parade').property('ADBE Ramp').property('ADBE Ramp-0003').value, [30, 40]);
+        assert.throws(() => fx.property('ADBE Ramp-0002').setValue([1, 0, 0]), /dimensions/, 'une couleur a quatre canaux');
+    });
+
+    test('faux AE : une recette d\'import peut déclarer des styles sur un calque', () => {
+        const file = new FakeFile('/x/Fond.psd');
+        app.importRecipes[file.fsName] = { layers: [{ name: 'A', styles: ['outerGlow'] }, { name: 'B' }] };
+        const opts = new ImportOptions(file);
+        opts.importAs = ImportAsType.COMP_CROPPED_LAYERS;
+        const comp = app.project.importFile(opts);
+        comp.layer(1).property('ADBE Layer Styles').selected = true;
+        assert.throws(() => { comp.layer(2).property('ADBE Layer Styles').selected = true; }, /hidden/);
     });
 
     test('bac à sable : $.global est le contexte global', () => {

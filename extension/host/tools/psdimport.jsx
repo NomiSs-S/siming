@@ -5,7 +5,10 @@
  *
  *  Importe des fichiers Photoshop en compositions After Effects. Cette partie : le dossier
  *  des PSD, la liste de ses fichiers et, en interne (_core.replaceWithShape, appelé par l'import
- *  dans son groupe d'annulation), le remplacement d'un calque PSD par un calque de forme.
+ *  dans son groupe d'annulation), le remplacement d'un calque PSD par un calque de forme : les styles de
+ *  calque que After a importés avec le PSD sont recopiés tels quels (copier-coller, _core.copyLayerStyles) ;
+ *  un dégradé linéaire à deux couleurs est posé par l'effet Dégradé (les couleurs d'un dégradé de forme
+ *  sont inaccessibles par script).
  *
  *  - list({ folder? }) : PSD du dossier (sans folder : 02_RESSOURCES/02_ASSET, cherché depuis
  *    le dossier du projet en remontant d'au plus 3 dossiers parents), triés par nom naturel
@@ -27,153 +30,17 @@
 (function () {
 
     var S = $.global.SIMING;
-    var commandId = S.ae.commandId;          // partagés dans SIMING.ae (siming.jsx)
-    var deselectLayers = S.ae.deselectLayers;
+    var deselectLayers = S.ae.deselectLayers;   // partagés dans SIMING.ae (siming.jsx)
 
     var ASSET_PATH = '02_RESSOURCES/02_ASSET';
     var MAX_PARENTS = 3;
     var PICK_PROMPT = 'Choisis le dossier des PSD';
 
-    // ------------------------------------------------------------------------
-    //  Styles de calque : TABLE UNIQUE des noms de menu et des matchNames
-    //  À VÉRIFIER DANS AFTER EFFECTS (relevés de mémoire, jamais testés dans AE) : voir
-    //  docs/NOTES-EXTENDSCRIPT.md. Si un nom est faux, l'import le dit (échec noté, calque PSD gardé).
-    // ------------------------------------------------------------------------
-
-    // Chaque style : menu (Calque › Styles de calque : anglais, français ; aucun identifiant numérique
-    // de repli), group (matchName du groupe sous « ADBE Layer Styles ») et props, une ligne par propriété :
-    //   p = matchName de la propriété, f = champ du style JSON (extension/client/js/psd/styles.js),
-    //   t = nature de la valeur : 'blend' (mode de fusion), 'color' ([r, g, b, 1]), 'number', 'bool' (1 / 0),
-    //   'map' (m = table mot -> valeur), 'const' (v = valeur fixe, sans champ).
-    // Tout champ présent doit avoir un équivalent (mode de fusion connu d'After, mot dans la table 'map') : sinon
-    // le calque est refusé en amont (stylesAreBuildable), jamais approché avec les réglages par défaut d'After.
-    // La lumière globale n'est jamais utilisée : l'angle (et l'altitude) du style, déjà résolus par shapes.js
-    // d'après le document, sont écrits en local et « utiliser l'angle global » est coupé.
-    // Un champ absent du style (layerConceals hors ombre portée…) est sauté. Les valeurs en pixels sont déjà
-    // mises à l'échelle (champ `scale`), rien à refaire.
-    //
-    // Contours (courbes) des styles : After n'en a pas ; styles.js refuse en amont tout contour non linéaire,
-    // le satin sans contour linéaire, le biseau à texture ou à contour (le calque reste en PSD). Avec un
-    // contour linéaire, l'anticrénelage est sans effet. gradientOverlay : refusé en amont (voir
-    // shapeIsBuildable). Angle et altitude globaux : le réglage partagé du calque n'est pas modifié, l'angle
-    // est écrit en local.
-    var GLOW_TECHNIQUES = { softer: 1, precise: 2 };
-    var GLOW_SOURCES = { center: 1, edge: 2 };
-    var BEVEL_STYLES = { outer: 1, inner: 2, emboss: 3, pillow: 4, strokeEmboss: 5 };
-    var BEVEL_TECHNIQUES = { smooth: 1, chiselHard: 2, chiselSoft: 3 };
-    var BEVEL_DIRECTIONS = { up: 1, down: 2 };
-    var STROKE_POSITIONS = { outside: 1, inside: 2, center: 3 };
-
-    var STYLE_TABLE = {
-        dropShadow: {
-            menu: ['Drop Shadow', 'Ombre portée'], group: 'dropShadow',
-            props: [
-                { p: 'dropShadow/mode2', f: 'blend', t: 'blend' },
-                { p: 'dropShadow/color', f: 'color', t: 'color' },
-                { p: 'dropShadow/opacity', f: 'opacity', t: 'number' },
-                { p: 'dropShadow/useGlobalAngle', t: 'const', v: 0 },
-                { p: 'dropShadow/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'dropShadow/distance', f: 'distance', t: 'number' },
-                { p: 'dropShadow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'dropShadow/blur', f: 'size', t: 'number' },
-                { p: 'dropShadow/noise', f: 'noise', t: 'number' },
-                { p: 'dropShadow/layerConceals', f: 'layerConceals', t: 'bool' }
-            ]
-        },
-        innerShadow: {
-            menu: ['Inner Shadow', 'Ombre interne'], group: 'innerShadow',
-            props: [
-                { p: 'innerShadow/mode2', f: 'blend', t: 'blend' },
-                { p: 'innerShadow/color', f: 'color', t: 'color' },
-                { p: 'innerShadow/opacity', f: 'opacity', t: 'number' },
-                { p: 'innerShadow/useGlobalAngle', t: 'const', v: 0 },
-                { p: 'innerShadow/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'innerShadow/distance', f: 'distance', t: 'number' },
-                { p: 'innerShadow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'innerShadow/blur', f: 'size', t: 'number' },
-                { p: 'innerShadow/noise', f: 'noise', t: 'number' }
-            ]
-        },
-        outerGlow: {
-            menu: ['Outer Glow', 'Lueur externe'], group: 'outerGlow',
-            props: [
-                { p: 'outerGlow/mode2', f: 'blend', t: 'blend' },
-                { p: 'outerGlow/color', f: 'color', t: 'color' },
-                { p: 'outerGlow/opacity', f: 'opacity', t: 'number' },
-                { p: 'outerGlow/noise', f: 'noise', t: 'number' },
-                { p: 'outerGlow/glowTechnique', f: 'technique', t: 'map', m: GLOW_TECHNIQUES },
-                { p: 'outerGlow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'outerGlow/blur', f: 'size', t: 'number' },
-                { p: 'outerGlow/inputRange', f: 'range', t: 'number' },
-                { p: 'outerGlow/shadingNoise', f: 'jitter', t: 'number' }
-            ]
-        },
-        innerGlow: {
-            menu: ['Inner Glow', 'Lueur interne'], group: 'innerGlow',
-            props: [
-                { p: 'innerGlow/mode2', f: 'blend', t: 'blend' },
-                { p: 'innerGlow/color', f: 'color', t: 'color' },
-                { p: 'innerGlow/opacity', f: 'opacity', t: 'number' },
-                { p: 'innerGlow/noise', f: 'noise', t: 'number' },
-                { p: 'innerGlow/glowTechnique', f: 'technique', t: 'map', m: GLOW_TECHNIQUES },
-                { p: 'innerGlow/innerGlowSource', f: 'source', t: 'map', m: GLOW_SOURCES },
-                { p: 'innerGlow/chokeMatte', f: 'spread', t: 'number' },
-                { p: 'innerGlow/blur', f: 'size', t: 'number' },
-                { p: 'innerGlow/inputRange', f: 'range', t: 'number' },
-                { p: 'innerGlow/shadingNoise', f: 'jitter', t: 'number' }
-            ]
-        },
-        bevelEmboss: {
-            menu: ['Bevel and Emboss', 'Biseautage et estampage'], group: 'bevelEmboss',
-            props: [
-                { p: 'bevelEmboss/bevelStyle', f: 'style', t: 'map', m: BEVEL_STYLES },
-                { p: 'bevelEmboss/bevelTechnique', f: 'technique', t: 'map', m: BEVEL_TECHNIQUES },
-                { p: 'bevelEmboss/bevelDirection', f: 'direction', t: 'map', m: BEVEL_DIRECTIONS },
-                { p: 'bevelEmboss/highlightMode', f: 'blend', t: 'blend' },
-                { p: 'bevelEmboss/highlightColor', f: 'color', t: 'color' },
-                { p: 'bevelEmboss/highlightOpacity', f: 'opacity', t: 'number' },
-                { p: 'bevelEmboss/shadowMode', f: 'shadowBlend', t: 'blend' },
-                { p: 'bevelEmboss/shadowColor', f: 'shadowColor', t: 'color' },
-                { p: 'bevelEmboss/shadowOpacity', f: 'shadowOpacity', t: 'number' },
-                { p: 'bevelEmboss/useGlobalAngle', t: 'const', v: 0 },
-                { p: 'bevelEmboss/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'bevelEmboss/localLightingAltitude', f: 'altitude', t: 'number' },
-                { p: 'bevelEmboss/strengthRatio', f: 'depth', t: 'number' },
-                { p: 'bevelEmboss/blur', f: 'size', t: 'number' },
-                { p: 'bevelEmboss/softness', f: 'soften', t: 'number' }
-            ]
-        },
-        satin: {
-            menu: ['Satin', 'Satin'], group: 'chromeFX',
-            props: [
-                { p: 'chromeFX/mode2', f: 'blend', t: 'blend' },
-                { p: 'chromeFX/color', f: 'color', t: 'color' },
-                { p: 'chromeFX/opacity', f: 'opacity', t: 'number' },
-                { p: 'chromeFX/localLightingAngle', f: 'angle', t: 'number' },
-                { p: 'chromeFX/distance', f: 'distance', t: 'number' },
-                { p: 'chromeFX/blur', f: 'size', t: 'number' },
-                { p: 'chromeFX/invert', f: 'invert', t: 'bool' }
-            ]
-        },
-        colorOverlay: {
-            menu: ['Color Overlay', 'Incrustation couleur'], group: 'solidFill',
-            props: [
-                { p: 'solidFill/mode2', f: 'blend', t: 'blend' },
-                { p: 'solidFill/color', f: 'color', t: 'color' },
-                { p: 'solidFill/opacity', f: 'opacity', t: 'number' }
-            ]
-        },
-        stroke: {
-            menu: ['Stroke', 'Contour'], group: 'frameFX',
-            props: [
-                { p: 'frameFX/mode2', f: 'blend', t: 'blend' },
-                { p: 'frameFX/color', f: 'color', t: 'color' },
-                { p: 'frameFX/opacity', f: 'opacity', t: 'number' },
-                { p: 'frameFX/size', f: 'size', t: 'number' },
-                { p: 'frameFX/style', f: 'position', t: 'map', m: STROKE_POSITIONS }
-            ]
-        }
-    };
+    // Édition › Copier et Édition › Coller : identifiants numériques d'After (relevés par script dans After 26.2),
+    // indépendants de la langue. Les noms de menu des styles de calque ne servent pas : par leur nom, ils
+    // désignent d'autres commandes (« Ombre portée » = l'effet), seuls les identifiants 9000 à 9008 sont les styles.
+    var COMMAND_COPY = 19;
+    var COMMAND_PASTE = 20;
 
     // ------------------------------------------------------------------------
     //  Fonctions pures
@@ -312,32 +179,9 @@
 
     function isFiniteNumber(n) { return typeof n === 'number' && isFinite(n); }
 
-    /** Chaque champ présent a-t-il un équivalent After (mode de fusion connu, mot de la table) ? */
-    function styleIsMappable(style, def) {
-        for (var i = 0; i < def.props.length; i++) {
-            var entry = def.props[i];
-            if (entry.t === 'const') continue;
-            var v = style[entry.f];
-            if (v === undefined || v === null) continue;
-            if (entry.t === 'blend' && blendModeOf(v) === null) return false;
-            if (entry.t === 'map' && !entry.m.hasOwnProperty(v)) return false;
-        }
-        return true;
-    }
-
-    /** Styles reproductibles : sortes connues, au plus un style de chaque sorte (After n'en a qu'un), et pas
-     *  d'incrustation en dégradé (comme un fond en dégradé : les couleurs d'un dégradé ne semblent pas
-     *  écrivables par script, à vérifier dans After). */
-    function stylesAreBuildable(styles) {
-        if (!styles) return true;
-        var seen = {};
-        for (var i = 0; i < styles.length; i++) {
-            var kind = styles[i] && styles[i].kind;
-            if (!STYLE_TABLE.hasOwnProperty(kind) || seen[kind]) return false;
-            seen[kind] = true;
-            if (!styleIsMappable(styles[i], STYLE_TABLE[kind])) return false;
-        }
-        return true;
+    function rampIsValid(fill) {
+        return isNumberArray(fill.start, 2) && isNumberArray(fill.end, 2) &&
+            isNumberArray(fill.startColor, 3) && isNumberArray(fill.endColor, 3);
     }
 
     /** Le JSON est-il complet et reproductible tel quel ? (sinon le calque PSD reste : un refus, pas une panne) */
@@ -356,9 +200,16 @@
         if (blendModeOf(shape.blend === undefined ? 'normal' : shape.blend) === null) return false;
         // Le contour d'une forme After est toujours centré sur le tracé.
         if (shape.stroke && shape.stroke.align !== 'center') return false;
-        // Dégradé : à vérifier dans After, les couleurs d'un dégradé de forme ne semblent pas écrivables par script.
-        if (shape.fill && shape.fill.type !== 'solid') return false;
-        return stylesAreBuildable(shape.styles);
+        // Remplissage : uni, ou dégradé linéaire à deux couleurs (effet Dégradé). Les couleurs d'un dégradé de forme sont
+        // inaccessibles par script ; tout autre dégradé reste un calque PSD. L'effet colore aussi un contour : refusé.
+        if (shape.fill) {
+            if (shape.fill.type === 'ramp') {
+                if (shape.stroke || !rampIsValid(shape.fill)) return false;
+            } else if (shape.fill.type !== 'solid') {
+                return false;
+            }
+        }
+        return true;
     }
 
     // Ajouter une propriété invalide les références voisines : chaque accès repart du calque, et
@@ -411,14 +262,32 @@
         item.property('ADBE Vector Stroke Miter Limit').setValue(isFiniteNumber(stroke.miterLimit) ? stroke.miterLimit : PS_MITER_LIMIT);
     }
 
+    /** Remplissage uni ; pour un dégradé (ramp), la couleur de départ : l'effet Dégradé (addRamp) la remplace. */
     function addFill(layer, n, fill, opacity) {
+        var c = (fill.type === 'ramp') ? fill.startColor : fill.color;
         var item = addItem(layer, n, 'ADBE Vector Graphic - Fill');
-        item.property('ADBE Vector Fill Color').setValue([fill.color[0], fill.color[1], fill.color[2], 1]);
+        item.property('ADBE Vector Fill Color').setValue([c[0], c[1], c[2], 1]);
         item.property('ADBE Vector Fill Opacity').setValue(opacity);
     }
 
+    /**
+     * Effet Dégradé (ADBE Ramp) sur le calque de forme : linéaire, sans dispersion, sans part de l'original. Il
+     * respecte la forme (transparent en dehors). Ses points sont en coordonnées du calque : le calque de forme a
+     * l'ancre [0, 0] et des tracés en coordonnées du document, les points du JSON s'écrivent donc tels quels.
+     */
+    function addRamp(layer, fill) {
+        var fx = layer.property('ADBE Effect Parade').addProperty('ADBE Ramp');
+        fx.property('ADBE Ramp-0001').setValue([fill.start[0], fill.start[1]]);
+        fx.property('ADBE Ramp-0002').setValue([fill.startColor[0], fill.startColor[1], fill.startColor[2], 1]);
+        fx.property('ADBE Ramp-0003').setValue([fill.end[0], fill.end[1]]);
+        fx.property('ADBE Ramp-0004').setValue([fill.endColor[0], fill.endColor[1], fill.endColor[2], 1]);
+        fx.property('ADBE Ramp-0005').setValue(1);
+        fx.property('ADBE Ramp-0006').setValue(0);
+        fx.property('ADBE Ramp-0007').setValue(0);
+    }
+
     // ------------------------------------------------------------------------
-    //  Styles de calque : ajout par le menu, puis valeurs par matchName
+    //  Styles de calque : recopiés du calque PSD (After les a importés avec le PSD) par Copier / Coller
     // ------------------------------------------------------------------------
 
     /** La compo est-elle l'élément actif (celle du visualiseur, sur laquelle agit app.executeCommand) ? */
@@ -433,74 +302,72 @@
         if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
     }
 
-    /** Groupe du style sur le calque (sous « ADBE Layer Styles »), ou null s'il n'y est pas. */
-    function styleGroup(layer, group) {
-        var root = layer.property('ADBE Layer Styles');
-        return root ? root.property(group) : null;
+    /** Identifiants des calques sélectionnés de la compo. */
+    function selectedIds(comp) {
+        var sel = comp.selectedLayers, ids = [];
+        for (var i = 0; i < sel.length; i++) ids.push(S.ae.layerId(sel[i]));
+        return ids;
     }
 
-    /** Valeur After Effects d'un champ du style, ou undefined (champ absent, mode inconnu : sauté). */
-    function styleValue(entry, style) {
-        if (entry.t === 'const') return entry.v;
-        var v = style[entry.f];
-        if (v === undefined || v === null) return undefined;
-        if (entry.t === 'blend') { var mode = blendModeOf(v); return (mode === null) ? undefined : mode; }   // inconnu : déjà refusé en amont
-        if (entry.t === 'color') return [v[0], v[1], v[2], 1];
-        if (entry.t === 'bool') return v ? 1 : 0;
-        if (entry.t === 'map') return entry.m.hasOwnProperty(v) ? entry.m[v] : undefined;
-        return v;
-    }
-
-    function writeStyle(group, def, style) {
-        for (var i = 0; i < def.props.length; i++) {
-            var entry = def.props[i];
-            var value = styleValue(entry, style);
-            if (value === undefined) continue;
-            var prop = group.property(entry.p);
-            if (!prop) throw new Error('Propriété de style introuvable : ' + entry.p);
-            prop.setValue(value);
+    /** Rétablit la sélection de calques relevée par selectedIds (un calque disparu est sauté). */
+    function restoreSelection(comp, ids) {
+        deselectLayers(comp);
+        for (var i = 0; i < ids.length; i++) {
+            var layer = S.ae.findLayerById(comp, ids[i]);
+            if (!layer) continue;
+            try { layer.selected = true; } catch (e) { /* calque verrouillé ou disparu */ }
         }
     }
 
     /**
-     * Ajoute les styles au calque (par la commande de menu de chacun, sur le calque seul sélectionné)
-     * puis règle leurs propriétés. Renvoie le nombre de styles posés. Un style dont la commande est
-     * introuvable (autre langue d'After Effects), de sorte inconnue, nul, ou déjà posé (After n'en a
-     * qu'un de chaque sorte) est sauté sans message : à l'appelant de comparer au nombre attendu. Une
-     * propriété introuvable ou une écriture refusée lève une erreur. La sélection de l'utilisateur est
-     * rétablie à la fin (le calque de forme n'y reste que s'il y était).
+     * Le groupe « ADBE Layer Styles » est-il visible ? Un calque sans style actif l'a « masqué » : lui donner
+     * `selected` lève une erreur (la propriété ou une propriété parent est masquée) ; c'est le test fiable. Le
+     * groupe est laissé désélectionné.
      */
-    function applyStyles(comp, layer, styles) {
-        var done = 0, seen = {}, i;
-        // app.executeCommand agit sur la compo active : jamais sur une autre que celle du calque
-        if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
-        var kept = comp.selectedLayers, keptIndexes = [];
-        for (i = 0; i < kept.length; i++) keptIndexes.push(kept[i].index);
+    function stylesGroupVisible(group) {
+        if (!group) return false;
+        try { group.selected = true; } catch (e) { return false; }
+        try { group.selected = false; } catch (e2) { /* déjà fait */ }
+        return true;
+    }
+
+    /** Le calque a-t-il des styles de calque ? La sélection de l'utilisateur est rétablie. */
+    function layerHasStyles(comp, layer) {
+        var kept = selectedIds(comp), has = false;
         try {
-            for (i = 0; i < styles.length; i++) {
-                var style = styles[i];
-                if (!style) continue;
-                var def = STYLE_TABLE.hasOwnProperty(style.kind) ? STYLE_TABLE[style.kind] : null;
-                if (!def || seen[style.kind]) continue;
-                seen[style.kind] = true;
-                var id = commandId(def.menu);
-                if (!id) continue;
-                deselectLayers(comp);
-                layer.selected = true;
-                if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
-                app.executeCommand(id);
-                var group = styleGroup(layer, def.group);
-                if (!group) continue;
-                writeStyle(group, def, style);
-                done++;
-            }
-        } finally {
             deselectLayers(comp);
-            for (i = 0; i < keptIndexes.length; i++) {
-                try { comp.layer(keptIndexes[i]).selected = true; } catch (e) { /* calque disparu */ }
-            }
+            has = stylesGroupVisible(layer.property('ADBE Layer Styles'));
+        } finally {
+            restoreSelection(comp, kept);
         }
-        return done;
+        return has;
+    }
+
+    /**
+     * Copie les styles de calque de `from` sur `to` (les mêmes, réglages compris, options de fusion et opacité du
+     * fond comprises) : Copier sur le groupe « ADBE Layer Styles » de `from`, Coller sur `to`. Écrase le
+     * presse-papiers de l'utilisateur. Renvoie false, sans rien lancer, si `from` n'a aucun style. Lève une
+     * erreur si la compo n'est pas la compo active (app.executeCommand n'agit que sur elle) ou si le collage n'a
+     * rien donné (le groupe de `to` reste masqué). La sélection de l'utilisateur est rétablie à la fin.
+     */
+    function copyLayerStyles(comp, from, to) {
+        if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
+        var kept = selectedIds(comp);
+        try {
+            deselectLayers(comp);
+            var source = from.property('ADBE Layer Styles');
+            try { source.selected = true; } catch (e) { return false; }     // groupe masqué : aucun style
+            app.executeCommand(COMMAND_COPY);
+            source.selected = false;
+            deselectLayers(comp);
+            to.selected = true;
+            if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
+            app.executeCommand(COMMAND_PASTE);
+            if (!stylesGroupVisible(to.property('ADBE Layer Styles'))) throw new Error('Styles de calque non collés : la commande Coller est restée sans effet');
+            return true;
+        } finally {
+            restoreSelection(comp, kept);
+        }
     }
 
     var lastFailure = null;
@@ -529,17 +396,20 @@
      * du PSD et que l'utilisateur a pu retoucher) : shape.opacity et shape.hidden ne servent pas ici.
      * Ancre [0, 0] et position = décalage du calque PSD dans la compo (position - ancre - coin haut
      * gauche de sa boîte) ; les tracés restent en coordonnées du document. Un seul groupe : tous les
-     * sous-tracés, puis le contour (un seul sous-tracé), puis le remplissage, puis les styles de calque.
+     * sous-tracés, puis le contour (un seul sous-tracé), puis le remplissage (un dégradé : sa couleur de départ,
+     * puis l'effet Dégradé sur le calque), puis les styles de calque, recopiés du calque PSD s'il en a. Avec des
+     * styles, remplissage et contour sont à 100 % (l'opacité du fond voyage avec les options de fusion copiées,
+     * sinon elle s'appliquerait deux fois) ; sans style, ils prennent shape.fillOpacity.
      *
      * Renvoie le calque de forme, ou null. Deux sortes de null :
      *  - un refus voulu, silencieux (calque PSD mis à l'échelle ou tourné, JSON non reproductible :
-     *    dégradé (fond ou incrustation), style en double ou inconnu, contour non centré, mode de fusion inconnu,
-     *    boîte illisible…) : lastFailure() = null ;
+     *    dégradé autre qu'un dégradé linéaire à deux couleurs, ou avec un contour, contour non centré, mode de
+     *    fusion inconnu, boîte illisible…) : lastFailure() = null ;
      *  - une panne : le métrage du calque PSD n'a ni la taille de shape.box ni celle de shape.canvas (à 1 px près : After a pu fusionner
      *    les styles dans les pixels, ou le JSON est celui d'un autre calque), ou une panne imprévue en cours de
      *    construction (le calque de forme à demi fait est retiré) ; le calque PSD reste, et
      *    lastFailure() = { name, message } (remis à zéro à chaque appel).
-     *    Les styles de calque (shape.styles) sont posés ici, par le menu : commande introuvable = panne.
+     *    Les styles de calque sont recopiés ici : un collage sans effet = panne.
      * N'ouvre pas de groupe d'annulation : c'est l'appelant qui le fait.
      */
     function replaceWithShape(comp, layer, shape) {
@@ -567,6 +437,7 @@
         var wasLocked = layer.locked;
         var made = comp.layers.addShape();
         try {
+            if (wasLocked) layer.locked = false;     // le calque PSD se copie et se supprime déverrouillé (rétabli en cas de panne)
             made.name = layer.name;
             made.startTime = layer.startTime;
             made.inPoint = layer.inPoint;
@@ -582,22 +453,19 @@
 
             made.property('ADBE Root Vectors Group').addProperty('ADBE Vector Group');
             for (var i = 0; i < shape.paths.length; i++) addPath(made, 1, shape.paths[i]);
-            if (shape.stroke) addStroke(made, 1, shape.stroke, fillOpacity);
-            if (shape.fill) addFill(made, 1, shape.fill, fillOpacity);
-
-            // Styles : par le menu, sur le calque de forme, avant de toucher à l'original. Un style non posé
-            // (commande introuvable : autre langue d'After) est une panne systématique que l'utilisateur doit voir.
-            var styles = shape.styles || [];
-            if (styles.length > 0) {
-                var applied = applyStyles(comp, made, styles);
-                if (applied < styles.length) {
-                    throw new Error('Styles de calque posés : ' + applied + ' sur ' + styles.length +
-                        ' (commande de menu Calque › Styles de calque introuvable : autre langue d\'After Effects ?)');
-                }
+            // Styles de calque : ceux que After a importés avec le PSD, recopiés tels quels (options de fusion comprises,
+            // donc l'opacité du fond) ; remplissage et contour restent alors à 100 %.
+            var styled = layerHasStyles(comp, layer);
+            var paint = styled ? 100 : fillOpacity;
+            if (shape.stroke) addStroke(made, 1, shape.stroke, paint);
+            if (shape.fill) {
+                addFill(made, 1, shape.fill, paint);
+                if (shape.fill.type === 'ramp') addRamp(made, shape.fill);
             }
+            // Avant de toucher à l'original : un collage sans effet est une panne que l'utilisateur doit voir.
+            if (styled) copyLayerStyles(comp, layer, made);
 
             made.moveBefore(layer);
-            if (wasLocked) layer.locked = false;
             layer.remove();
         } catch (e) {
             // calque de forme à demi construit : on le retire, le calque PSD reste
@@ -704,13 +572,14 @@
 
     function shapeKey(name, nth) { return 'k' + nth + ':' + name; }
 
-    // Débordement d'un style de calque hors de la boîte du calque (px) : les propriétés sommées, par groupe.
+    // Débordement d'un style de calque hors de la boîte du calque (px) : les propriétés sommées, par groupe (les
+    // groupes de styles s'appellent « <sorte>/enabled », `enabled` vrai quand le style est actif).
     // Les styles intérieurs (ombre et lueur internes, satin, incrustation) ne débordent pas.
     var STYLE_OVERFLOW = {
-        dropShadow: ['dropShadow/distance', 'dropShadow/blur'],
-        outerGlow: ['outerGlow/blur'],
-        bevelEmboss: ['bevelEmboss/blur'],
-        frameFX: ['frameFX/size']
+        'dropShadow/enabled': ['dropShadow/distance', 'dropShadow/blur'],
+        'outerGlow/enabled': ['outerGlow/blur'],
+        'bevelEmboss/enabled': ['bevelEmboss/blur'],
+        'frameFX/enabled': ['frameFX/size']
     };
     var MIN_COMP_SIZE = 4;      // px : plus petite compo qu'After accepte
 
@@ -1014,7 +883,8 @@
         isPsdName: isPsdName,
         findAssetFolder: findAssetFolder,
         replaceWithShape: replaceWithShape,
-        applyStyles: applyStyles,
+        copyLayerStyles: copyLayerStyles,
+        styleOverflow: styleOverflow,
         cropPrecomp: cropPrecomp,
         lastFailure: function () { return lastFailure; }
     };

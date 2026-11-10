@@ -7,7 +7,7 @@ const path = require('path');
 const { loadHost, makeDom, hostEvalScript, app } = require('./helpers');
 const { FakeComp, FakeFile, FakeFolder, FootageItem, FileSource } = require('./fake-ae');
 
-const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/bridge.js', 'js/psd/reader.js', 'js/psd/styles.js', 'js/psd/shapes.js', 'js/keys.js', 'tools/toolbox.js'];
+const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/bridge.js', 'js/psd/reader.js', 'js/psd/shapes.js', 'js/keys.js', 'tools/toolbox.js'];
 
 /** Comp « Rig » active (1920 × 1080) : A, B, C (100 × 100) en [100, 100], [500, 300], [900, 900]. */
 function rig() {
