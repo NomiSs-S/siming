@@ -261,6 +261,38 @@ Revue de toute la branche `feat/import-psd` : la règle « mieux vaut un calque 
 - Aussi : base d'un détourage, tracé inversé ou désactivé (drapeaux `vsms`), remplissage initial « tous les pixels » (enregistrement de type 8 du tracé, présent à 0 dans les vrais fichiers) et mode de calque inconnu : laissés en PSD ; limite des angles du contour reprise du PSD ; « 1 PSD illisible » accordé ; progression de lecture peinte avant chaque PSD (lecture asynchrone) ; liste sans dossier : « Aucun dossier : choisis-le avec « Changer de dossier » ».
 - Restent pour plus tard (revue, mineurs) : éléments importés dans le dossier sélectionné du Projet, commentaire et branches mortes de `styleValue`, focus à l'ouverture / fermeture de la liste, `render(importBatch)`, `.s-link` / `.s-check-row` hors du bloc des composants, structure de CLAUDE.md, exceptions de la conversion en texte avalées dans le lot, PSD 16 / 32 bits.
 
+### 2026-11-09 : Import PSD, premier essai dans After (1.5.1, non publiée)
+
+Essai sur la planche test (`E:/PERSO/TEST`, vu par le serveur MCP) : ni les formes ni le fond n'étaient convertis.
+- **Formes** : After importe un calque de forme (remplissage + tracé vectoriel) en **métrage à la taille du document**,
+  ancre au centre, le tracé devenu masque, même en « calques rognés ». La vérification « métrage = boîte du PSD »
+  refusait donc chaque forme (« forme en erreur »). Le JSON porte maintenant `canvas` (taille du document) et l'hôte
+  accepte les deux tailles : boîte (coin = box) ou document (coin = 0, 0).
+- **Fond** : `Calque 0` est un calque de pixels rouge uni, que l'outil ignorait. Le lecteur décode maintenant les
+  canaux (8 bits RVB, brut ou PackBits ; zip refusé) des seuls calques de pixels « simples » (liste blanche de blocs)
+  et note `uniform` si tout est d'une couleur et opaque ; `shapes.js` en fait un rectangle plein de sa boîte.
+- Vérifié dans After via MCP (cœur rechargé par `$.evalFile`) : 1 texte, 5 formes, rendu identique à l'original ;
+  l'ellipse en dégradé reste en PSD (voulu). Compo d'essai « planche-test 2 » laissée dans le projet test.
+- Retour : « les formes sont toujours des aplats masqués » : la compo regardée était l'import d'avant la correction ;
+  le panneau doit être fermé et rouvert pour charger le nouveau code (l'extension pointe sur le dépôt).
+- **Points d'ancrage centrés** en fin d'import, dans chaque compo de l'import : `placeAnchor` (Quick Tools, case 5,
+  sortie de `anchor` et exposée dans `_core`) ; calque verrouillé ou sans rien de visible laissé.
+- **Choix du dossier** : la petite ligne en police à chasse fixe et le lien « Changer de dossier » deviennent une
+  carte (`ui.card`, icône `dossier` ajoutée à la charte) : nom du dossier en titre, deux dossiers parents en
+  sous-titre, chemin complet en infobulle, clic = changer ; sans dossier, carte en pointillés « Choisir le dossier
+  des PSD ». « Cocher : Tout / Rien » remplacé par une ligne « Tous les PSD » à trois états avec le compte
+  (`ui.checkList({ allLabel })`).
+- Retour : c'est la **fenêtre** de choix qui gênait (arbre de dossiers de Windows de `folder.selectDlg`). La vue
+  passe d'abord par `window.cep.fs.showOpenDialogEx(false, true, …, dossier courant)` de CEP (Explorateur,
+  Finder) ; erreur ou CEP sans cette fonction : la fenêtre d'After en secours. `list` renvoie `start` (dossier du
+  projet) quand 02_ASSET est introuvable, pour y ouvrir la fenêtre. À vérifier dans After : style de la fenêtre.
+- **Précompos recadrées** sur leur contenu (`cropPrecomp`, des plus profondes à la planche) : union des boîtes des
+  calques, élargie du débordement des styles (ombre portée : distance + taille ; lueur externe, biseau, contour :
+  taille), coupée aux bords de la compo (ce qui dépassait restait caché) ; calques sans parent reculés, ancre du
+  calque de précompo reposée. Constaté dans After : il **remet à l'échelle** l'ancre des calques d'une compo qui
+  change de taille ; l'ancre est donc relevée avant et reposée après. Vérifié via MCP : « Groupe 1 » en 1173 × 278,
+  rendu identique. Le faux After des tests imite ce comportement et donne à un calque de précompo la boîte de sa compo.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
@@ -328,6 +360,11 @@ Idées notées, à trier. Ne pas implémenter sans besoin réel.
 - **Extension reliée à un disque externe** (2026-11-06) : le lien de développement vers `/Volumes/EXT 11/…` est mort quand le disque a été renommé KINGSTON (et chaque éjection ou mise en veille le coupait) : SIMING « disparaissait » sur Mac. Sur Mac, installer par copie (`tools/dev-install.command`).
 - **UPIA échoue sans session Creative Cloud et sort avec le code 0** (2026-11-09) : `status = -631` ; l'installeur croyait avoir réussi. Remplacé par l'extraction du `.zxp`. Voir `NOTES-EXTENDSCRIPT.md`, Installation.
 - **`pgrep -f` pour savoir si une application tourne** (2026-10-12) : attrape tous les processus dont le chemin contient le nom (processus d'appoint dans le dossier de l'application) ; `pgrep -x` sur le nom exact du processus. Voir `NOTES-EXTENDSCRIPT.md`, Installation (macOS).
+
+- **Ancre remise à l'échelle quand une précompo change de taille** (2026-11-10) : `sub.width = 400` (au lieu de
+  1000) fait passer l'ancre des calques qui l'affichent de 500 à 200. Relever l'ancre avant, la reposer après.
+- **Calque de forme d'un PSD importé à la taille du document** (2026-11-09) : After ne rogne pas un calque de
+  remplissage + tracé vectoriel ; il le donne en 1920 × 1080 avec le tracé en masque. Voir `NOTES-EXTENDSCRIPT.md`.
 
 ## Questions ouvertes à vérifier dans After Effects
 

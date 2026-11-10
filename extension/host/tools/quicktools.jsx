@@ -108,6 +108,33 @@
     // Boîte d'un calque = ce qui en est visible : masques compris (ancrage, aligner, répartir).
     var sourceRect = ae.visibleRect, offsetProperty = ae.offsetProperty;
 
+    /**
+     * Place le point d'ancrage d'un calque sur une case 1..9 de sa boîte visible (5 = centre), sans que rien ne
+     * bouge à l'écran, à aucun instant : keyframes d'ancrage et de position décalées (chaque keyframe de position
+     * compensée avec l'échelle et la rotation de son instant), aucune créée. Lève une erreur si rien n'est visible.
+     */
+    function placeAnchor(layer, cell, time) {
+        var rect = sourceRect(layer, time);
+        var tr = layer.property('ADBE Transform Group');
+        var ap = tr.property('ADBE Anchor Point');
+        var cur = ap.valueAtTime(time, false);
+        var target = anchorTarget(rect, cell);
+        var delta = [target[0] - cur[0], target[1] - cur[1]];
+        // Compensation à l'instant t, avec l'échelle et la rotation d'alors.
+        var shiftAt = function (t) {
+            var tt = readTransform(layer, t);
+            return compensate(delta, tt.scale, tt.rotation);
+        };
+        offsetProperty(ap, function () { return delta; }, time);
+        var posProp = tr.property('ADBE Position');
+        if (posProp.dimensionsSeparated) {
+            offsetProperty(tr.property('ADBE Position_0'), function (t) { return shiftAt(t)[0]; }, time);
+            offsetProperty(tr.property('ADBE Position_1'), function (t) { return shiftAt(t)[1]; }, time);
+        } else {
+            offsetProperty(posProp, shiftAt, time);
+        }
+    }
+
     var EDGES = { left: 1, centerX: 1, right: 1, top: 1, centerY: 1, bottom: 1 };
 
     function isHorizontal(edge) {
@@ -407,25 +434,7 @@
                     var layer = layers[i];
                     try {
                         if (layer.locked) throw new Error('calque verrouillé');
-                        var rect = sourceRect(layer, time);
-                        var tr = layer.property('ADBE Transform Group');
-                        var ap = tr.property('ADBE Anchor Point');
-                        var cur = ap.valueAtTime(time, false);
-                        var target = anchorTarget(rect, cell);
-                        var delta = [target[0] - cur[0], target[1] - cur[1]];
-                        // Compensation à l'instant t, avec l'échelle et la rotation d'alors.
-                        var shiftAt = function (t) {
-                            var tt = readTransform(layer, t);
-                            return compensate(delta, tt.scale, tt.rotation);
-                        };
-                        offsetProperty(ap, function () { return delta; }, time);
-                        var posProp = tr.property('ADBE Position');
-                        if (posProp.dimensionsSeparated) {
-                            offsetProperty(tr.property('ADBE Position_0'), function (t) { return shiftAt(t)[0]; }, time);
-                            offsetProperty(tr.property('ADBE Position_1'), function (t) { return shiftAt(t)[1]; }, time);
-                        } else {
-                            offsetProperty(posProp, shiftAt, time);
-                        }
+                        placeAnchor(layer, cell, time);
                         rep.done++;
                     } catch (e) {
                         rep.skipped.push(layer.name + ' : ' + e.message);
@@ -479,6 +488,7 @@
         clampInfluence:     clampInfluence,
         easeList:           easeList,
         anchorTarget:       anchorTarget,
+        placeAnchor:        placeAnchor,
         matMul:             matMul,
         matApply:           matApply,
         matLinear:          matLinear,

@@ -53,6 +53,31 @@ const resource = (id, data) => Buffer.concat([ascii('8BIM'), u16(id), Buffer.fro
 
 const names = (ls) => ls.map((l) => l.name);
 
+/**
+ * PSD de calques de pixels 2 x 2 avec leurs données : layers = [{ name, channels: [{ id, data }], blocks? }], de bas
+ * en haut ; data = octets du canal, compression comprise (raw, rle).
+ */
+function makePixelPsd(layers) {
+    const recs = layers.map((l) => {
+        const nameBytes = ascii(l.name);
+        const pascal = pad4(Buffer.concat([Buffer.from([nameBytes.length]), nameBytes]));
+        const extra = Buffer.concat([u32(0), u32(0), pascal, ...(l.blocks || [])]);
+        return Buffer.concat([
+            i32(0), i32(0), i32(2), i32(2), u16(l.channels.length),
+            ...l.channels.map((ch) => Buffer.concat([u16(ch.id & 0xffff), u32(ch.data.length)])),
+            ascii('8BIMnorm'), Buffer.from([255, 0, 0, 0]), u32(extra.length), extra,
+        ]);
+    });
+    const data = Buffer.concat(layers.map((l) => Buffer.concat(l.channels.map((ch) => ch.data))));
+    const info = Buffer.concat([u16(layers.length), ...recs, data]);
+    const header = Buffer.concat([ascii('8BPS'), u16(1), Buffer.alloc(6), u16(3), u32(2), u32(2), u16(8), u16(3)]);
+    return Buffer.concat([header, u32(0), u32(0), u32(info.length + 4), u32(info.length), info]);
+}
+/** Canal 2 x 2 brut, ou en PackBits (deux lignes : chacune « 2 fois la valeur » ou deux octets littéraux). */
+const raw = (bytes) => Buffer.concat([u16(0), Buffer.from(bytes)]);
+const rle = (rows) => Buffer.concat([u16(1), ...rows.map(() => u16(2)),
+    ...rows.map((r) => (r[0] === r[1] ? Buffer.from([255, r[0]]) : Buffer.from([1, r[0], r[1]])))]);
+
 module.exports = function (test) {
     test('psd : planche test, taille, arbre des calques dans l\'ordre du panneau', () => {
         const doc = read(fs.readFileSync(FIXTURE));
@@ -76,6 +101,32 @@ module.exports = function (test) {
         assert.strictEqual(r1.blocks.TySh, false);
         assert.strictEqual(doc.layers[4].blocks.vogk, undefined);
         assert.ok(doc.layers.every((l) => l.opacity === 255 && l.blend && l.hidden === false));
+    });
+
+    test('psd : planche test, le fond (Calque 0) est uni, rouge ; les formes et le texte ne le sont pas', () => {
+        const doc = read(fs.readFileSync(FIXTURE));
+        assert.deepStrictEqual(doc.layers[4].uniform, [243 / 255, 0, 24 / 255]);
+        assert.ok(doc.layers.slice(1, 4).every((l) => l.uniform === null));
+        assert.ok(doc.layers[0].children.every((l) => l.uniform === null));
+    });
+
+    test('psd : calques de pixels unis (brut et PackBits), alpha opaque ; sinon uniform = null', () => {
+        const rgb = (r, g, b, enc) => [{ id: 0, data: enc(r) }, { id: 1, data: enc(g) }, { id: 2, data: enc(b) }];
+        const flatRaw = (v) => raw([v, v, v, v]);
+        const flatRle = (v) => rle([[v, v], [v, v]]);
+        const doc = read(makePixelPsd([
+            { name: 'brut', channels: rgb(255, 0, 51, flatRaw) },
+            { name: 'rle', channels: [{ id: -1, data: flatRle(255) }].concat(rgb(0, 128, 255, flatRle)) },
+            { name: 'varie', channels: [{ id: 0, data: raw([1, 1, 1, 2]) }, { id: 1, data: flatRaw(1) }, { id: 2, data: flatRaw(1) }] },
+            { name: 'translucide', channels: [{ id: -1, data: flatRle(128) }].concat(rgb(0, 0, 0, flatRle)) },
+            { name: 'zip', channels: rgb(0, 0, 0, () => Buffer.concat([u16(2), Buffer.alloc(4)])) },
+            { name: 'texte', channels: rgb(0, 0, 0, flatRaw), blocks: [block('TySh', Buffer.alloc(4))] },
+            { name: 'rle litteral', channels: rgb(9, 9, 9, (v) => rle([[v, v], [v, 7]])) },
+        ]));
+        const by = (n) => doc.layers.filter((l) => l.name === n)[0].uniform;
+        assert.deepStrictEqual(by('brut'), [1, 0, 51 / 255]);
+        assert.deepStrictEqual(by('rle'), [0, 128 / 255, 1]);
+        ['varie', 'translucide', 'zip', 'texte', 'rle litteral'].forEach((n) => assert.strictEqual(by(n), null, n));
     });
 
     test('psd : descripteur, tous les types d\'éléments', () => {

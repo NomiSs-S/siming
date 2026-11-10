@@ -4,6 +4,9 @@
  *
  *   SIMING.psd.shapes(doc) -> Shape[]     doc : le résultat de SIMING.psd.read
  *
+ * Un calque de pixels d'une seule couleur, opaque sur toute sa boîte (le fond d'une planche), devient
+ * aussi une forme : un rectangle plein de sa boîte (voir uniformOf).
+ *
  * Une entrée par calque vectoriel que l'on sait reproduire fidèlement, dans l'ordre du panneau
  * Calques (le plus haut d'abord, les enfants d'un groupe à leur place). Un calque qu'on ne sait pas
  * reproduire est simplement absent : il reste un calque PSD. C'est le cas quand
@@ -28,6 +31,8 @@
  *               précomp côté After), parcours haut -> bas en profondeur
  *   fillOpacity opacité du fond (0-100, « Fond » de Photoshop), 100 si absente
  *   box         boîte de pixels du calque (sert au décalage côté hôte)
+ *   canvas      { width, height } du document : After importe un calque de forme à la taille du document
+ *               (et non de sa boîte), avec son tracé en masque ; l'hôte accepte l'une ou l'autre taille
  *   blend       normal, multiply, screen, overlay, colorDodge… (mode inconnu : calque laissé en PSD)
  *   SubPath     { type: 'rect', center, size, rotation (degrés), roundness }
  *               { type: 'ellipse', center, size, rotation }
@@ -344,9 +349,39 @@
     const SKIPPED_IF_UNREADABLE = ['vogk', 'vsms', 'vscg', 'vstk', 'lfx2'];
     const PATH_INVERTED = 1, PATH_DISABLED = 4;     // drapeaux du tracé (vsms, vmsk)
 
+    /**
+     * Calque de pixels d'une seule couleur, opaque sur toute sa boîte (layer.uniform, voir reader.js) : un
+     * rectangle plein de cette boîte, le fond d'une planche le plus souvent. null s'il n'est pas reproductible.
+     */
+    function uniformOf(layer, nth, doc, styles) {
+        const blocks = layer.blocks || {};
+        if (!Array.isArray(layer.uniform) || layer.clipped === true || layer.masked === true) return null;
+        if (Array.isArray(blocks.unreadable) && blocks.unreadable.indexOf('lfx2') >= 0) return null;
+        if (!Object.prototype.hasOwnProperty.call(BLEND_MODES, layer.blend)) return null;
+        const list = styles(blocks.lfx2);
+        if (list === null) return null;
+        const fillOpacity = blocks.iOpa === undefined ? 100 : blocks.iOpa / 255 * 100;
+        if (fillOpacity < 100 - EPSILON && list.length > 0) return null;
+        const b = layer.box;
+        return {
+            match: { name: layer.name, nth },
+            box: { left: b.left, top: b.top, right: b.right, bottom: b.bottom },
+            canvas: { width: doc.width, height: doc.height },
+            opacity: layer.opacity / 255 * 100,
+            blend: BLEND_MODES[layer.blend],
+            hidden: layer.hidden === true,
+            fillOpacity,
+            paths: [{ type: 'rect', center: [(b.left + b.right) / 2, (b.top + b.bottom) / 2], size: [b.right - b.left, b.bottom - b.top], rotation: 0, roundness: 0 }],
+            fill: { type: 'solid', color: layer.uniform.slice(0, 3) },
+            stroke: null,
+            styles: resolveGlobalLight(list, doc),
+        };
+    }
+
     /** Forme d'un calque ; null si le calque n'est pas une forme, ou pas reproductible. */
     function shapeOf(layer, nth, doc, styles) {
         const blocks = layer.blocks;
+        if (blocks && !blocks.vogk && layer.uniform) return uniformOf(layer, nth, doc, styles);
         if (!blocks || !blocks.vogk || !Array.isArray(blocks.vsms)) return null;
         const unreadable = Array.isArray(blocks.unreadable) ? blocks.unreadable : [];
         if (SKIPPED_IF_UNREADABLE.some((k) => unreadable.indexOf(k) >= 0)) return null;
@@ -383,6 +418,7 @@
         return {
             match: { name: layer.name, nth },
             box: { left: layer.box.left, top: layer.box.top, right: layer.box.right, bottom: layer.box.bottom },
+            canvas: { width: doc.width, height: doc.height },
             opacity: layer.opacity / 255 * 100,
             blend: BLEND_MODES[layer.blend],
             hidden: layer.hidden === true,

@@ -174,13 +174,31 @@ module.exports = function (test) {
         near(p.inTangents[0], [0, 0], 0.01, 'tangente');
     });
 
-    test('formes : planche test, texte et calque pixel absents, un résultat par calque vectoriel', () => {
+    test('formes : planche test, texte absent, un résultat par calque vectoriel, puis le fond uni', () => {
         const list = shapes(planche());
         assert.strictEqual(byName(list, 'PourQUOI ???'), undefined);
-        assert.strictEqual(byName(list, 'Calque 0'), undefined);
         assert.strictEqual(byName(list, 'Groupe 1'), undefined);
-        assert.deepStrictEqual(list.map((s) => s.match.name), ['Polygone 1', 'Rectangle 3', 'Rectangle 2', 'Rectangle 1', 'Ellipse 1']);
+        assert.deepStrictEqual(list.map((s) => s.match.name), ['Polygone 1', 'Rectangle 3', 'Rectangle 2', 'Rectangle 1', 'Ellipse 1', 'Calque 0']);
         assert.ok(list.every((s) => s.match.nth === 0));
+        assert.ok(list.every((s) => s.canvas.width === 1920 && s.canvas.height === 1080), 'taille du document sur chaque forme');
+    });
+
+    test('formes : fond de la planche test (pixels unis) -> rectangle plein de sa boîte, rouge', () => {
+        const fond = byName(shapes(planche()), 'Calque 0');
+        assert.deepStrictEqual(fond.box, { left: 0, top: 0, right: 1920, bottom: 1080 });
+        assert.deepStrictEqual(fond.paths, [{ type: 'rect', center: [960, 540], size: [1920, 1080], rotation: 0, roundness: 0 }]);
+        assert.strictEqual(fond.fill.type, 'solid');
+        near(fond.fill.color, [243 / 255, 0, 24 / 255], 1e-9, 'couleur');
+        assert.strictEqual(fond.stroke, null);
+        assert.deepStrictEqual(fond.styles, []);
+    });
+
+    test('formes : calque de pixels uni mais détouré, masqué ou au mode inconnu -> absent', () => {
+        for (const over of [{ clipped: true }, { masked: true }, { blend: 'zzzz' }]) {
+            const doc = planche();
+            Object.assign(findLayer(doc.layers, 'Calque 0'), over);
+            assert.strictEqual(byName(shapes(doc), 'Calque 0'), undefined, JSON.stringify(over));
+        }
     });
 
     test('formes : RF2, coins décalés de 10 px = la boîte ne colle plus aux nœuds, donc un tracé', () => {

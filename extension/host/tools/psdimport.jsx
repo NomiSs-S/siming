@@ -505,6 +505,23 @@
 
     var lastFailure = null;
 
+    function sameSize(src, w, h) {
+        return Math.abs(src.width - w) <= SIZE_TOLERANCE && Math.abs(src.height - h) <= SIZE_TOLERANCE;
+    }
+
+    /**
+     * Coin haut gauche, en coordonnées du document, du métrage d'un calque PSD, ou null s'il ne correspond
+     * pas au JSON. After rogne un calque de pixels à sa boîte (coin = box), mais importe un calque de forme à
+     * la taille du document, son tracé en masque (coin = [0, 0]) : shape.canvas donne cette taille.
+     */
+    function footageOrigin(src, shape) {
+        if (!(src instanceof FootageItem) || !isFiniteNumber(src.width) || !isFiniteNumber(src.height)) return null;
+        if (sameSize(src, shape.box.right - shape.box.left, shape.box.bottom - shape.box.top)) return [shape.box.left, shape.box.top];
+        var canvas = shape.canvas;
+        if (canvas && isFiniteNumber(canvas.width) && isFiniteNumber(canvas.height) && sameSize(src, canvas.width, canvas.height)) return [0, 0];
+        return null;
+    }
+
     /**
      * Remplace un calque PSD par un calque de forme décrit par le JSON (SIMING.psd.shapes).
      * Même nom, juste au-dessus de l'original, mêmes temps, parent, visibilité, opacité et mode de
@@ -518,7 +535,7 @@
      *  - un refus voulu, silencieux (calque PSD mis à l'échelle ou tourné, JSON non reproductible :
      *    dégradé (fond ou incrustation), style en double ou inconnu, contour non centré, mode de fusion inconnu,
      *    boîte illisible…) : lastFailure() = null ;
-     *  - une panne : le métrage du calque PSD n'a pas la taille de shape.box (à 1 px près : After a pu fusionner
+     *  - une panne : le métrage du calque PSD n'a ni la taille de shape.box ni celle de shape.canvas (à 1 px près : After a pu fusionner
      *    les styles dans les pixels, ou le JSON est celui d'un autre calque), ou une panne imprévue en cours de
      *    construction (le calque de forme à demi fait est retiré) ; le calque PSD reste, et
      *    lastFailure() = { name, message } (remis à zéro à chaque appel).
@@ -534,15 +551,15 @@
         if (Math.abs(tr.property('ADBE Rotate Z').value) > ROTATION_TOLERANCE) return null;
         var src = null;
         try { src = layer.source; } catch (e0) { src = null; }
-        var boxW = shape.box.right - shape.box.left, boxH = shape.box.bottom - shape.box.top;
-        if (!(src instanceof FootageItem) || !isFiniteNumber(src.width) || !isFiniteNumber(src.height) ||
-                Math.abs(src.width - boxW) > SIZE_TOLERANCE || Math.abs(src.height - boxH) > SIZE_TOLERANCE) {
+        var origin = footageOrigin(src, shape);
+        if (!origin) {
+            var boxW = shape.box.right - shape.box.left, boxH = shape.box.bottom - shape.box.top;
             lastFailure = { name: 'Mismatch', message: 'boîte du calque After différente de celle du PSD (' +
                 (src && isFiniteNumber(src.width) ? src.width + ' × ' + src.height : 'pas un métrage') + ' pour ' + boxW + ' × ' + boxH + ')' };
             return null;
         }
         var pos = tr.property('ADBE Position').value, anchor = tr.property('ADBE Anchor Point').value;
-        var dx = pos[0] - anchor[0] - shape.box.left, dy = pos[1] - anchor[1] - shape.box.top;
+        var dx = pos[0] - anchor[0] - origin[0], dy = pos[1] - anchor[1] - origin[1];
         var opacity = tr.property('ADBE Opacity').value;
         var blend = blendModeOf(shape.blend === undefined ? 'normal' : shape.blend);
         var fillOpacity = (typeof shape.fillOpacity === 'number') ? shape.fillOpacity : 100;
@@ -687,9 +704,156 @@
 
     function shapeKey(name, nth) { return 'k' + nth + ':' + name; }
 
+    // Débordement d'un style de calque hors de la boîte du calque (px) : les propriétés sommées, par groupe.
+    // Les styles intérieurs (ombre et lueur internes, satin, incrustation) ne débordent pas.
+    var STYLE_OVERFLOW = {
+        dropShadow: ['dropShadow/distance', 'dropShadow/blur'],
+        outerGlow: ['outerGlow/blur'],
+        bevelEmboss: ['bevelEmboss/blur'],
+        frameFX: ['frameFX/size']
+    };
+    var MIN_COMP_SIZE = 4;      // px : plus petite compo qu'After accepte
+
+    /** Ce que les styles de calque actifs ajoutent autour de la boîte du calque (px, 0 sans style). */
+    function styleOverflow(layer) {
+        var most = 0, root = null;
+        try { root = layer.property('ADBE Layer Styles'); } catch (e0) { root = null; }
+        if (!root) return 0;
+        for (var group in STYLE_OVERFLOW) {
+            if (!STYLE_OVERFLOW.hasOwnProperty(group)) continue;
+            try {
+                var g = root.property(group);
+                if (!g || !g.enabled) continue;
+                var sum = 0, names = STYLE_OVERFLOW[group];
+                for (var i = 0; i < names.length; i++) {
+                    var prop = g.property(names[i]);
+                    if (prop && isFiniteNumber(prop.value)) sum += Math.abs(prop.value);
+                }
+                if (sum > most) most = sum;
+            } catch (e1) { /* style absent ou illisible : rien à ajouter */ }
+        }
+        return most;
+    }
+
+    /** Boîte (compo) de ce que montrent les calques de la compo, styles compris ; null si rien ne se mesure. */
+    function contentBox(comp) {
+        var boxes = [];
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            try {
+                var b = S.ae.layerBox(layer, 0), pad = styleOverflow(layer);
+                boxes.push({ left: b.left - pad, top: b.top - pad, right: b.right + pad, bottom: b.bottom + pad });
+            } catch (e) { /* calque sans boîte : ne compte pas */ }
+        }
+        return boxes.length ? S.geom.union(boxes) : null;
+    }
+
+    /** Décale la propriété (position ou ancre, 2D ou séparée) de [dx, dy], keyframes comprises ; déverrouille le temps de le faire. */
+    function shiftLayer(layer, matchName, dx, dy) {
+        var wasLocked = layer.locked;
+        if (wasLocked) layer.locked = false;
+        try {
+            var tr = layer.property('ADBE Transform Group'), prop = tr.property(matchName);
+            if (matchName === 'ADBE Position' && prop.dimensionsSeparated) {
+                S.ae.offsetProperty(tr.property('ADBE Position_0'), function () { return dx; }, 0);
+                S.ae.offsetProperty(tr.property('ADBE Position_1'), function () { return dy; }, 0);
+            } else {
+                S.ae.offsetProperty(prop, function () { return [dx, dy]; }, 0);
+            }
+        } finally {
+            if (wasLocked) layer.locked = true;
+        }
+    }
+
+    /**
+     * Recadre une précompo de l'import sur ce que montrent ses calques (styles compris, sans sortir de la compo :
+     * ce qui en dépassait restait caché), puis compense : les calques sans parent de la précompo reculent de
+     * [left, top], et l'ancre de chaque calque qui l'affiche (holders) aussi (reposée : After la remet à l'échelle
+     * quand la compo change de taille), si bien que rien ne bouge à l'écran.
+     * Renvoie true si la compo a changé de taille.
+     */
+    function cropPrecomp(sub, holders) {
+        var box = contentBox(sub);
+        if (!box) return false;
+        var left = Math.max(0, Math.floor(box.left)), top = Math.max(0, Math.floor(box.top));
+        var right = Math.min(sub.width, Math.ceil(box.right)), bottom = Math.min(sub.height, Math.ceil(box.bottom));
+        if (right - left < MIN_COMP_SIZE || bottom - top < MIN_COMP_SIZE) return false;
+        if (left === 0 && top === 0 && right === sub.width && bottom === sub.height) return false;
+        for (var i = 1; i <= sub.numLayers; i++) {
+            var layer = sub.layer(i);
+            if (!layer.parent) shiftLayer(layer, 'ADBE Position', -left, -top);
+        }
+        // After remet à l'échelle l'ancre des calques d'une compo qui change de taille (500 -> 200 pour 1000 -> 400) :
+        // on la relève avant, on la repose après, décalée.
+        var saved = [], k;
+        for (k = 0; k < holders.length; k++) saved.push(anchorValues(holders[k]));
+        sub.width = right - left;
+        sub.height = bottom - top;
+        for (k = 0; k < holders.length; k++) restoreAnchor(holders[k], saved[k], -left, -top);
+        return true;
+    }
+
+    /** Valeurs de l'ancre d'un calque : { keys: [valeur…] } avec keyframes, sinon { value }. */
+    function anchorValues(layer) {
+        var ap = layer.property('ADBE Transform Group').property('ADBE Anchor Point');
+        if (ap.numKeys === 0) return { value: ap.value };
+        var keys = [];
+        for (var i = 1; i <= ap.numKeys; i++) keys.push(ap.keyValue(i));
+        return { keys: keys };
+    }
+
+    /** Repose l'ancre relevée par anchorValues, décalée de [dx, dy] ; déverrouille le temps de le faire. */
+    function restoreAnchor(layer, saved, dx, dy) {
+        var wasLocked = layer.locked;
+        if (wasLocked) layer.locked = false;
+        try {
+            var ap = layer.property('ADBE Transform Group').property('ADBE Anchor Point');
+            var moved = function (v) { var o = [v[0] + dx, v[1] + dy]; if (v.length > 2) o.push(v[2]); return o; };
+            if (saved.keys) {
+                for (var i = 0; i < saved.keys.length && i < ap.numKeys; i++) ap.setValueAtKey(i + 1, moved(saved.keys[i]));
+            } else {
+                ap.setValue(moved(saved.value));
+            }
+        } finally {
+            if (wasLocked) layer.locked = true;
+        }
+    }
+
+    /** Calques des compos du parcours qui affichent la compo `sub`. */
+    function holdersOf(plan, sub) {
+        var out = [];
+        for (var p = 0; p < plan.length; p++) {
+            var comp = plan[p].comp;
+            for (var i = 1; i <= comp.numLayers; i++) {
+                var src = null;
+                try { src = comp.layer(i).source; } catch (e) { src = null; }
+                if (src instanceof CompItem && src.id === sub.id) out.push(comp.layer(i));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Point d'ancrage de chaque calque de la compo au centre de sa boîte visible, sans rien déplacer à l'écran
+     * (placeAnchor de Quick Tools, case 5). Calque verrouillé ou sans rien de visible : laissé tel quel.
+     * Renvoie le nombre de calques traités.
+     */
+    function centerAnchors(comp, placeAnchor) {
+        var done = 0;
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (layer.locked) continue;
+            try {
+                placeAnchor(layer, 5, 0);
+                done++;
+            } catch (e) { /* rien de visible (calque vide, masques hors du calque) : ancre laissée */ }
+        }
+        return done;
+    }
+
     /**
      * Importe un PSD en compo (calques rognés), range la compo et son dossier « N Calques » dans 02_ASSET,
-     * puis dans l'ordre : formes, textes, libellés. Chaque compo du parcours est ouverte dans le viewer avant
+     * puis dans l'ordre : formes, textes, libellés, précompos recadrées sur leur contenu, points d'ancrage centrés. Chaque compo du parcours est ouverte dans le viewer avant
      * ce qui passe par un menu (app.executeCommand agit sur la compo du viewer), et l'on vérifie qu'elle y est
      * bien (focusComp) : sinon rien n'est lancé. Lève une erreur si le PSD n'a pas pu être importé ou traité
      * (l'appelant le compte illisible et retire ce que l'import a créé).
@@ -746,6 +910,12 @@
             if (converted.missing) tally.missing = true;
         }
         for (p = 0; p < plan.length && labels; p++) labels._core.labelLayers(layersOf(plan[p].comp), rules);
+        // précompos recadrées, les plus profondes d'abord (leur taille compte dans la boîte de la précompo au-dessus)
+        for (p = plan.length - 1; p >= 1; p--) {
+            if (cropPrecomp(plan[p].comp, holdersOf(plan, plan[p].comp))) tally.cropped++;
+        }
+        var quick = S.getTool('quicktools');
+        for (p = 0; p < plan.length && quick; p++) tally.anchors += centerAnchors(plan[p].comp, quick._core.placeAnchor);
         return { name: comp.name, compId: comp.id };
     }
 
@@ -769,7 +939,7 @@
             }
             folder = findAssetFolder(start);
             if (!folder) {
-                return { folder: null, files: [], status: status('Dossier ' + ASSET_PATH + ' introuvable : choisis le dossier des PSD', 'warn') };
+                return { folder: null, start: start.fsName, files: [], status: status('Dossier ' + ASSET_PATH + ' introuvable : choisis le dossier des PSD', 'warn') };
             }
         }
         var files = listPsds(folder);
@@ -811,7 +981,7 @@
             try {
                 S.ae.undo(UNDO_NAME, function () {
                     for (var k = 0; k < valid.length; k++) {
-                        var mine = { shapes: 0, texts: 0, failed: 0, missing: false }, before = projectItemIds();
+                        var mine = { shapes: 0, texts: 0, failed: 0, missing: false, anchors: 0, cropped: 0 }, before = projectItemIds();
                         try {
                             imported.push(importOne(valid[k], before, ctx, rules, mine));
                             tally.shapes += mine.shapes;
@@ -845,6 +1015,7 @@
         findAssetFolder: findAssetFolder,
         replaceWithShape: replaceWithShape,
         applyStyles: applyStyles,
+        cropPrecomp: cropPrecomp,
         lastFailure: function () { return lastFailure; }
     };
 

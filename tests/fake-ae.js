@@ -192,6 +192,9 @@ LayerRef.prototype.effect = function (x) {
 
 /** Boîte visible du calque dans son propre espace ({ top, left, width, height }). */
 LayerRef.prototype.sourceRectAtTime = function () {
+    // calque de précompo : la boîte est la compo entière, comme dans After
+    const src = this._state.source;
+    if (src instanceof FakeComp) return { top: 0, left: 0, width: src.width, height: src.height };
     return Object.assign({}, this._state.rect);
 };
 
@@ -320,8 +323,8 @@ class FakeComp extends CompItem {
         this.selection = [];
         this.noIds = !!(opts && opts.noIds);   // imite une version d'AE sans Layer.id
         this.time = 0;
-        this.width = (opts && opts.width) || 1920;
-        this.height = (opts && opts.height) || 1080;
+        this._width = (opts && opts.width) || 1920;
+        this._height = (opts && opts.height) || 1080;
         this.frameDuration = 1 / 25;
         this.duration = 10;
         this.bgColor = [0, 0, 0];
@@ -405,6 +408,25 @@ class FakeComp extends CompItem {
             P.selectedStates(st.transform).concat(P.selectedStates(st.effects)).forEach((s) => out.push(P.refFor(s, ctx)));
         }
         return out;
+    }
+    /** Taille : comme After, changer la taille remet à l'échelle l'ancre (valeur et keyframes) des calques qui
+     *  affichent cette compo, dans toutes les compos du projet (500 -> 200 pour 1000 -> 400 de large). */
+    get width() { return this._width; }
+    set width(w) { this._resize(w / this._width, 1); this._width = w; }
+    get height() { return this._height; }
+    set height(h) { this._resize(1, h / this._height); this._height = h; }
+    _resize(fx, fy) {
+        if (fx === 1 && fy === 1) return;
+        for (const it of app.project.items) {
+            if (!(it instanceof FakeComp)) continue;
+            for (const st of it.layers) {
+                if (st.source !== this) continue;
+                const ap = st.transform.children.find((c) => c.matchName === 'ADBE Anchor Point');
+                const scale = (v) => [v[0] * fx, v[1] * fy].concat(v.length > 2 ? [v[2]] : []);
+                ap.value = scale(ap.value);
+                if (ap.keys) ap.keys.forEach((k) => { k.value = scale(k.value); });
+            }
+        }
     }
     /** Ajoute un calque et renvoie son ÉTAT interne (pas une poignée).
      *  opts : kind ('av' | 'camera' | 'light'), threeD, rect { top, left, width, height }, locked, label… */

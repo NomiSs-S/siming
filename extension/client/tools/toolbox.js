@@ -81,6 +81,7 @@
         let last = null;    // { el, replay } : dernier geste, rejoué par Entrée
         let psd = null;     // { pane, list, folder, primary } tant que la liste des PSD remplace la vue
         let psdFolder = null;   // dernier dossier de PSD connu de l'hôte (rouvert au geste suivant)
+        let psdStart = null;    // sans dossier de PSD : le dossier du projet, où ouvrir la fenêtre de choix
         const settings = ctx.settings;
         const keys = ctx.keys || SIMING.keys;
         const pref = (key, fallback) => {
@@ -272,20 +273,28 @@
             psd.primary.set({ label: 'Importer ' + n + ' PSD', enabled: n > 0 && !view.classList.contains('is-busy') });
         }
 
+        const ASSET_HINT = '02_ASSET introuvable depuis le projet';
         const PSD_EMPTY = 'Aucun PSD dans ce dossier';
-        const PSD_NO_FOLDER = 'Aucun dossier : choisis-le avec « Changer de dossier »';
+        const PSD_NO_FOLDER = 'Aucun dossier : clique sur la carte au-dessus pour le choisir';
+
+        /** Chemin -> { name: dernier dossier, parent: les deux dossiers d'avant, précédés de « … » s'il y en a d'autres }. */
+        function splitFolder(p) {
+            const parts = String(p).split(/[\\/]+/).filter(Boolean);
+            const name = parts.pop() || String(p);
+            const parent = parts.slice(-2).join(' › ');
+            return { name, parent: parts.length > 2 ? '… › ' + parent : parent };
+        }
 
         function buildPsdPane() {
-            const list = ui.checkList({ role: 'psd-list', emptyText: PSD_EMPTY, onChange: syncPsd });
-            const folder = h('span', { class: 's-psd-folder', 'data-role': 'psd-folder' });
-            const link = (role, label, onclick) => h('button', { class: 's-link', type: 'button', 'data-role': role, text: label, onclick });
+            const list = ui.checkList({ role: 'psd-list', emptyText: PSD_EMPTY, onChange: syncPsd, allLabel: 'Tous les PSD' });
+            const folder = ui.card({
+                role: 'psd-folder', onClick: () => task(changePsdFolder),
+                icon: 'dossier', emptyIcon: 'dossier',
+                tip: () => (psdFolder || '') + '\nCliquer pour changer de dossier', emptyTip: 'Choisir le dossier des PSD',
+            });
             const primary = ui.primaryButton({ label: 'Importer 0 PSD', onClick: () => task(importChecked) });
             const pane = h('div', { class: 's-stack s-psd-pane', 'data-role': 'psd-pane' },
-                ui.sectionTitle('Importer les PSD'),
-                h('div', { class: 's-psd-bar' }, folder, link('psd-change-folder', 'Changer de dossier', () => task(changePsdFolder))),
-                h('div', { class: 's-psd-bar' }, h('span', { class: 's-hint', text: 'Cocher' }),
-                    h('span', { class: 's-psd-picks' }, link('psd-all', 'Tout', () => list.setAll(true)), link('psd-none', 'Rien', () => list.setAll(false)))),
-                list, primary,
+                ui.sectionTitle('Importer les PSD'), folder, list, primary,
                 ui.button({ label: 'Annuler', role: 'psd-cancel', onClick: () => { if (!busy) cancelPsd(); } }));
             psd = { pane, list, folder, primary };
             sections.forEach((e) => { e.hidden = true; });
@@ -295,9 +304,14 @@
         /** Montre la réponse de psdimport.list dans la liste (ouverte au besoin). */
         function showPsd(l) {
             psdFolder = l.folder;
+            psdStart = l.start || null;
             if (!psd) buildPsdPane();
-            psd.folder.textContent = l.folder || 'Aucun dossier';
-            psd.folder.title = l.folder || '';
+            if (l.folder) {
+                const f = splitFolder(l.folder);
+                psd.folder.set({ title: f.name, subtitle: f.parent });
+            } else {
+                psd.folder.set({ title: 'Choisir le dossier des PSD', subtitle: ASSET_HINT, empty: true });
+            }
             psd.list.setRows(l.files.map((f) => ({
                 key: f.path, name: f.name, title: f.path, checked: !f.imported, pill: f.imported ? 'déjà importé' : '', tone: 'done',
             })), l.folder ? PSD_EMPTY : PSD_NO_FOLDER);
@@ -322,10 +336,24 @@
             showPsd(await psdCall('list', psdFolder ? { folder: psdFolder } : {}));
         }
 
+        /**
+         * Fenêtre de choix de dossier de CEP (Explorateur de Windows, Finder de macOS), ouverte sur `from` : chemin
+         * choisi, null si annulée, undefined si CEP ne la donne pas (la fenêtre d'After, plus rudimentaire, prend le relais).
+         */
+        function nativeFolderPick(from) {
+            const fsx = window.cep && window.cep.fs;
+            if (!fsx || typeof fsx.showOpenDialogEx !== 'function') return undefined;
+            let r;
+            try { r = fsx.showOpenDialogEx(false, true, 'Choisis le dossier des PSD', from || '', []); } catch (e) { return undefined; }
+            if (!r || r.err) return undefined;
+            return (Array.isArray(r.data) && r.data[0]) || null;
+        }
+
         async function changePsdFolder() {
-            const r = await psdCall('pickFolder', psdFolder ? { from: psdFolder } : {});
-            if (!r.folder) return;
-            showPsd(await psdCall('list', { folder: r.folder }));
+            let picked = nativeFolderPick(psdFolder || psdStart);
+            if (picked === undefined) picked = (await psdCall('pickFolder', psdFolder ? { from: psdFolder } : {})).folder;
+            if (!picked) return;
+            showPsd(await psdCall('list', { folder: picked }));
         }
 
         /** Lit les PSD cochés un par un (Node du panneau), puis les importe d'un seul appel à l'hôte. */

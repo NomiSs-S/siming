@@ -254,6 +254,29 @@ module.exports = function (test) {
         assert.deepStrictEqual(app.undoGroups, [], 'aucun groupe d\'annulation ouvert ici : c\'est l\'appelant qui le fait');
     });
 
+    test('Import PSD : replaceWithShape, métrage à la taille du document (calque de forme importé par After) -> la forme est à sa place', () => {
+        // After importe un calque de forme en 1920 × 1080, ancre et position au centre, tracé en masque
+        const { comp, st, run } = psdScene({ size: [1920, 1080], pos: [960, 540] });
+        setState(st, 'ADBE Anchor Point', [960, 540]);
+        const out = run(shapeOf({ canvas: { width: 1920, height: 1080 } }));
+        assert.ok(out, 'un calque de forme');
+        const layer = comp.layer(2);
+        assert.deepStrictEqual(plain(layer.property('ADBE Transform Group').property('ADBE Position').value), [0, 0]);
+        assert.deepStrictEqual(plain(itemOf(layer, 1, 'ADBE Vector Shape - Rect').property('ADBE Vector Rect Position').value), [1189.5, 374.5]);
+        // décalé de +100, +50 dans la compo : la forme suit
+        const moved = psdScene({ size: [1920, 1080], pos: [1060, 590] });
+        setState(moved.st, 'ADBE Anchor Point', [960, 540]);
+        assert.ok(moved.run(shapeOf({ canvas: { width: 1920, height: 1080 } })));
+        assert.deepStrictEqual(plain(moved.comp.layer(2).property('ADBE Transform Group').property('ADBE Position').value), [100, 50]);
+    });
+
+    test('Import PSD : replaceWithShape, métrage ni à la taille de la boîte ni à celle du document -> panne visible, calque intact', () => {
+        const { comp, st, core, run } = psdScene({ size: [1000, 600] });
+        assert.strictEqual(run(shapeOf({ canvas: { width: 1920, height: 1080 } })), null);
+        assert.ok(comp.layers.indexOf(st) >= 0);
+        assert.strictEqual(core.lastFailure().name, 'Mismatch');
+    });
+
     test('Import PSD : replaceWithShape, RF3, calque PSD décalé dans la compo -> la forme suit (position du calque)', () => {
         const { comp, run } = psdScene({ pos: [1289.5, 424.5] });   // +100, +50
         const out = run(shapeOf());
@@ -848,6 +871,76 @@ module.exports = function (test) {
         assert.strictEqual(app.project.activeItem, before);
         assert.ok(app.viewerOpens.indexOf(inner.id) >= 0, 'les textes se convertissent dans la compo ouverte dans le viewer');
         assert.strictEqual(before.layers.length, 0, 'rien n\'a été fait dans la compo qui était active');
+    });
+
+    test('Import PSD : importBatch, à la fin, ancre de chaque calque au centre de sa boîte, sans rien déplacer ; calque verrouillé laissé', () => {
+        const { call } = importScene();
+        app.importRecipes[PSD_A] = { layers: [{ name: '1', group: { layers: [{ name: 'Rectangle 1' }, { name: 'Calque 0' }, { name: 'Fixe', locked: true }] } }] };
+        const ref = new FakeComp(999, 'Réf').addLayer('Réf');      // transformation d'un calque neuf, avant l'ancre
+        const tr0 = (st, m) => plain(st.transform.children.find((c) => c.matchName === m).value);
+        const pos0 = tr0(ref, 'ADBE Position'), anc0 = tr0(ref, 'ADBE Anchor Point');
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
+        const outer = itemById(r.imported[0].compId), inner = outer.layers[0].source;
+        const trOf = (comp, i) => comp.layer(i).property('ADBE Transform Group');
+        const centre = (comp, i) => { const b = comp.layer(i).sourceRectAtTime(0, false); return [b.left + b.width / 2, b.top + b.height / 2]; };
+        for (const [comp, i] of [[outer, 1], [inner, 1], [inner, 2]]) {
+            assert.deepStrictEqual(plain(trOf(comp, i).property('ADBE Anchor Point').value).slice(0, 2), centre(comp, i), comp.name + ' ' + i);
+        }
+        // Calque 0 (métrage) : position - ancre inchangée, donc rien n'a bougé à l'écran
+        const pos = plain(trOf(inner, 2).property('ADBE Position').value), anc = plain(trOf(inner, 2).property('ADBE Anchor Point').value);
+        assert.deepStrictEqual([pos[0] - anc[0], pos[1] - anc[1]], [pos0[0] - anc0[0], pos0[1] - anc0[1]]);
+        // verrouillé : pas touché
+        assert.deepStrictEqual(plain(trOf(inner, 3).property('ADBE Anchor Point').value), anc0);
+    });
+
+    /** Précompo « Groupe » (1920 × 1080, dans le projet) affichée dans « Planche » par un calque verrouillé, ancre et
+     *  position au centre. layers : [{ name, rect, pos, parent? }] dans la précompo (ancre [0, 0]). */
+    function cropScene(layers) {
+        const { sandbox } = host();
+        app.project.items = [];
+        const sub = new FakeComp(500, 'Groupe');
+        const main = new FakeComp(501, 'Planche');
+        app.project.items.push(sub, main);
+        const states = {};
+        for (const l of layers) {
+            const st = sub.addLayer(l.name, { rect: l.rect });
+            setState(st, 'ADBE Position', l.pos);
+            if (l.parent) st.parent = states[l.parent];
+            states[l.name] = st;
+        }
+        const holder = main.addLayer('Groupe', { source: sub, locked: true });
+        setState(holder, 'ADBE Anchor Point', [960, 540]);
+        setState(holder, 'ADBE Position', [960, 540]);
+        const core = sandbox.SIMING.getTool('psdimport')._core;
+        return { sub, main, states, holder, crop: () => core.cropPrecomp(sub, [main.layer(1)]) };
+    }
+    const valueOf = (st, m) => plain(st.transform.children.find((c) => c.matchName === m).value);
+
+    test('Import PSD : cropPrecomp, la précompo prend la taille de son contenu, rien ne bouge dans la planche', () => {
+        const { sub, states, holder, crop } = cropScene([
+            { name: 'A', rect: { left: 0, top: 0, width: 100, height: 100 }, pos: [300, 400] },
+            { name: 'B', rect: { left: 0, top: 0, width: 50, height: 20 }, pos: [700, 200] },
+            { name: 'Enfant', rect: { left: 0, top: 0, width: 10, height: 10 }, pos: [20, 20], parent: 'A' },
+        ]);
+        assert.strictEqual(crop(), true);
+        assert.deepStrictEqual([sub.width, sub.height], [450, 300], 'de 300, 200 à 750, 500');
+        assert.deepStrictEqual(valueOf(states.A, 'ADBE Position'), [0, 200]);
+        assert.deepStrictEqual(valueOf(states.B, 'ADBE Position'), [400, 0]);
+        assert.deepStrictEqual(valueOf(states.Enfant, 'ADBE Position'), [20, 20], 'un enfant suit son parent');
+        // ancre reposée (After l'aurait remise à l'échelle), position inchangée : A est toujours en 300, 400 dans la planche
+        assert.deepStrictEqual(valueOf(holder, 'ADBE Anchor Point'), [660, 340]);
+        assert.deepStrictEqual(valueOf(holder, 'ADBE Position'), [960, 540]);
+        assert.strictEqual(holder.locked, true, 'verrou rétabli');
+    });
+
+    test('Import PSD : cropPrecomp, le contenu qui dépasse de la compo reste coupé ; compo déjà pleine -> rien', () => {
+        const over = cropScene([{ name: 'A', rect: { left: 0, top: 0, width: 200, height: 100 }, pos: [1800, -50] }]);
+        assert.strictEqual(over.crop(), true);
+        assert.deepStrictEqual([over.sub.width, over.sub.height], [120, 50], 'de 1800, 0 à 1920, 50');
+        const full = cropScene([{ name: 'Fond', rect: { left: 0, top: 0, width: 1920, height: 1080 }, pos: [0, 0] }]);
+        assert.strictEqual(full.crop(), false);
+        assert.deepStrictEqual([full.sub.width, full.sub.height], [1920, 1080]);
+        assert.deepStrictEqual(valueOf(full.holder, 'ADBE Anchor Point'), [960, 540]);
     });
 
     test('Import PSD : importBatch, sans forme (shapes null) les textes et libellés se font quand même', () => {

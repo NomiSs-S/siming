@@ -310,23 +310,29 @@ module.exports = function (test) {
             await t.click(t.$('[data-role=psd-import]'));
             assert.ok(t.$('[data-role=psd-pane]'));
             assert.ok(t.$$('.s-stack').filter((e) => e.getAttribute('data-role') !== 'psd-pane').every((e) => e.hidden), 'le contenu de la boîte est caché');
-            assert.strictEqual(t.$('[data-role=psd-folder]').textContent, tree.asset);
-            assert.deepEqual(t.$$('[data-role=psd-list] .s-check-row').map((r) => r.querySelector('.s-row-name').textContent), ['1.psd', '2.psd']);
-            assert.deepEqual(t.$$('[data-role=psd-list] input').map((i) => i.checked), [true, false]);
-            assert.strictEqual(t.$$('[data-role=psd-list] .s-check-row')[1].querySelector('.s-pill').textContent, 'déjà importé');
+            // carte du dossier : son nom en titre, chemin complet en infobulle ; un clic la change
+            assert.strictEqual(t.$('[data-role=psd-folder] .s-card-title').textContent, path.basename(tree.asset));
+            assert.ok(t.$('[data-role=psd-folder]').title.startsWith(tree.asset + '\n'));
+            assert.strictEqual(t.$('[data-role=psd-folder] .s-card-icon svg path').getAttribute('d'), t.win.SIMING.ICONS.dossier[0].path);
+            assert.deepEqual(t.$$('[data-role=psd-list] .s-check-row:not(.is-all)').map((r) => r.querySelector('.s-row-name').textContent), ['1.psd', '2.psd']);
+            assert.deepEqual(t.$$('[data-role=psd-list] .s-check-row:not(.is-all) input').map((i) => i.checked), [true, false]);
+            assert.strictEqual(t.$$('[data-role=psd-list] .s-check-row:not(.is-all)')[1].querySelector('.s-pill').textContent, 'déjà importé');
             assert.strictEqual(t.$$('[data-role=psd-list] .s-pill').length, 1);
             assert.strictEqual(t.status.text, '2 PSD trouvés');
             assert.strictEqual(t.$$('.s-btn-primary').length, 1, 'un seul bouton principal à l\'écran');
             assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 1 PSD');
             assert.strictEqual(t.$('[data-role=primary]').disabled, false);
             assert.strictEqual(t.$('[data-role=psd-cancel]').textContent, 'Annuler');
-            assert.strictEqual(t.$('[data-role=psd-change-folder]').textContent, 'Changer de dossier');
-            await t.click(t.$('[data-role=psd-all]'));
+            // case « Tous les PSD » : à moitié cochée, compte « 1 / 2 »
+            assert.strictEqual(t.$('[data-role=check-all] .s-check-count').textContent, '1 / 2');
+            assert.strictEqual(t.$('[data-role=check-all] input').indeterminate, true);
+            await t.click(t.$('[data-role=check-all] input'));
             assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 2 PSD');
-            await t.click(t.$('[data-role=psd-none]'));
+            await t.click(t.$('[data-role=check-all] input'));
+            assert.strictEqual(t.$('[data-role=check-all] .s-check-count').textContent, '0 / 2');
             assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 0 PSD');
             assert.strictEqual(t.$('[data-role=primary]').disabled, true, 'rien de coché : bouton inactif');
-            await t.click(t.$('[data-role=psd-all]'));
+            await t.click(t.$('[data-role=check-all] input'));
             t.said.length = 0;
             await t.click(t.$('[data-role=primary]'));
             assert.deepEqual(t.said.filter((m) => /Lecture/.test(m)), ['Lecture des PSD… (1 / 2)', 'Lecture des PSD… (2 / 2)']);
@@ -367,7 +373,7 @@ module.exports = function (test) {
             const psd = fakePsd(t.win, tree.p1);
             holder.fs = psd.fsx;
             await t.click(t.$('[data-role=psd-import]'));
-            await t.click(t.$('[data-role=psd-all]'));
+            await t.click(t.$('[data-role=check-all] input'));
             await t.click(t.$('[data-role=primary]'));
             assert.deepEqual(t.batches[0].items, [{ path: tree.p1, error: 'PSD tronqué' }, { path: tree.p2, shapes: [{ from: tree.p2 }] }]);
             const lost = await setup({ modules: { fs: { readFile: (p, cb) => setTimeout(() => cb(new Error('EACCES')), 0) } } });
@@ -414,7 +420,7 @@ module.exports = function (test) {
         } finally { tree.cleanup(); }
     });
 
-    test('vue boîte à outils : Changer de dossier relance la liste sur le dossier choisi ; annulé, rien ne change', async () => {
+    test('vue boîte à outils : clic sur la carte du dossier relance la liste sur le dossier choisi ; annulé, rien ne change', async () => {
         const tree = psdTree();
         const other = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-vue-psd-b-'));
         try {
@@ -422,14 +428,40 @@ module.exports = function (test) {
             const t = await setup();
             await t.click(t.$('[data-role=psd-import]'));
             FakeFolder.selectResult = null;
-            await t.click(t.$('[data-role=psd-change-folder]'));
-            assert.strictEqual(t.$('[data-role=psd-folder]').textContent, tree.asset, 'dialogue annulé');
+            await t.click(t.$('[data-role=psd-folder]'));
+            assert.ok(t.$('[data-role=psd-folder]').title.startsWith(tree.asset + '\n'), 'dialogue annulé');
             FakeFolder.selectResult = new FakeFolder(other);
-            await t.click(t.$('[data-role=psd-change-folder]'));
-            assert.strictEqual(t.$('[data-role=psd-folder]').textContent, other);
-            assert.deepEqual(t.$$('[data-role=psd-list] .s-row-name').map((e) => e.textContent), ['a.psd', 'b.psd']);
+            await t.click(t.$('[data-role=psd-folder]'));
+            assert.strictEqual(t.$('[data-role=psd-folder] .s-card-title').textContent, path.basename(other));
+            assert.ok(t.$('[data-role=psd-folder]').title.startsWith(other + '\n'));
+            assert.deepEqual(t.$$('[data-role=psd-list] .s-check-row:not(.is-all) .s-row-name').map((e) => e.textContent), ['a.psd', 'b.psd']);
             assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 2 PSD');
             assert.strictEqual(t.status.text, '2 PSD trouvés');
+        } finally { FakeFolder.selectResult = null; tree.cleanup(); fs.rmSync(other, { recursive: true, force: true }); }
+    });
+
+    test('vue boîte à outils : la fenêtre de dossier de CEP (Explorateur) passe avant celle d\'After, ouverte sur le dossier courant', async () => {
+        const tree = psdTree();
+        const other = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-vue-psd-c-'));
+        try {
+            fs.writeFileSync(path.join(other, 'z.psd'), 'x');
+            const t = await setup();
+            const asked = [];
+            let answer = { err: 0, data: [] };
+            t.win.cep = { fs: { showOpenDialogEx: (multi, dir, title, from) => { asked.push({ multi, dir, title, from }); return answer; } } };
+            FakeFolder.selectResult = new FakeFolder(tree.asset);   // la fenêtre d'After ne doit pas servir
+            await t.click(t.$('[data-role=psd-import]'));
+            await t.click(t.$('[data-role=psd-folder]'));
+            assert.deepEqual(asked, [{ multi: false, dir: true, title: 'Choisis le dossier des PSD', from: tree.asset }]);
+            assert.ok(t.$('[data-role=psd-folder]').title.startsWith(tree.asset + '\n'), 'annulée : rien ne change');
+            answer = { err: 0, data: [other] };
+            await t.click(t.$('[data-role=psd-folder]'));
+            assert.strictEqual(t.$('[data-role=psd-folder] .s-card-title').textContent, path.basename(other));
+            assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 1 PSD');
+            // erreur de CEP : la fenêtre d'After prend le relais
+            answer = { err: 1, data: [] };
+            await t.click(t.$('[data-role=psd-folder]'));
+            assert.strictEqual(t.$('[data-role=psd-folder] .s-card-title').textContent, path.basename(tree.asset));
         } finally { FakeFolder.selectResult = null; tree.cleanup(); fs.rmSync(other, { recursive: true, force: true }); }
     });
 
@@ -443,7 +475,7 @@ module.exports = function (test) {
             const frames = [];
             t.win.requestAnimationFrame = (cb) => { frames.push(t.said[t.said.length - 1]); setTimeout(cb, 0); return frames.length; };
             await t.click(t.$('[data-role=psd-import]'));
-            await t.click(t.$('[data-role=psd-all]'));
+            await t.click(t.$('[data-role=check-all] input'));
             await t.click(t.$('[data-role=primary]'));
             assert.deepEqual(frames.slice(0, 2), ['Lecture des PSD… (1 / 2)', 'Lecture des PSD… (2 / 2)'], 'une image par PSD, après son message');
             assert.deepEqual(psd.reads, [tree.p1, tree.p2]);
@@ -461,14 +493,18 @@ module.exports = function (test) {
         } finally { tree.cleanup(); }
     });
 
-    test('vue boîte à outils : projet non enregistré -> liste vide, statut de l\'hôte, Changer de dossier proposé', async () => {
+    test('vue boîte à outils : projet non enregistré -> liste vide, statut de l\'hôte, carte « Choisir le dossier » proposée', async () => {
         const t = await setup();
         await t.click(t.$('[data-role=psd-import]'));
         assert.ok(t.$('[data-role=psd-pane]'));
-        assert.strictEqual(t.$('[data-role=psd-list] .s-empty').textContent, 'Aucun dossier : choisis-le avec « Changer de dossier »', 'M2 : pas « aucun PSD » sans dossier');
+        assert.strictEqual(t.$('[data-role=psd-list] .s-empty').textContent, 'Aucun dossier : clique sur la carte au-dessus pour le choisir', 'M2 : pas « aucun PSD » sans dossier');
         assert.strictEqual(t.status.text, 'Projet non enregistré : choisis le dossier des PSD');
         assert.strictEqual(t.$('[data-role=primary]').disabled, true);
         assert.strictEqual(t.$('[data-role=primary]').textContent, 'Importer 0 PSD');
-        assert.ok(t.$('[data-role=psd-change-folder]'));
+        const card = t.$('[data-role=psd-folder]');
+        assert.ok(card.classList.contains('is-empty'), 'carte en pointillés');
+        assert.strictEqual(card.querySelector('.s-card-title').textContent, 'Choisir le dossier des PSD');
+        assert.strictEqual(card.title, 'Choisir le dossier des PSD');
+        assert.strictEqual(t.$('[data-role=check-all]'), null, 'pas de case « Tous » sans PSD');
     });
 };

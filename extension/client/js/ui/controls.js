@@ -49,7 +49,7 @@
 
     /** Carte cliquable (56 px) : vide = invitation à agir, remplie = objet courant
      *  (avec, s'il y en a une, sa couleur d'étiquette en carré devant le titre). */
-    ui.card = function ({ onClick, role }) {
+    ui.card = function ({ onClick, role, icon: iconName, emptyIcon, tip, emptyTip }) {
         const icon = h('span', { class: 's-card-icon' });
         const swatch = h('span', { class: 's-card-swatch', hidden: true });
         const title = h('span', { class: 's-card-title' });
@@ -62,8 +62,9 @@
             swatch.hidden = !!empty || !color;
             swatch.style.backgroundColor = (!empty && color) ? color : '';
             el.classList.toggle('is-empty', !!empty);
-            icon.replaceChildren(ui.icon(empty ? 'cibler' : 'rafraichir', empty ? 20 : 16));
-            el.title = empty ? 'Prendre le calque sélectionné dans la timeline' : 'Reprendre la sélection';
+            icon.replaceChildren(ui.icon(empty ? (emptyIcon || 'cibler') : (iconName || 'rafraichir'), empty ? 20 : 16));
+            const t2 = empty ? (emptyTip || 'Prendre le calque sélectionné dans la timeline') : (tip || 'Reprendre la sélection');
+            el.title = typeof t2 === 'function' ? t2() : t2;
         };
         return el;
     };
@@ -180,17 +181,34 @@
      *  tone, checked, title }] ; pill (facultative) en pastille à droite. onChange(clés cochées) quand
      *  une case change (à la main ou par setAll), pas à setRows. el.setRows(rows, vide?) : vide remplace
      *  emptyText pour cette liste-là. el.checked() : clés cochées, dans l'ordre des lignes ;
-     *  el.setAll(bool) : tout cocher / décocher. */
-    ui.checkList = function ({ onChange, emptyText, role }) {
+     *  el.setAll(bool) : tout cocher / décocher. allLabel (facultatif) : une ligne « tout » en tête, case à
+     *  trois états et compte « cochés / total ». */
+    ui.checkList = function ({ onChange, emptyText, role, allLabel }) {
         const el = h('div', { class: 's-rows', 'data-role': role || 'check-list' });
-        const boxes = () => Array.from(el.querySelectorAll('.s-check-row input'));
+        const boxes = () => Array.from(el.querySelectorAll('.s-check-row:not(.is-all) input'));
         el.checked = () => boxes().filter((b) => b.checked).map((b) => b.closest('.s-check-row').getAttribute('data-key'));
-        const changed = () => { if (onChange) onChange(el.checked()); };
+        // Case « tout » (allLabel) au-dessus des lignes : cochée, vide ou à moitié, avec le compte « 2 / 5 ».
+        let all = null, allCount = null;
+        const syncAll = () => {
+            if (!all) return;
+            const n = boxes().length, k = boxes().filter((b) => b.checked).length;
+            all.checked = n > 0 && k === n;
+            all.indeterminate = k > 0 && k < n;
+            allCount.textContent = k + ' / ' + n;
+        };
+        const changed = () => { syncAll(); if (onChange) onChange(el.checked()); };
         el.setRows = function (rows, empty) {
             el.replaceChildren();
+            all = null;
             if (rows.length === 0) {
                 el.append(h('div', { class: 's-empty', text: empty || emptyText || 'Rien à afficher' }));
                 return;
+            }
+            if (allLabel) {
+                all = h('input', { type: 'checkbox', 'aria-label': allLabel, onchange: () => el.setAll(all.checked) });
+                allCount = h('span', { class: 's-check-count' });
+                el.append(h('label', { class: 's-check-row is-all', 'data-role': 'check-all' }, all,
+                    h('span', { class: 's-row-name', text: allLabel }), allCount));
             }
             for (const row of rows) {
                 const box = h('input', { type: 'checkbox', 'aria-label': row.name, onchange: changed });
@@ -200,6 +218,7 @@
                     h('span', { class: 's-row-name', text: row.name }),
                     row.pill ? h('span', { class: 's-pill' + (row.tone ? ' is-' + row.tone : ''), text: row.pill }) : null));
             }
+            syncAll();
         };
         el.setAll = function (on) {
             boxes().forEach((b) => { b.checked = !!on; });

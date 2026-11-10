@@ -15,7 +15,8 @@
  * Calque : { id, name, box: { left, top, right, bottom }, opacity (0-255), blend (clé de
  * 4 lettres), hidden, kind: 'group' | 'layer', artboard (rect ou null), children (groupes
  * seulement), blocks: { vogk, vscg, vscgKind, vstk, vsms, lfx2, TySh, iOpa, unreadable }, clipped (détourage), masked (masque de
- * calque en pixels) }. L'arbre suit l'ordre du panneau
+ * calque en pixels), uniform ([r, g, b] 0-1 : calque de pixels d'une seule couleur, opaque sur toute sa
+ * boîte, sans autre bloc que ceux d'un calque de pixels ; null sinon, et pour tout PSD qui n'est pas RVB 8 bits) }. L'arbre suit l'ordre du panneau
  * Calques (le plus haut d'abord). Dans le fichier, les enregistrements vont de bas en haut :
  * un groupe = marqueur de fin (lsct 3), ses enfants, puis son en-tête (lsct 1 ou 2).
  *
@@ -44,7 +45,14 @@
     const DEFAULT_GLOBAL_ALTITUDE = 30;
     const RES_GLOBAL_ANGLE = 1037;        // ressources d'image : entier de 4 octets, en degrés
     const RES_GLOBAL_ALTITUDE = 1049;
-    const HIDDEN_FLAG = 0x02;        // bit « calque invisible » des drapeaux d'un enregistrement
+    const HIDDEN_FLAG = 0x02;
+    const RGB_MODE = 3;
+    // Blocs d'un simple calque de pixels (nom, identifiant, réglages d'affichage, styles) : tout autre bloc
+    // (texte, objet dynamique, réglage, remplissage, tracé…) et le calque n'est pas « de pixels unis ».
+    const PLAIN_PIXEL_KEYS = {
+        luni: true, lnsr: true, lyid: true, clbl: true, infx: true, knko: true, lspf: true, lclr: true,
+        shmd: true, fxrp: true, lyvr: true, iOpa: true, lfx2: true, cust: true, tsly: true, brst: true, lmgm: true,
+    };        // bit « calque invisible » des drapeaux d'un enregistrement
 
     /** Curseur de lecture : chaque lecteur avance de la taille lue. */
     function makeCursor(buffer, offset) {
@@ -178,6 +186,7 @@
     function readBlocks(c, end) {
         const info = { name: null, id: null, divider: 0, artboard: null, hidden: false, blocks: { TySh: false, unreadable: [] } };
         const blocks = info.blocks;
+        blocks.keys = [];
         const tryRead = (key, fn) => {
             try { return fn(); } catch (e) { blocks.unreadable.push(key); return undefined; }
         };
@@ -187,6 +196,7 @@
             const len = c.u32();
             const start = c.pos;
             const stop = start + len;
+            blocks.keys.push(key);
             switch (key) {
                 case 'luni': info.name = tryRead('luni', () => c.unicode()); break;
                 case 'lyid': info.id = c.u32(); break;
@@ -221,7 +231,8 @@
 
     function readRecord(c) {
         const top = c.i32(), left = c.i32(), bottom = c.i32(), right = c.i32();
-        c.skip(c.u16() * 6);                      // canaux : identifiant (2) + taille des données (4)
+        const channels = [];                      // canaux : identifiant (2) + taille des données (4)
+        for (let n = c.u16(), i = 0; i < n; i++) channels.push({ id: c.i16(), length: c.u32() });
         c.skip(4);                                // signature « 8BIM »
         const blend = c.ascii(4);
         const opacity = c.u8();
@@ -249,6 +260,7 @@
             divider: info.divider,
             artboard: info.artboard,
             blocks: info.blocks,
+            channels,
         };
     }
 
@@ -260,6 +272,7 @@
             const layer = {
                 id: r.id, name: r.name, box: r.box, opacity: r.opacity, blend: r.blend,
                 hidden: r.hidden, clipped: r.clipped, masked: r.masked, kind: 'layer', artboard: r.artboard, blocks: r.blocks,
+                uniform: r.uniform || null,
             };
             if (r.divider === 1 || r.divider === 2) {
                 layer.kind = 'group';
@@ -299,6 +312,64 @@
         return light;
     }
 
+    /**
+     * Valeur unique d'un canal 8 bits (octets bruts ou PackBits) de `pixels` octets, ou null si le canal
+     * n'est pas uni, compressé en zip, ou abîmé. data : de l'octet de compression à la fin du canal.
+     */
+    function uniformChannel(c, end, pixels, rows) {
+        const compression = c.u16();
+        let value = -1, seen = 0;
+        const take = (v, n) => {
+            if (value < 0) value = v;
+            else if (v !== value) return false;
+            seen += n;
+            return true;
+        };
+        if (compression === 0) {
+            if (end - c.pos < pixels) return null;
+            for (let i = 0; i < pixels; i++) if (!take(c.u8(), 1)) return null;
+        } else if (compression === 1) {
+            c.skip(rows * 2);                         // taille de chaque ligne compressée
+            while (c.pos < end && seen < pixels) {
+                const n = c.u8();
+                if (n < 128) {
+                    for (let i = 0; i <= n; i++) if (!take(c.u8(), 1)) return null;
+                } else if (n > 128) {
+                    if (!take(c.u8(), 257 - n)) return null;
+                }
+            }
+        } else {
+            return null;
+        }
+        return seen === pixels ? value : null;
+    }
+
+    /**
+     * Données des canaux, qui suivent les enregistrements dans le même ordre : r.uniform = [r, g, b] (0-1)
+     * pour un calque de pixels d'une seule couleur, entièrement opaque sur sa boîte (alpha absent ou 255,
+     * aucun autre canal). Seuls ces calques sont décodés, et s'arrêtent au premier pixel différent.
+     */
+    function readUniformColors(c, records) {
+        for (const r of records) {
+            const w = r.box.right - r.box.left, h = r.box.bottom - r.box.top;
+            const plain = w > 0 && h > 0 && !r.divider && r.blocks.keys.every((k) => PLAIN_PIXEL_KEYS[k] === true);
+            let rgb = plain ? [] : null;
+            for (const ch of r.channels) {
+                const next = c.pos + ch.length;
+                if (rgb && ch.length >= 2) {
+                    let v = null;
+                    try { v = uniformChannel(c, next, w * h, h); } catch (e) { v = null; }
+                    if (v === null || (ch.id === -1 && v !== 255) || ch.id < -1 || ch.id > 2) rgb = null;
+                    else if (ch.id >= 0) rgb[ch.id] = v / 255;
+                } else if (ch.id < -1 || ch.id > 2) {
+                    rgb = null;
+                }
+                c.pos = next;
+            }
+            if (rgb && rgb[0] !== undefined && rgb[1] !== undefined && rgb[2] !== undefined) r.uniform = rgb;
+        }
+    }
+
     function read(buffer) {
         const c = makeCursor(buffer, 0);
         if (c.size < HEADER_SIZE || c.ascii(4) !== '8BPS') throw new Error('Ce fichier n\'est pas un PSD');
@@ -308,6 +379,8 @@
         c.pos = 14;
         const height = c.u32();
         const width = c.u32();
+        const depth = c.u16();
+        const colorMode = c.u16();
         c.pos = HEADER_SIZE;
         c.skip(c.u32());                          // mode couleur
         const resourcesLength = c.u32();          // ressources d'image
@@ -320,6 +393,9 @@
             const count = Math.abs(c.i16());      // négatif : le premier canal alpha est la transparence
             const records = [];
             for (let i = 0; i < count; i++) records.push(readRecord(c));
+            if (depth === 8 && colorMode === RGB_MODE) {
+                try { readUniformColors(c, records); } catch (e) { /* données abîmées : aucun calque uni */ }
+            }
             return Object.assign({ width, height }, light, { layers: buildTree(records) });
         }
         return Object.assign({ width, height }, light, { layers });
