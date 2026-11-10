@@ -1,20 +1,18 @@
 /*
  * SIMING : lecteur de fichiers Photoshop (.psd). Lit l'en-tête, l'arbre des calques et des
- * groupes, et décode les blocs utiles à l'import (formes, remplissages, contours, styles,
- * plans de travail). Ni navigateur ni Node : testé tel quel, sans After Effects.
+ * groupes, et décode les blocs utiles à l'import (formes, remplissages, contours ; la présence d'un
+ * calque texte). Les styles de calque ne sont pas lus : After les importe, l'hôte les recopie.
+ * Ni navigateur ni Node : testé tel quel, sans After Effects.
  *
- *   SIMING.psd.read(buffer)             -> { width, height, globalAngle, globalAltitude, layers }
+ *   SIMING.psd.read(buffer)             -> { width, height, layers }
  *   SIMING.psd.descriptor(buffer, off)  -> { value, end }   descripteur Photoshop en JSON
- *
- * globalAngle, globalAltitude : angle et altitude de la lumière globale des styles de calque, en degrés
- * (ressources d'image 1037 et 1049 ; 120 et 30, valeurs par défaut de Photoshop, si absentes).
  *
  * buffer : ArrayBuffer, Uint8Array ou Buffer Node. Seul le PSD (version 1) est lu : un PSB lève
  * une erreur.
  *
  * Calque : { id, name, box: { left, top, right, bottom }, opacity (0-255), blend (clé de
- * 4 lettres), hidden, kind: 'group' | 'layer', artboard (rect ou null), children (groupes
- * seulement), blocks: { vogk, vscg, vscgKind, vstk, vsms, lfx2, TySh, iOpa, unreadable }, clipped (détourage), masked (masque de
+ * 4 lettres), hidden, kind: 'group' | 'layer', children (groupes
+ * seulement), blocks: { vogk, vscg, vscgKind, vstk, vsms, TySh (true : calque texte), iOpa, unreadable }, clipped (détourage), masked (masque de
  * calque en pixels), uniform ([r, g, b] 0-1 : calque de pixels d'une seule couleur, opaque sur toute sa
  * boîte, sans autre bloc que ceux d'un calque de pixels ; null sinon, et pour tout PSD qui n'est pas RVB 8 bits) }. L'arbre suit l'ordre du panneau
  * Calques (le plus haut d'abord). Dans le fichier, les enregistrements vont de bas en haut :
@@ -31,7 +29,6 @@
  * ou { type, r } pour un nœud (1, 2, 4, 5) ; r = tangente avant,
  * ancre, tangente après, chacune « y puis x », en fraction de la hauteur / largeur du document.
  * blocks.vsmsFlags : drapeaux du tracé (bit 0 inversé, bit 1 non lié, bit 2 désactivé).
- * blocks.lmfx, blocks.lfxs : true si le calque a ces blocs d'effets (non décodés : voir shapes.js).
  */
 (function (global) {
     'use strict';
@@ -41,18 +38,14 @@
     const PATH_RECORD_SIZE = 26;
     const FIXED_ONE = 1 << 24;       // virgule fixe 8.24 des tracés
     const BLOCK_SIGNATURES = { '8BIM': true, '8B64': true };
-    const DEFAULT_GLOBAL_ANGLE = 120;     // degrés, lumière globale par défaut de Photoshop
-    const DEFAULT_GLOBAL_ALTITUDE = 30;
-    const RES_GLOBAL_ANGLE = 1037;        // ressources d'image : entier de 4 octets, en degrés
-    const RES_GLOBAL_ALTITUDE = 1049;
-    const HIDDEN_FLAG = 0x02;
+    const HIDDEN_FLAG = 0x02;             // bit « calque invisible » des drapeaux d'un enregistrement
     const RGB_MODE = 3;
     // Blocs d'un simple calque de pixels (nom, identifiant, réglages d'affichage, styles) : tout autre bloc
     // (texte, objet dynamique, réglage, remplissage, tracé…) et le calque n'est pas « de pixels unis ».
     const PLAIN_PIXEL_KEYS = {
         luni: true, lnsr: true, lyid: true, clbl: true, infx: true, knko: true, lspf: true, lclr: true,
         shmd: true, fxrp: true, lyvr: true, iOpa: true, lfx2: true, cust: true, tsly: true, brst: true, lmgm: true,
-    };        // bit « calque invisible » des drapeaux d'un enregistrement
+    };
 
     /** Curseur de lecture : chaque lecteur avance de la taille lue. */
     function makeCursor(buffer, offset) {
@@ -163,12 +156,6 @@
         return { flags, records };
     }
 
-    function artboardRect(d) {
-        const r = d && d.artboardRect;
-        if (!r) return null;
-        return { left: r.Left, top: r['Top '], right: r.Rght, bottom: r.Btom };
-    }
-
     /** Avance jusqu'après la prochaine signature de bloc (un bloc peut être suivi de 1 à 3 octets de remplissage). */
     function seekSignature(c, end) {
         while (c.pos + 12 <= end) {
@@ -184,7 +171,7 @@
      * donne `undefined` (le calque reste importable sans lui).
      */
     function readBlocks(c, end) {
-        const info = { name: null, id: null, divider: 0, artboard: null, hidden: false, blocks: { TySh: false, unreadable: [] } };
+        const info = { name: null, id: null, divider: 0, blocks: { TySh: false, unreadable: [] } };
         const blocks = info.blocks;
         blocks.keys = [];
         const tryRead = (key, fn) => {
@@ -203,9 +190,8 @@
                 case 'lsct': case 'lsdk': info.divider = c.u32(); break;
                 case 'TySh': blocks.TySh = true; break;
                 case 'iOpa': blocks.iOpa = c.u8(); break;
-                case 'vogk': case 'lfx2': c.skip(8); blocks[key] = tryRead(key, () => readObject(c)); break;
+                case 'vogk': c.skip(8); blocks.vogk = tryRead('vogk', () => readObject(c)); break;
                 case 'vstk': c.skip(4); blocks.vstk = tryRead('vstk', () => readObject(c)); break;
-                case 'artb': c.skip(4); info.artboard = artboardRect(tryRead('artb', () => readObject(c))); break;
                 case 'vscg':
                     blocks.vscg = tryRead('vscg', () => {
                         blocks.vscgKind = c.ascii(4);
@@ -220,8 +206,6 @@
                         return p.records;
                     });
                     break;
-                // Effets multiples (plusieurs ombres…) : non décodés, leur présence suffit à laisser le calque en PSD.
-                case 'lmfx': case 'lfxs': blocks[key] = true; break;
                 default: break;
             }
             c.pos = stop;
@@ -258,7 +242,6 @@
             clipped,
             masked: maskSize > 0,
             divider: info.divider,
-            artboard: info.artboard,
             blocks: info.blocks,
             channels,
         };
@@ -271,7 +254,7 @@
             if (r.divider === 3) { stack.push([]); continue; }          // fin de groupe : ses enfants suivent
             const layer = {
                 id: r.id, name: r.name, box: r.box, opacity: r.opacity, blend: r.blend,
-                hidden: r.hidden, clipped: r.clipped, masked: r.masked, kind: 'layer', artboard: r.artboard, blocks: r.blocks,
+                hidden: r.hidden, clipped: r.clipped, masked: r.masked, kind: 'layer', blocks: r.blocks,
                 uniform: r.uniform || null,
             };
             if (r.divider === 1 || r.divider === 2) {
@@ -286,30 +269,6 @@
             Array.prototype.push.apply(stack[stack.length - 1], orphans);
         }
         return stack[0].reverse();
-    }
-
-    /**
-     * Angle et altitude globaux dans la section des ressources d'image (de c.pos à `end`) : suite de
-     * « 8BIM, identifiant (2), nom Pascal rempli à un nombre pair, taille (4), données remplies à un
-     * nombre pair ». Une section abîmée donne ce qu'on a pu lire, le reste prend la valeur par défaut.
-     */
-    function readGlobalLight(c, end) {
-        const light = { globalAngle: DEFAULT_GLOBAL_ANGLE, globalAltitude: DEFAULT_GLOBAL_ALTITUDE };
-        try {
-            while (c.pos + 12 <= end) {
-                if (c.ascii(4) !== '8BIM') break;
-                const id = c.u16();
-                const nameLength = c.u8();
-                c.skip(nameLength + ((nameLength + 1) % 2));   // nom + octet de remplissage
-                const size = c.u32();
-                const next = c.pos + size + (size % 2);
-                if (next > end) break;
-                if (size === 4 && id === RES_GLOBAL_ANGLE) light.globalAngle = c.i32();
-                if (size === 4 && id === RES_GLOBAL_ALTITUDE) light.globalAltitude = c.i32();
-                c.pos = next;
-            }
-        } catch (e) { /* section abîmée : valeurs par défaut pour la suite */ }
-        return light;
     }
 
     /**
@@ -384,9 +343,7 @@
         c.pos = HEADER_SIZE;
         c.skip(c.u32());                          // mode couleur
         const resourcesLength = c.u32();          // ressources d'image
-        const resourcesEnd = c.pos + resourcesLength;
-        const light = readGlobalLight(c, resourcesEnd);
-        c.pos = resourcesEnd;
+        c.skip(resourcesLength);
         const sectionLength = c.u32();            // calques et masques
         const layers = [];
         if (sectionLength > 0 && c.u32() > 0) {
@@ -396,9 +353,9 @@
             if (depth === 8 && colorMode === RGB_MODE) {
                 try { readUniformColors(c, records); } catch (e) { /* données abîmées : aucun calque uni */ }
             }
-            return Object.assign({ width, height }, light, { layers: buildTree(records) });
+            return { width, height, layers: buildTree(records) };
         }
-        return Object.assign({ width, height }, light, { layers });
+        return { width, height, layers };
     }
 
     SIMING.psd = Object.assign(SIMING.psd || {}, { read, descriptor });

@@ -20,8 +20,8 @@
 
     const DEFAULTS = { sourcePath: '02_RESSOURCES/02_ASSET', bin: '02_ASSET' };
     const STEPS = [
-        { id: 'texts', label: 'Convertir les textes en texte modifiable' },
         { id: 'shapes', label: 'Recréer les formes' },
+        { id: 'texts', label: 'Convertir les textes en texte modifiable' },
         { id: 'labels', label: 'Poser les libellés' },
         { id: 'crop', label: 'Recadrer les précompos' },
         { id: 'anchors', label: 'Centrer les points d\'ancrage' },

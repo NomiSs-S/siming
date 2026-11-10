@@ -247,6 +247,35 @@ module.exports = function (test) {
         assert.throws(() => { comp.layer(2).property('ADBE Layer Styles').selected = true; }, /hidden/);
     });
 
+    test('faux AE : importFile importe un calque de forme Photoshop comme After 26.2 (métrage à la taille du document, tracé en masque), un calque de pixels à sa boîte', () => {
+        const { FolderItem } = require('./fake-ae');
+        const file = new FakeFile('/x/Fond.psd');
+        const opts = new ImportOptions(file);
+        opts.importAs = ImportAsType.COMP_CROPPED_LAYERS;
+        const comp = app.project.importFile(opts);   // recette par défaut : un groupe « Fond » (Rectangle 1 = forme, PourQUOI ??? et Calque 0 = pixels)
+        const sub = comp.layers[0].source;
+        const [rect, text, pixels] = sub.layers;
+        assert.deepStrictEqual([rect.source.width, rect.source.height], [comp.width, comp.height], 'forme : taille du document');
+        assert.strictEqual(rect.masks.length, 1, 'son tracé en masque');
+        assert.deepStrictEqual(rect.masks[0].vertices, [[759, 272], [1620, 272], [1620, 477], [759, 477]]);
+        assert.deepStrictEqual([comp.width / 2, comp.height / 2], rect.transform.children.find((c) => c.matchName === 'ADBE Position').value, 'position au centre du document');
+        assert.deepStrictEqual([pixels.source.width, pixels.source.height], [861, 205], 'pixels : la boîte');
+        assert.ok(!pixels.masks && !text.masks);
+        // le dossier du Projet qui reçoit l'import : la racine, ou app.importFolder
+        assert.strictEqual(comp.parentFolder, null);
+        const cible = new FolderItem('Cible');
+        app.project.items.push(cible);
+        app.importFolder = cible;
+        const other = new FakeFile('/x/Autre.psd');
+        const o2 = new ImportOptions(other);
+        o2.importAs = ImportAsType.COMP_CROPPED_LAYERS;
+        const dedans = app.project.importFile(o2);
+        assert.strictEqual(dedans.parentFolder, cible);
+        assert.strictEqual(app.project.items.filter((it) => it.name === 'Autre Calques')[0].parentFolder, cible);
+        app.reset();
+        assert.strictEqual(app.importFolder, null);
+    });
+
     test('bac à sable : $.global est le contexte global', () => {
         const sb = createSandbox();
         vm.runInContext('$.global.X = 42;', sb);

@@ -11,22 +11,27 @@
  *  sont inaccessibles par script).
  *
  *  - list({ folder?, sourcePath? }) : PSD du dossier et de ses sous-dossiers (jusqu'à MAX_SUBFOLDER_DEPTH
- *    niveaux, fichiers et dossiers cachés ignorés). Sans folder : sourcePath (défaut 02_RESSOURCES/02_ASSET),
- *    cherché depuis le dossier du projet en remontant d'au plus 3 dossiers parents. Ordre : le dossier lu
- *    d'abord, puis chaque sous-dossier (ordre naturel, en profondeur), PSD en nom naturel (2.psd avant 10.psd)
- *    dans chacun. « dir » : dossier relatif au dossier lu ('' à la racine, 'A/B' sinon). « imported » : un
- *    métrage du projet a ce PSD pour fichier (After Effects nomme le métrage d'un PSD en calques
- *    « calque/fichier.psd », mais sa source reste le PSD lui-même).
- *    -> { folder: string|null, files: [{ name, path, dir, imported }], status: { text, level } }
+ *    niveaux, fichiers et dossiers cachés ignorés, lecture arrêtée après MAX_LIST_ENTRIES entrées). Sans folder :
+ *    sourcePath (défaut 02_RESSOURCES/02_ASSET), cherché depuis le dossier du projet en remontant d'au plus 3
+ *    dossiers parents. Ordre : le dossier lu d'abord, puis chaque sous-dossier (ordre naturel, en profondeur),
+ *    PSD en nom naturel (2.psd avant 10.psd) dans chacun. « dir » : dossier relatif au dossier lu ('' à la
+ *    racine, 'A/B' sinon). « imported » : un métrage du projet a ce PSD pour fichier (After Effects nomme le
+ *    métrage d'un PSD en calques « calque/fichier.psd », mais sa source reste le PSD lui-même).
+ *    -> { folder: string|null, hint?, start?, files: [{ name, path, dir, imported }], status: { text, level } }
+ *    hint : pourquoi il n'y a pas de dossier (court, pour la carte du panneau) ; start : dossier du projet.
  *  - pickFolder({ from? }) : dialogue de choix de dossier, départ = from ou le dossier du projet.
  *    -> { folder: string|null }
  *
- *  - importBatch({ items: [{ path, dir?, shapes, error? }], rules, bin?, steps? }) : importe les PSD en compos
- *    (calques rognés), les range dans le chutier de dépose du panneau Projet (bin, défaut 02_ASSET ; « A/B » =
- *    chutiers imbriqués) en recréant le dossier relatif de chaque PSD (dir), puis, selon steps (texts, shapes,
- *    labels, crop, anchors : tout est fait sauf ce qui vaut false) remplace les calques de forme, convertit les
- *    textes, pose les libellés, recadre les précompos et centre les ancres (un seul groupe d'annulation).
- *    -> { imported: [{ name, compId }], status: { text, level } }
+ *  - importBatch({ items: [{ path, dir?, shapes, texts?, shapesError?, error? }], rules, bin?, steps? }) : importe
+ *    les PSD en compos (calques rognés), les range dans le chutier de dépose du panneau Projet (bin, défaut
+ *    02_ASSET ; « A/B » = chutiers imbriqués) en recréant le dossier relatif de chaque PSD (dir), puis, selon steps
+ *    (shapes, texts, labels, crop, anchors : tout est fait sauf ce qui vaut false) remplace les calques de forme,
+ *    convertit les textes, pose les libellés, recadre les précompos et centre les ancres (un seul groupe
+ *    d'annulation). shapes : formes lues par le panneau (null si la lecture a échoué : shapesError dit pourquoi,
+ *    l'import continue sans formes) ; texts : [{ name, nth }] des calques texte du PSD (absent : tous les calques
+ *    PSD sont essayés). Seul un échec de l'import lui-même rend un PSD « illisible » (et le retire du projet) ;
+ *    une étape qui échoue ensuite est sautée et signalée.
+ *    -> { imported: [{ name, compId }], status: { text, level }, report: { skipped: [raison…] } }
  *
  *  Contraintes : ES3, API en données JSON, UTF-8 avec BOM.
  * ============================================================================
@@ -39,11 +44,11 @@
     var ASSET_PATH = '02_RESSOURCES/02_ASSET';   // dossier des PSD par défaut (réglage « Dossier des PSD »)
     var MAX_PARENTS = 3;
     var MAX_SUBFOLDER_DEPTH = 4;                 // niveaux de sous-dossiers lus sous le dossier des PSD
+    var MAX_LIST_ENTRIES = 3000;                 // entrées (fichiers et dossiers) lues au plus : un dossier très haut ne fige pas After
     var PICK_PROMPT = 'Choisis le dossier des PSD';
 
     // Édition › Copier et Édition › Coller : identifiants numériques d'After (relevés par script dans After 26.2),
-    // indépendants de la langue. Les noms de menu des styles de calque ne servent pas : par leur nom, ils
-    // désignent d'autres commandes (« Ombre portée » = l'effet), seuls les identifiants 9000 à 9008 sont les styles.
+    // indépendants de la langue (les noms de menu des styles de calque désignent d'autres commandes).
     var COMMAND_COPY = 19;
     var COMMAND_PASTE = 20;
 
@@ -173,10 +178,13 @@
 
     function byName(a, b) { return naturalCompare(a.name, b.name); }
 
-    /** Ajoute à out les PSD de folder (dir : son chemin relatif), puis ceux de ses sous-dossiers, en profondeur. */
-    function collectPsds(folder, dir, depth, done, out) {
+    /** Ajoute à out les PSD de folder (dir : son chemin relatif), puis ceux de ses sous-dossiers, en profondeur.
+     *  scan.entries compte les entrées lues ; au-delà de MAX_LIST_ENTRIES la lecture s'arrête (scan.truncated). */
+    function collectPsds(folder, dir, depth, done, out, scan) {
         var entries = folder.getFiles(), here = [], subs = [];
         for (var i = 0; i < entries.length; i++) {
+            if (scan.entries >= MAX_LIST_ENTRIES) { scan.truncated = true; break; }
+            scan.entries++;
             var name = entryName(entries[i]);
             if (name.charAt(0) === '.') continue;   // cachés (dont les « ._ » de macOS)
             if (entries[i] instanceof File) {
@@ -190,16 +198,17 @@
         here.sort(byName);
         subs.sort(byName);
         for (var h = 0; h < here.length; h++) out.push(here[h]);
-        for (var k = 0; k < subs.length; k++) {
-            collectPsds(subs[k].folder, dir === '' ? subs[k].name : dir + '/' + subs[k].name, depth + 1, done, out);
+        for (var k = 0; k < subs.length && !scan.truncated; k++) {
+            collectPsds(subs[k].folder, dir === '' ? subs[k].name : dir + '/' + subs[k].name, depth + 1, done, out, scan);
         }
     }
 
-    /** PSD du dossier et de ses sous-dossiers : [{ name, path, dir, imported }] (ordre : voir l'en-tête). */
+    /** PSD du dossier et de ses sous-dossiers : { files: [{ name, path, dir, imported }] (ordre : voir l'en-tête),
+     *  truncated : la lecture s'est arrêtée à MAX_LIST_ENTRIES entrées }. */
     function listPsds(folder) {
-        var files = [];
-        collectPsds(folder, '', 0, importedPaths(), files);
-        return files;
+        var files = [], scan = { entries: 0, truncated: false };
+        collectPsds(folder, '', 0, importedPaths(), files, scan);
+        return { files: files, truncated: scan.truncated };
     }
 
     // ------------------------------------------------------------------------
@@ -395,37 +404,28 @@
         return true;
     }
 
-    /** Le calque a-t-il des styles de calque ? La sélection de l'utilisateur est rétablie. */
-    function layerHasStyles(comp, layer) {
-        var kept = selectedIds(comp), has = false;
-        try {
-            deselectLayers(comp);
-            has = stylesGroupVisible(layer.property('ADBE Layer Styles'));
-        } finally {
-            restoreSelection(comp, kept);
-        }
-        return has;
-    }
-
     /**
      * Copie les styles de calque de `from` sur `to` (les mêmes, réglages compris, options de fusion et opacité du
      * fond comprises) : Copier sur le groupe « ADBE Layer Styles » de `from`, Coller sur `to`. Écrase le
-     * presse-papiers de l'utilisateur. Renvoie false, sans rien lancer, si `from` n'a aucun style. Lève une
-     * erreur si la compo n'est pas la compo active (app.executeCommand n'agit que sur elle) ou si le collage n'a
-     * rien donné (le groupe de `to` reste masqué). La sélection de l'utilisateur est rétablie à la fin.
+     * presse-papiers de l'utilisateur. Renvoie false, sans rien lancer, si `from` n'a aucun style (son groupe est
+     * alors masqué : le sélectionner lève une erreur). Lève une erreur si la compo n'est pas la compo active
+     * (app.executeCommand n'agit que sur elle) ou si le collage n'a rien donné (le groupe de `to` reste masqué).
+     * La sélection de l'utilisateur est rétablie à la fin.
      */
     function copyLayerStyles(comp, from, to) {
-        if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
         var kept = selectedIds(comp);
         try {
             deselectLayers(comp);
             var source = from.property('ADBE Layer Styles');
             try { source.selected = true; } catch (e) { return false; }     // groupe masqué : aucun style
+            if (!isActiveComp(comp)) {
+                source.selected = false;
+                throw new Error('Compo non active dans le visualiseur : ' + comp.name);
+            }
             app.executeCommand(COMMAND_COPY);
             source.selected = false;
             deselectLayers(comp);
             to.selected = true;
-            if (!isActiveComp(comp)) throw new Error('Compo non active dans le visualiseur : ' + comp.name);
             app.executeCommand(COMMAND_PASTE);
             if (!stylesGroupVisible(to.property('ADBE Layer Styles'))) throw new Error('Styles de calque non collés : la commande Coller est restée sans effet');
             return true;
@@ -443,13 +443,21 @@
     /**
      * Coin haut gauche, en coordonnées du document, du métrage d'un calque PSD, ou null s'il ne correspond
      * pas au JSON. After rogne un calque de pixels à sa boîte (coin = box), mais importe un calque de forme à
-     * la taille du document, son tracé en masque (coin = [0, 0]) : shape.canvas donne cette taille.
+     * la taille du document, son tracé en masque (coin = [0, 0]) : shape.canvas donne cette taille. Une boîte
+     * qui déborde du document (un fond plus grand que la planche) : le métrage est soit la boîte entière, soit
+     * sa part dans le document (coin = celui de cette part) ; le cas qui n'a pas lieu dans After ne correspond à rien.
      */
     function footageOrigin(src, shape) {
         if (!(src instanceof FootageItem) || !isFiniteNumber(src.width) || !isFiniteNumber(src.height)) return null;
-        if (sameSize(src, shape.box.right - shape.box.left, shape.box.bottom - shape.box.top)) return [shape.box.left, shape.box.top];
-        var canvas = shape.canvas;
-        if (canvas && isFiniteNumber(canvas.width) && isFiniteNumber(canvas.height) && sameSize(src, canvas.width, canvas.height)) return [0, 0];
+        var box = shape.box, canvas = shape.canvas;
+        var hasCanvas = !!canvas && isFiniteNumber(canvas.width) && isFiniteNumber(canvas.height);
+        if (hasCanvas) {
+            var left = Math.max(box.left, 0), top = Math.max(box.top, 0);
+            var right = Math.min(box.right, canvas.width), bottom = Math.min(box.bottom, canvas.height);
+            if (right > left && bottom > top && sameSize(src, right - left, bottom - top)) return [left, top];
+        }
+        if (sameSize(src, box.right - box.left, box.bottom - box.top)) return [box.left, box.top];
+        if (hasCanvas && sameSize(src, canvas.width, canvas.height)) return [0, 0];
         return null;
     }
 
@@ -469,8 +477,9 @@
      *  - un refus voulu, silencieux (calque PSD mis à l'échelle ou tourné, JSON non reproductible :
      *    dégradé autre qu'un dégradé linéaire à deux couleurs, ou avec un contour, contour non centré, mode de
      *    fusion inconnu, boîte illisible…) : lastFailure() = null ;
-     *  - une panne : le métrage du calque PSD n'a ni la taille de shape.box ni celle de shape.canvas (à 1 px près : After a pu fusionner
-     *    les styles dans les pixels, ou le JSON est celui d'un autre calque), ou une panne imprévue en cours de
+     *  - une panne : le métrage du calque PSD n'a ni la taille de shape.box (ou de sa part dans le document) ni celle
+     *    de shape.canvas (à 1 px près : After a pu fusionner les styles dans les pixels, ou le JSON est celui d'un
+     *    autre calque), ou une panne imprévue en cours de
      *    construction (le calque de forme à demi fait est retiré) ; le calque PSD reste, et
      *    lastFailure() = { name, message } (remis à zéro à chaque appel).
      *    Les styles de calque sont recopiés ici : un collage sans effet = panne.
@@ -510,6 +519,7 @@
             if (parent) made.parent = parent;
             made.enabled = layer.enabled;
             made.blendingMode = blend;
+            made.label = layer.label;
             var madeTr = made.property('ADBE Transform Group');
             madeTr.property('ADBE Anchor Point').setValue([0, 0]);
             madeTr.property('ADBE Position').setValue([dx, dy]);
@@ -517,17 +527,19 @@
 
             made.property('ADBE Root Vectors Group').addProperty('ADBE Vector Group');
             for (var i = 0; i < shape.paths.length; i++) addPath(made, 1, shape.paths[i]);
-            // Styles de calque : ceux que After a importés avec le PSD, recopiés tels quels (options de fusion comprises,
-            // donc l'opacité du fond) ; remplissage et contour restent alors à 100 %.
-            var styled = layerHasStyles(comp, layer);
-            var paint = styled ? 100 : fillOpacity;
-            if (shape.stroke) addStroke(made, 1, shape.stroke, paint);
+            if (shape.stroke) addStroke(made, 1, shape.stroke, fillOpacity);
             if (shape.fill) {
-                addFill(made, 1, shape.fill, paint);
+                addFill(made, 1, shape.fill, fillOpacity);
                 if (shape.fill.type === 'ramp') addRamp(made, shape.fill);
             }
-            // Avant de toucher à l'original : un collage sans effet est une panne que l'utilisateur doit voir.
-            if (styled) copyLayerStyles(comp, layer, made);
+            // Styles de calque : ceux que After a importés avec le PSD, recopiés tels quels (options de fusion comprises,
+            // donc l'opacité du fond) ; remplissage et contour repassent alors à 100 %. Avant de toucher à l'original :
+            // un collage sans effet est une panne que l'utilisateur doit voir.
+            if (copyLayerStyles(comp, layer, made)) {
+                var paints = itemsOf(made, 1);
+                if (shape.stroke) paints.property('ADBE Vector Graphic - Stroke').property('ADBE Vector Stroke Opacity').setValue(100);
+                if (shape.fill) paints.property('ADBE Vector Graphic - Fill').property('ADBE Vector Fill Opacity').setValue(100);
+            }
 
             made.moveBefore(layer);
             layer.remove();
@@ -787,32 +799,44 @@
     /**
      * Point d'ancrage de chaque calque de la compo au centre de sa boîte visible, sans rien déplacer à l'écran
      * (placeAnchor de Quick Tools, case 5). Calque verrouillé ou sans rien de visible : laissé tel quel.
-     * Renvoie le nombre de calques traités.
      */
     function centerAnchors(comp, placeAnchor) {
-        var done = 0;
         for (var i = 1; i <= comp.numLayers; i++) {
             var layer = comp.layer(i);
             if (layer.locked) continue;
             try {
                 placeAnchor(layer, 5, 0);
-                done++;
             } catch (e) { /* rien de visible (calque vide, masques hors du calque) : ancre laissée */ }
         }
-        return done;
+    }
+
+    /** Nom lisible du fichier d'un chemin (File.name est encodé : « %20 » pour une espace). */
+    function pathName(p) {
+        var f = new File(String(p));
+        return String(f.displayName || File.decode(f.name));
+    }
+
+    /** Texte d'une erreur attrapée. */
+    function messageOf(e) {
+        var m = (e && e.message !== undefined) ? e.message : e;
+        return String(m);
     }
 
     /**
-     * Importe un PSD en compo (calques rognés), range la compo et son dossier « N Calques » dans 02_ASSET,
-     * puis dans l'ordre : formes, textes, libellés, précompos recadrées sur leur contenu, points d'ancrage centrés. Chaque compo du parcours est ouverte dans le viewer avant
-     * ce qui passe par un menu (app.executeCommand agit sur la compo du viewer), et l'on vérifie qu'elle y est
-     * bien (focusComp) : sinon rien n'est lancé. Lève une erreur si le PSD n'a pas pu être importé ou traité
-     * (l'appelant le compte illisible et retire ce que l'import a créé).
+     * Importe un PSD en compo (calques rognés), range la compo et son dossier « N Calques » dans le chutier de
+     * dépose, puis dans l'ordre : formes, textes, libellés, précompos recadrées sur leur contenu, points d'ancrage
+     * centrés. Chaque compo du parcours est ouverte dans le viewer avant ce qui passe par un menu
+     * (app.executeCommand agit sur la compo du viewer), et l'on vérifie qu'elle y est bien (focusComp) : sinon
+     * rien n'est lancé.
+     * Lève une erreur seulement si le PSD n'a pas pu être importé ni rangé (l'appelant le compte illisible et
+     * retire ce que l'import a créé). Une étape qui échoue ensuite est sautée, pour la compo concernée : tally.warnings
+     * la compte et report en donne la raison, la compo importée reste.
      * before : les éléments du projet avant l'import (projectItemIds). tally reçoit les formes, textes, pannes de
      * forme et, si la commande de conversion en texte manque, missing. cfg : { bin: segments du chutier de dépose,
      * steps } ; le PSD est rangé dans bin + son dossier relatif (item.dir), les dossiers étant créés au besoin.
+     * report : liste des raisons (texte) à montrer à l'utilisateur.
      */
-    function importOne(item, before, cfg, rules, tally) {
+    function importOne(item, before, cfg, rules, tally, report) {
         var i;
         var file = new File(String(item.path));
         var options = new ImportOptions(file);
@@ -821,14 +845,21 @@
         var comp = app.project.importFile(options);
         if (!(comp instanceof CompItem)) throw new Error('Le PSD n\'a pas donné de composition : ' + file.fsName);
 
-        // ce que l'import a créé : compos (le parcours ne descend que dans celles-là) et éléments de la racine à ranger
-        var created = {}, toMove = [];
-        created[comp.id] = true;
+        // Ce que l'import a créé : compos (le parcours ne descend que dans celles-là) et éléments à ranger. After
+        // dépose ce qu'il importe à la racine du Projet ou dans le dossier sélectionné : on range tout élément
+        // neuf dont le parent n'est pas neuf (les métrages et précompos restent dans « N Calques »).
+        var created = {}, fresh = {}, news = [], toMove = [];
         for (i = 1; i <= app.project.numItems; i++) {
             var it = app.project.item(i);
             if (before[it.id]) continue;
+            fresh[it.id] = true;
+            news.push(it);
             if (it instanceof CompItem) created[it.id] = true;
-            if (isRootItem(it)) toMove.push(it);
+        }
+        created[comp.id] = true;
+        for (i = 0; i < news.length; i++) {
+            var parent = news[i].parentFolder;
+            if (!parent || !fresh[parent.id]) toMove.push(news[i]);
         }
         var target = projectFolderAt(cfg.bin.concat(dirSegments(item.dir)));
         for (i = 0; i < toMove.length; i++) toMove[i].parentFolder = target;
@@ -840,34 +871,73 @@
         for (i = 0; i < list.length; i++) {
             if (list[i] && list[i].match) shapes[shapeKey(list[i].match.name, list[i].match.nth)] = list[i];
         }
-        var p, m;
-        for (p = 0; p < plan.length && cfg.on.shapes; p++) {          // formes d'abord : les index des calques ne bougent pas
-            var opened = false;
-            for (m = 0; m < plan[p].matches.length; m++) {
-                var match = plan[p].matches[m], shape = shapes[shapeKey(match.name, match.nth)];
-                if (!shape) continue;
-                var layer = S.ae.findLayerById(plan[p].comp, match.id);
-                if (!layer) continue;
-                if (!opened) { focusComp(plan[p].comp); opened = true; }
-                if (replaceWithShape(plan[p].comp, layer, shape)) tally.shapes++;
-                else if (lastFailure) tally.failed++;
+        // calques texte du PSD d'après le panneau ; sans cette liste, tous les calques du PSD sont essayés
+        var textKeys = null;
+        if (item.texts && typeof item.texts.length === 'number') {
+            textKeys = {};
+            for (i = 0; i < item.texts.length; i++) {
+                if (item.texts[i]) textKeys[shapeKey(item.texts[i].name, item.texts[i].nth)] = true;
             }
         }
-        var toolbox = S.getTool('toolbox'), labels = S.getTool('labels');
-        for (p = 0; p < plan.length; p++) {
-            if (plan[p].matches.length === 0 || !toolbox || !cfg.on.texts) continue;
-            focusComp(plan[p].comp);
-            var converted = toolbox._core.convertTextsIn(plan[p].comp, layersOf(plan[p].comp), false);
+
+        var toolbox = S.getTool('toolbox'), labels = S.getTool('labels'), quick = S.getTool('quicktools');
+        /** Où : le fichier, et la précompo si ce n'est pas la compo du PSD elle-même. */
+        function whereOf(entry) { return fileName + (entry === plan[0] ? '' : ' › ' + entry.comp.name); }
+        /** Exécute une étape pour une compo du parcours ; une erreur est notée et l'étape sautée pour cette compo. */
+        function attempt(entry, what, fn) {
+            try {
+                fn();
+            } catch (e) {
+                tally.warnings++;
+                report.push(whereOf(entry) + ' : ' + what + ' (' + messageOf(e) + ')');
+            }
+        }
+        function shapesIn(entry) {
+            var opened = false;
+            for (var m = 0; m < entry.matches.length; m++) {
+                var match = entry.matches[m], shape = shapes[shapeKey(match.name, match.nth)];
+                if (!shape) continue;
+                var layer = S.ae.findLayerById(entry.comp, match.id);
+                if (!layer) continue;
+                if (!opened) { focusComp(entry.comp); opened = true; }
+                if (replaceWithShape(entry.comp, layer, shape)) {
+                    tally.shapes++;
+                } else if (lastFailure) {
+                    tally.failed++;
+                    report.push(fileName + ' › ' + layer.name + ' : forme non recréée, ' + lastFailure.message);
+                }
+            }
+        }
+        function textsIn(entry) {
+            var layers = [];
+            if (textKeys) {
+                for (var m = 0; m < entry.matches.length; m++) {
+                    if (!textKeys[shapeKey(entry.matches[m].name, entry.matches[m].nth)]) continue;
+                    var layer = S.ae.findLayerById(entry.comp, entry.matches[m].id);
+                    if (layer) layers.push(layer);
+                }
+                if (layers.length === 0) return;
+            } else {
+                if (entry.matches.length === 0) return;
+                layers = layersOf(entry.comp);
+            }
+            focusComp(entry.comp);
+            var converted = toolbox._core.convertTextsIn(entry.comp, layers, textKeys !== null);   // calques texte connus : un verrou est signalé
             tally.texts += converted.done;
             if (converted.missing) tally.missing = true;
+            for (var s = 0; s < converted.skipped.length; s++) {
+                tally.warnings++;
+                report.push(whereOf(entry) + ' : texte non converti, ' + converted.skipped[s]);
+            }
         }
-        for (p = 0; p < plan.length && labels && cfg.on.labels; p++) labels._core.labelLayers(layersOf(plan[p].comp), rules);
+
+        var p;
+        for (p = 0; p < plan.length && cfg.on.shapes; p++) attempt(plan[p], 'formes non recréées', function () { shapesIn(plan[p]); });   // formes d'abord : les index des calques ne bougent pas
+        for (p = 0; p < plan.length && toolbox && cfg.on.texts; p++) attempt(plan[p], 'textes non convertis', function () { textsIn(plan[p]); });
+        for (p = 0; p < plan.length && labels && cfg.on.labels; p++) attempt(plan[p], 'libellés non posés', function () { labels._core.labelLayers(layersOf(plan[p].comp), rules); });
         // précompos recadrées, les plus profondes d'abord (leur taille compte dans la boîte de la précompo au-dessus)
-        for (p = plan.length - 1; p >= 1 && cfg.on.crop; p--) {
-            if (cropPrecomp(plan[p].comp, holdersOf(plan, plan[p].comp))) tally.cropped++;
-        }
-        var quick = S.getTool('quicktools');
-        for (p = 0; p < plan.length && quick && cfg.on.anchors; p++) tally.anchors += centerAnchors(plan[p].comp, quick._core.placeAnchor);
+        for (p = plan.length - 1; p >= 1 && cfg.on.crop; p--) attempt(plan[p], 'précompo non recadrée', function () { cropPrecomp(plan[p].comp, holdersOf(plan, plan[p].comp)); });
+        for (p = 0; p < plan.length && quick && cfg.on.anchors; p++) attempt(plan[p], 'ancres non centrées', function () { centerAnchors(plan[p].comp, quick._core.placeAnchor); });
         return { name: comp.name, compId: comp.id };
     }
 
@@ -882,23 +952,27 @@
         if (args && args.folder) {
             folder = new Folder(String(args.folder));
             if (!folder.exists) {
-                return { folder: null, files: [], status: status('Dossier introuvable : choisis le dossier des PSD', 'warn') };
+                return { folder: null, hint: 'Dossier introuvable', files: [], status: status('Dossier introuvable : choisis le dossier des PSD', 'warn') };
             }
         } else {
             var start = projectFolder();
             if (!start) {
-                return { folder: null, files: [], status: status('Projet non enregistré : choisis le dossier des PSD', 'info') };
+                return { folder: null, hint: 'Projet non enregistré', files: [], status: status('Projet non enregistré : choisis le dossier des PSD', 'info') };
             }
             var rel = (args && cleanRelPath(args.sourcePath)) || ASSET_PATH;
             folder = findAssetFolder(start, rel);
             if (!folder) {
-                return { folder: null, start: start.fsName, files: [], status: status('Dossier ' + rel + ' introuvable : choisis le dossier des PSD', 'warn') };
+                return {
+                    folder: null, start: start.fsName, hint: rel + ' introuvable depuis le projet', files: [],
+                    status: status('Dossier ' + rel + ' introuvable : choisis le dossier des PSD', 'warn')
+                };
             }
         }
-        var files = listPsds(folder);
+        var found = listPsds(folder), files = found.files;
         var text = files.length === 0 ? 'Aucun PSD dans ce dossier' :
             (files.length === 1 ? '1 PSD trouvé' : files.length + ' PSD trouvés');
-        return { folder: folder.fsName, files: files, status: status(text, files.length === 0 ? 'warn' : 'ok') };
+        if (found.truncated) text += ' · lecture arrêtée après ' + MAX_LIST_ENTRIES + ' éléments : choisis un dossier plus précis';
+        return { folder: folder.fsName, files: files, status: status(text, (files.length === 0 || found.truncated) ? 'warn' : 'ok') };
     };
 
     api.pickFolder = function (args) {
@@ -914,11 +988,15 @@
     };
 
     /**
-     * importBatch({ items: [{ path, dir?, shapes: Shape[] | null, error? }], rules, bin?, steps? }) : importe les PSD
-     * (voir importOne), dans un seul groupe d'annulation. bin : chutier de dépose (relatif, « A/B » imbriqué ; vide
-     * ou invalide = 02_ASSET). steps : { texts, shapes, labels, crop, anchors } ; false = étape sautée. Un item avec error, sans chemin, ou dont le traitement lève une erreur
-     * compte comme PSD illisible ; le lot continue. La compo active au départ est rouverte à la fin.
-     * -> { imported: [{ name, compId }], status }
+     * importBatch({ items: [{ path, dir?, shapes, texts?, shapesError?, error? }], rules, bin?, steps? }) : importe les
+     * PSD (voir importOne), dans un seul groupe d'annulation. bin : chutier de dépose (relatif, « A/B » imbriqué ; vide
+     * ou invalide = 02_ASSET). steps : { shapes, texts, labels, crop, anchors } ; false = étape sautée.
+     * Un item avec error, sans chemin, ou dont l'import lève une erreur compte comme PSD illisible (le lot continue ;
+     * ce que cet import avait créé est retiré). shapesError : le panneau n'a pas pu lire les formes de ce PSD, qui
+     * est importé sans (avertissement). Une étape qui échoue après l'import est sautée (avertissement).
+     * La compo active au départ est rouverte à la fin.
+     * -> { imported: [{ name, compId }], status, report: { skipped: [raison…] } } : report.skipped dit, par PSD,
+     * calque ou compo, ce qui n'a pas été fait et pourquoi (le panneau l'affiche dans une fenêtre).
      */
     api.importBatch = function (args) {
         var items = (args && args.items && typeof args.items.length === 'number') ? args.items : [];
@@ -930,10 +1008,17 @@
         };
         var STEP_IDS = ['texts', 'shapes', 'labels', 'crop', 'anchors'];
         for (var n = 0; n < STEP_IDS.length; n++) cfg.on[STEP_IDS[n]] = stepOn(cfg.steps, STEP_IDS[n]);
-        var imported = [], tally = { shapes: 0, texts: 0, failed: 0, missing: false }, unreadable = 0, valid = [], i;
+        var imported = [], tally = { shapes: 0, texts: 0, failed: 0, warnings: 0, missing: false };
+        var unreadable = 0, valid = [], report = [], i;
         for (i = 0; i < items.length; i++) {
-            if (items[i] && !items[i].error && items[i].path) valid.push(items[i]);
-            else unreadable++;
+            if (items[i] && !items[i].error && items[i].path) {
+                valid.push(items[i]);
+            } else {
+                unreadable++;
+                report.push(items[i] && items[i].path
+                    ? pathName(items[i].path) + ' : ' + messageOf(items[i].error)
+                    : 'Un PSD sans chemin n\'a pas été transmis');
+            }
         }
         if (valid.length > 0) {
             // seule une compo se rouvre dans le viewer : un autre élément actif (métrage…) n'est pas rétabli
@@ -941,15 +1026,22 @@
             try {
                 S.ae.undo(UNDO_NAME, function () {
                     for (var k = 0; k < valid.length; k++) {
-                        var mine = { shapes: 0, texts: 0, failed: 0, missing: false, anchors: 0, cropped: 0 }, before = projectItemIds();
+                        var mine = { shapes: 0, texts: 0, failed: 0, warnings: 0, missing: false }, mineReport = [], before = projectItemIds();
                         try {
-                            imported.push(importOne(valid[k], before, cfg, rules, mine));
+                            imported.push(importOne(valid[k], before, cfg, rules, mine, mineReport));
                             tally.shapes += mine.shapes;
                             tally.texts += mine.texts;
                             tally.failed += mine.failed;
+                            tally.warnings += mine.warnings;
                             if (mine.missing) tally.missing = true;
+                            if (cfg.on.shapes && valid[k].shapesError) {
+                                tally.warnings++;
+                                mineReport.unshift(pathName(valid[k].path) + ' : formes non recréées (' + messageOf(valid[k].shapesError) + ')');
+                            }
+                            report = report.concat(mineReport);
                         } catch (e) {
                             unreadable++;
+                            report.push(pathName(valid[k].path) + ' : ' + messageOf(e));
                             removeNewItems(before);        // pas de PSD à demi importé dans le projet (chutiers créés compris)
                         }
                     }
@@ -960,13 +1052,15 @@
             }
         }
         var text = S.plural(imported.length, 'PSD importé', 'PSD importés');
-        if (cfg.on.texts) text += ' · ' + S.plural(tally.texts, 'texte', 'textes');
-        if (cfg.on.shapes) text += ' · ' + S.plural(tally.shapes, 'forme', 'formes');
+        if (tally.texts > 0) text += ' · ' + S.plural(tally.texts, 'texte', 'textes');
+        if (tally.shapes > 0) text += ' · ' + S.plural(tally.shapes, 'forme', 'formes');
         if (unreadable > 0) text += ' · ' + S.plural(unreadable, 'PSD illisible', 'PSD illisibles');
         if (tally.failed > 0) text += ' · ' + S.plural(tally.failed, 'forme en erreur', 'formes en erreur');
+        if (tally.warnings > 0) text += ' · ' + S.plural(tally.warnings, 'avertissement', 'avertissements');
         if (tally.missing) text += ' · textes non convertis (commande introuvable dans cette langue d\'After Effects)';
-        if (valid.length > 0) text += ' · Ctrl+Z pour annuler';
-        return { imported: imported, status: status(text, (unreadable > 0 || tally.failed > 0 || tally.missing) ? 'warn' : 'ok') };
+        if (imported.length > 0) text += ' · Ctrl+Z pour annuler';
+        var warn = unreadable > 0 || tally.failed > 0 || tally.warnings > 0 || tally.missing;
+        return { imported: imported, status: status(text, warn ? 'warn' : 'ok'), report: { skipped: report } };
     };
 
     api._core = {

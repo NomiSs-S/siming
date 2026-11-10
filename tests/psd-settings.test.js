@@ -1,7 +1,7 @@
 'use strict';
 /* Réglages de l'import des PSD (js/psd/settings.js) : validation, lecture, onglet Réglages › Import PSD. */
 const assert = require('assert');
-const { makeDom } = require('./helpers');
+const { makeDom, loadHost } = require('./helpers');
 
 const SCRIPTS = ['js/siming.js', 'js/icons.js', 'js/ui/dom.js', 'js/ui/controls.js', 'js/psd/settings.js'];
 const ALL_ON = { texts: true, shapes: true, labels: true, crop: true, anchors: true };
@@ -27,7 +27,7 @@ module.exports = function (test) {
         const t = setup();
         assert.deepEqual(t.ps.read(), { sourcePath: '02_RESSOURCES/02_ASSET', bin: '02_ASSET', steps: ALL_ON });
         assert.deepEqual(t.ps.DEFAULTS, { sourcePath: '02_RESSOURCES/02_ASSET', bin: '02_ASSET' });
-        assert.deepEqual(t.ps.STEPS.map((s) => s.id), ['texts', 'shapes', 'labels', 'crop', 'anchors']);
+        assert.deepEqual(t.ps.STEPS.map((s) => s.id), ['shapes', 'texts', 'labels', 'crop', 'anchors'], 'dans l\'ordre où l\'hôte les fait');
     });
 
     test('réglages PSD : checkPath normalise les séparateurs et refuse vide, absolu, « .. », caractères interdits, nom finissant par un point', () => {
@@ -101,7 +101,7 @@ module.exports = function (test) {
         assert.strictEqual(t.stored('psd.step.texts'), '1');
         assert.deepEqual(t.ps.read().steps, Object.assign({}, ALL_ON, { crop: false }));
         assert.strictEqual(t.status.text, 'Étapes de l\'import : 4 sur 5');
-        box(0).click();   // textes
+        box(1).click();   // textes
         assert.deepEqual(t.ps.read().steps, Object.assign({}, ALL_ON, { crop: false, texts: false }));
         box(3).click();
         assert.strictEqual(t.ps.read().steps.crop, true);
@@ -111,7 +111,7 @@ module.exports = function (test) {
         const t = setup();
         t.type('psd-sourcePath', 'Autre');
         t.type('psd-bin', 'X/Y');
-        t.pane.querySelectorAll('[data-role=psd-steps] .s-check-row input')[1].click();
+        t.pane.querySelectorAll('[data-role=psd-steps] .s-check-row input')[0].click();
         t.pane.querySelectorAll('[data-role=psd-steps] .s-check-row input')[4].click();
         assert.strictEqual(t.ps.read().steps.shapes, false);
         t.$('[data-role=psd-reset]').click();
@@ -120,6 +120,19 @@ module.exports = function (test) {
         assert.strictEqual(t.$('[data-role=psd-bin] input').value, '02_ASSET');
         assert.deepEqual(Array.from(t.pane.querySelectorAll('[data-role=psd-steps] input')).map((i) => i.checked), [true, true, true, true, true]);
         assert.strictEqual(t.status.text, 'Réglages de l\'import des PSD rétablis');
+    });
+
+    test('réglages PSD : checkPath (panneau) et cleanRelPath (hôte) acceptent, refusent et normalisent les mêmes chemins', () => {
+        const t = setup();
+        const core = loadHost().sandbox.SIMING.getTool('psdimport')._core;
+        const paths = [
+            '02_RESSOURCES/02_ASSET', 'A\\B', ' A / B ', 'A//B/', 'A/B/', 'Mes PSD/é', '/abs', '\\abs', 'C:\\x', 'C:x', 'a:b', 'a?b', 'a*', 'a<b', 'a>b', 'a"b', 'a|b',
+            'x.', 'x /y', 'x ', '.', '..', '../x', './x', 'a/./b', 'a/../b', '', '   ', '/', 'a\u0001b', 'a.b', '.cache',
+        ];
+        for (const raw of paths) {
+            const c = t.ps.checkPath(raw);
+            assert.strictEqual(core.cleanRelPath(raw), c.ok ? c.value : null, JSON.stringify(raw));
+        }
     });
 
     test('réglages PSD : refresh relit les réglages (changés ailleurs)', () => {

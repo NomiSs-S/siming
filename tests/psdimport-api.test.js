@@ -171,7 +171,7 @@ module.exports = function (test) {
     /** Forme de la Task 2 : rectangle arrondi 859 × 203, contour de 2 px (boîte de pixels 861 × 205 en 759, 272). */
     const shapeOf = (over) => Object.assign({
         match: { name: 'Rectangle 1', nth: 0 },
-        box: { left: 759, top: 272, right: 1620, bottom: 477 },
+        box: { left: 759, top: 272, right: 1620, bottom: 477 }, canvas: { width: 1920, height: 1080 },
         opacity: 100, fillOpacity: 100, blend: 'normal', hidden: false,
         paths: [{ type: 'rect', center: [1189.5, 374.5], size: [859, 203], rotation: 0, roundness: 55 }],
         fill: { type: 'solid', color: [0.2, 0.4, 0.6] },
@@ -770,11 +770,12 @@ module.exports = function (test) {
         const { call } = importScene();
         app.importRecipes[PSD_A] = { layers: [{ name: 'Rectangle 1', size: [1021, 365] }] };
         const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
-        assert.strictEqual(r.status.text, '1 PSD importé · 0 textes · 0 formes · 1 forme en erreur · Ctrl+Z pour annuler');
+        assert.deepStrictEqual(r.status, { text: '1 PSD importé · 1 forme en erreur · Ctrl+Z pour annuler', level: 'warn' });
         assert.deepStrictEqual(kinds(itemById(r.imported[0].compId)), ['av'], 'le calque PSD reste');
+        assert.deepStrictEqual(r.report.skipped, ['1.psd › Rectangle 1 : forme non recréée, boîte du calque After différente de celle du PSD (1021 × 365 pour 861 × 205)'], 'M1 : la raison remonte');
     });
 
-    test('Import PSD : I5, compo restée hors du viewer -> PSD illisible, rien lancé, la compo active d\'avant intacte', () => {
+    test('Import PSD : I2, compo restée hors du viewer -> le PSD reste importé, formes et textes sautés et dits, rien lancé, la compo active d\'avant intacte', () => {
         const real = FakeComp.prototype.openInViewer;
         FakeComp.prototype.openInViewer = function () { app.viewerOpens.push(this.id); return null; };   // le viewer ne change pas
         try {
@@ -782,10 +783,39 @@ module.exports = function (test) {
             before.addLayer('Animé', { psdText: 'Animé' });
             before.select(before.layers[0]);
             const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
-            assert.deepStrictEqual(r.status, { text: '0 PSD importés · 0 textes · 0 formes · 1 PSD illisible · Ctrl+Z pour annuler', level: 'warn' });
+            assert.deepStrictEqual(r.status, { text: '1 PSD importé · 2 avertissements · Ctrl+Z pour annuler', level: 'warn' });
+            assert.deepStrictEqual(r.report.skipped, [
+                '1.psd › 1 : formes non recréées (Compo non active dans le visualiseur : 1)',
+                '1.psd › 1 : textes non convertis (Compo non active dans le visualiseur : 1)',
+            ]);
+            assert.strictEqual(r.imported.length, 1, 'le PSD reste importé');
             assert.deepStrictEqual(app.commands, [], 'aucune commande de menu');
             assert.deepStrictEqual(kinds(before), ['av'], 'compo d\'avant intacte');
-            assert.deepStrictEqual(app.project.items.map((it) => it.name), ['Avant'], 'import retiré');
+            assert.deepStrictEqual(kinds(itemById(r.imported[0].compId).layers[0].source), ['av', 'av', 'av'], 'ni forme ni texte');
+            assert.deepStrictEqual(itemById(r.imported[0].compId).layers[0].source.layers.map((s) => s.label), [8, 8, 8], 'les étapes suivantes se font');
+        } finally {
+            FakeComp.prototype.openInViewer = real;
+        }
+    });
+
+    test('Import PSD : I2, une étape qui échoue ne fait pas retirer le PSD : seule la compo concernée la perd', () => {
+        const real = FakeComp.prototype.openInViewer;
+        FakeComp.prototype.openInViewer = function () {
+            if (this.name === 'Sous') throw new Error('viewer indisponible');
+            return real.call(this);
+        };
+        try {
+            const { call } = importScene();
+            app.importRecipes[PSD_A] = { layers: [
+                { name: 'Titre', psdText: 'Titre' },
+                { name: 'Sous', group: { layers: [{ name: 'Texte', psdText: 'Texte' }] } },
+            ] };
+            const r = call('importBatch', { items: [{ path: PSD_A, shapes: null }], rules: RULES });
+            assert.deepStrictEqual(r.status, { text: '1 PSD importé · 1 texte · 1 avertissement · Ctrl+Z pour annuler', level: 'warn' });
+            assert.deepStrictEqual(r.report.skipped, ['1.psd › Sous : textes non convertis (viewer indisponible)']);
+            const outer = itemById(r.imported[0].compId);
+            assert.deepStrictEqual(kinds(outer), ['text', 'av'], 'le texte de la compo du PSD est converti');
+            assert.deepStrictEqual(kinds(outer.layers[1].source), ['av'], 'celui de la précompo ne l\'est pas');
         } finally {
             FakeComp.prototype.openInViewer = real;
         }
@@ -927,7 +957,8 @@ module.exports = function (test) {
     test('Import PSD : importBatch, sans forme (shapes null) les textes et libellés se font quand même', () => {
         const { call } = importScene();
         const r = call('importBatch', { items: [{ path: PSD_A, shapes: null }], rules: RULES });
-        assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · 0 formes · Ctrl+Z pour annuler');
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · Ctrl+Z pour annuler');
+        assert.deepStrictEqual(r.report, { skipped: [] });
         const inner = itemById(r.imported[0].compId).layers[0].source;
         assert.deepStrictEqual(kinds(inner), ['av', 'text', 'av']);
         assert.deepStrictEqual(inner.layers.map((s) => s.label), [8, 6, 8]);
@@ -944,13 +975,14 @@ module.exports = function (test) {
     test('Import PSD : importBatch, tous illisibles -> rien dans le projet, pas de groupe d\'annulation, pas de Ctrl+Z', () => {
         const { call, before } = importScene();
         const r = call('importBatch', { items: [{ path: PSD_A, shapes: null, error: 'x' }, { shapes: null }], rules: RULES });
-        assert.deepStrictEqual(r.status, { text: '0 PSD importés · 0 textes · 0 formes · 2 PSD illisibles', level: 'warn' });
+        assert.deepStrictEqual(r.status, { text: '0 PSD importés · 2 PSD illisibles', level: 'warn' });
+        assert.deepStrictEqual(r.report.skipped, ['1.psd : x', 'Un PSD sans chemin n\'a pas été transmis'], 'M1 : la raison de chaque PSD');
         assert.deepStrictEqual(r.imported, []);
         assert.deepStrictEqual(app.undoGroups, []);
         assert.strictEqual(folders('02_ASSET').length, 0);
         assert.strictEqual(app.project.numItems, 1);
         assert.strictEqual(app.project.activeItem, before);
-        assert.deepStrictEqual(call('importBatch', { items: [], rules: RULES }).status, { text: '0 PSD importés · 0 textes · 0 formes', level: 'ok' });
+        assert.deepStrictEqual(call('importBatch', { items: [], rules: RULES }).status, { text: '0 PSD importés', level: 'ok' });
     });
 
     test('Import PSD : importBatch, une exception d\'After sur un PSD le compte illisible et le lot continue', () => {
@@ -986,7 +1018,7 @@ module.exports = function (test) {
             shapeOf({ match: { name: 'Rectangle 1', nth: 1 }, fill: green }),
             shapeOf({ match: { name: 'Rectangle 1', nth: 2 }, fill: red }),
         ] }], rules: RULES });
-        assert.strictEqual(r.status.text, '1 PSD importé · 0 textes · 2 formes · Ctrl+Z pour annuler');
+        assert.strictEqual(r.status.text, '1 PSD importé · 2 formes · Ctrl+Z pour annuler');
         const outer = itemById(r.imported[0].compId);
         const inner = outer.layers[1].source;
         assert.deepStrictEqual(kinds(outer), ['av', 'av', 'av', 'shape']);
@@ -1000,7 +1032,7 @@ module.exports = function (test) {
         const { call } = importScene();
         app.importRecipes[PSD_A] = { layers: [{ name: 'A/B' }, { name: 'A/B' }] };
         const r = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf({ match: { name: 'A/B', nth: 1 } })] }], rules: RULES });
-        assert.strictEqual(r.status.text, '1 PSD importé · 0 textes · 1 forme · Ctrl+Z pour annuler');
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 forme · Ctrl+Z pour annuler');
         assert.deepStrictEqual(kinds(itemById(r.imported[0].compId)), ['av', 'shape']);
     });
 
@@ -1008,14 +1040,14 @@ module.exports = function (test) {
         const refusal = importScene();
         const gradient = shapeOf({ fill: { type: 'gradient' } });
         const a = refusal.call('importBatch', { items: [{ path: PSD_A, shapes: [gradient] }], rules: RULES });
-        assert.deepStrictEqual(a.status, { text: '1 PSD importé · 1 texte · 0 formes · Ctrl+Z pour annuler', level: 'ok' });
+        assert.deepStrictEqual(a.status, { text: '1 PSD importé · 1 texte · Ctrl+Z pour annuler', level: 'ok' });
 
         app.reset();
         const { call } = importScene();
         app.importRecipes[PSD_A] = STYLED_RECIPE;
         // Coller sans effet : panne systématique de la forme à styles
         const b = withPasteIgnored(() => call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES }));
-        assert.deepStrictEqual(b.status, { text: '1 PSD importé · 1 texte · 0 formes · 1 forme en erreur · Ctrl+Z pour annuler', level: 'warn' });
+        assert.deepStrictEqual(b.status, { text: '1 PSD importé · 1 texte · 1 forme en erreur · Ctrl+Z pour annuler', level: 'warn' });
         const inner = itemById(b.imported[0].compId).layers[0].source;
         assert.deepStrictEqual(kinds(inner), ['av', 'text', 'av'], 'le calque PSD reste');
         // refus et panne mêlés, avec un PSD illisible : l'ordre des morceaux est fixe
@@ -1023,7 +1055,7 @@ module.exports = function (test) {
         const c = importScene();
         app.importRecipes[PSD_A] = STYLED_RECIPE;
         const m = withPasteIgnored(() => c.call('importBatch', { items: [{ path: PSD_B, shapes: null, error: 'x' }, { path: PSD_A, shapes: [shapeOf()] }], rules: RULES }));
-        assert.strictEqual(m.status.text, '1 PSD importé · 1 texte · 0 formes · 1 PSD illisible · 1 forme en erreur · Ctrl+Z pour annuler');
+        assert.strictEqual(m.status.text, '1 PSD importé · 1 texte · 1 PSD illisible · 1 forme en erreur · Ctrl+Z pour annuler');
     });
 
     test('Import PSD : importBatch, dossier 02_ASSET : celui de la racine d\'abord, puis n\'importe où, sinon créé à la racine', () => {
@@ -1086,14 +1118,14 @@ module.exports = function (test) {
         const { call } = importScene();
         app.menuNames = {};
         const one = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
-        assert.deepStrictEqual(one.status, { text: '1 PSD importé · 0 textes · 1 forme · textes non convertis (commande introuvable dans cette langue d\'After Effects) · Ctrl+Z pour annuler', level: 'warn' });
+        assert.deepStrictEqual(one.status, { text: '1 PSD importé · 1 forme · textes non convertis (commande introuvable dans cette langue d\'After Effects) · Ctrl+Z pour annuler', level: 'warn' });
         assert.deepStrictEqual(kinds(itemById(one.imported[0].compId).layers[0].source), ['shape', 'av', 'av']);
         const two = call('importBatch', { items: [{ path: PSD_A, shapes: null }, { path: PSD_B, shapes: null, error: 'x' }, { path: PSD_B, shapes: null }], rules: RULES });
-        assert.strictEqual(two.status.text, '2 PSD importés · 0 textes · 0 formes · 1 PSD illisible · textes non convertis (commande introuvable dans cette langue d\'After Effects) · Ctrl+Z pour annuler');
+        assert.strictEqual(two.status.text, '2 PSD importés · 1 PSD illisible · textes non convertis (commande introuvable dans cette langue d\'After Effects) · Ctrl+Z pour annuler');
         // rien à convertir (aucun calque de métrage PSD) : pas de manque signalé
         app.importRecipes[PSD_B] = { layers: [{ name: 'Vide', group: { layers: [] } }] };
         const none = call('importBatch', { items: [{ path: PSD_B, shapes: null }], rules: RULES });
-        assert.deepStrictEqual(none.status, { text: '1 PSD importé · 0 textes · 0 formes · Ctrl+Z pour annuler', level: 'ok' });
+        assert.deepStrictEqual(none.status, { text: '1 PSD importé · Ctrl+Z pour annuler', level: 'ok' });
     });
 
     test('Import PSD : importBatch, « formes en erreur » au pluriel', () => {
@@ -1102,36 +1134,171 @@ module.exports = function (test) {
         const r = withPasteIgnored(() => call('importBatch', { items: [{ path: PSD_A, shapes: [
             shapeOf(), shapeOf({ match: { name: 'Rectangle 1', nth: 1 } }),
         ] }], rules: RULES }));
-        assert.strictEqual(r.status.text, '1 PSD importé · 0 textes · 0 formes · 2 formes en erreur · Ctrl+Z pour annuler');
+        assert.strictEqual(r.status.text, '1 PSD importé · 2 formes en erreur · Ctrl+Z pour annuler');
     });
 
-    test('Import PSD : importBatch, une exception APRÈS l\'import retire ce que ce PSD a créé (compos, métrages, « N Calques », 02_ASSET neuf) et le compte illisible', () => {
-        const real = FakeComp.prototype.openInViewer;
-        FakeComp.prototype.openInViewer = function () {
-            if (this.name === '1') throw new Error('viewer indisponible');
-            return real.call(this);
-        };
-        try {
-            // seul PSD : le projet retrouve son état d'avant
-            const { call, before } = importScene();
-            const alone = call('importBatch', { items: [{ path: PSD_A, shapes: [shapeOf()] }], rules: RULES });
-            assert.deepStrictEqual(alone.status, { text: '0 PSD importés · 0 textes · 0 formes · 1 PSD illisible · Ctrl+Z pour annuler', level: 'warn' });
-            assert.deepStrictEqual(alone.imported, []);
-            assert.deepStrictEqual(app.project.items.map((it) => it.name), ['Avant']);
-            assert.strictEqual(app.project.activeItem, before);
-            assert.strictEqual(app.undoDepth, 0);
-            // avec un second PSD : lui seul reste, dans un 02_ASSET recréé
-            app.reset();
-            const s = importScene();
-            const both = s.call('importBatch', { items: [{ path: PSD_A, shapes: null }, { path: PSD_B, shapes: [shapeOf()] }], rules: RULES });
-            assert.strictEqual(both.status.text, '1 PSD importé · 1 texte · 1 forme · 1 PSD illisible · Ctrl+Z pour annuler');
-            assert.deepStrictEqual(app.project.items.map((it) => it.name).sort(), ['02_ASSET', '2', '2', '2 Calques', 'Avant', 'Calque 0/2.psd', 'PourQUOI ???/2.psd', 'Rectangle 1/2.psd']);
-            assert.strictEqual(folders('02_ASSET').length, 1);
-            assert.strictEqual(itemById(both.imported[0].compId).parentFolder, folders('02_ASSET')[0]);
-        } finally {
-            FakeComp.prototype.openInViewer = real;
-        }
+    /** Fait échouer app.project.items.addFolder pour ce nom de dossier (la création d'un chutier de dépose). */
+    function failFolder(name) {
+        const real = app.project.items.addFolder;
+        Object.defineProperty(app.project.items, 'addFolder', {
+            value(n) { if (n === name) throw new Error('création du dossier refusée'); return real.call(this, n); },
+            enumerable: false, configurable: true,
+        });
+    }
+    const sortedNames = () => app.project.items.map((it) => it.name).sort();
+
+    test('Import PSD : I2, un rangement raté retire ce que ce PSD a créé (compos, métrages, « N Calques », 02_ASSET neuf), le compte illisible avec sa raison, sans Ctrl+Z', () => {
+        // seul PSD : le projet retrouve son état d'avant
+        const { call, before } = importScene();
+        failFolder('X');
+        const alone = call('importBatch', { items: [{ path: PSD_A, dir: 'X', shapes: [shapeOf()] }], rules: RULES });
+        assert.deepStrictEqual(alone.status, { text: '0 PSD importés · 1 PSD illisible', level: 'warn' });
+        assert.deepStrictEqual(alone.report.skipped, ['1.psd : création du dossier refusée']);
+        assert.deepStrictEqual(alone.imported, []);
+        assert.deepStrictEqual(app.project.items.map((it) => it.name), ['Avant']);
+        assert.strictEqual(app.project.activeItem, before);
+        assert.strictEqual(app.undoDepth, 0);
+        // avec un second PSD : lui seul reste, dans un 02_ASSET recréé
+        app.reset();
+        const s = importScene();
+        failFolder('X');
+        const both = s.call('importBatch', { items: [{ path: PSD_A, dir: 'X', shapes: null }, { path: PSD_B, shapes: [shapeOf()] }], rules: RULES });
+        assert.strictEqual(both.status.text, '1 PSD importé · 1 texte · 1 forme · 1 PSD illisible · Ctrl+Z pour annuler');
+        assert.deepStrictEqual(sortedNames(), ['02_ASSET', '2', '2', '2 Calques', 'Avant', 'Calque 0/2.psd', 'PourQUOI ???/2.psd', 'Rectangle 1/2.psd']);
+        assert.strictEqual(folders('02_ASSET').length, 1);
+        assert.strictEqual(itemById(both.imported[0].compId).parentFolder, folders('02_ASSET')[0]);
     });
+
+    test('Import PSD : I1, lecture des formes ratée par le panneau (shapesError) -> le PSD est importé quand même, sans formes, textes et libellés faits, la raison remonte', () => {
+        const { call } = importScene();
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: null, shapesError: 'PSB non pris en charge' }, { path: PSD_B, shapes: [shapeOf()] }], rules: RULES });
+        assert.deepStrictEqual(r.status, { text: '2 PSD importés · 2 textes · 1 forme · 1 avertissement · Ctrl+Z pour annuler', level: 'warn' });
+        assert.deepStrictEqual(r.report.skipped, ['1.psd : formes non recréées (PSB non pris en charge)']);
+        const inner = itemById(r.imported[0].compId).layers[0].source;
+        assert.deepStrictEqual(kinds(inner), ['av', 'text', 'av'], 'texte converti, forme gardée en calque PSD');
+        assert.deepStrictEqual(inner.layers.map((s) => s.label), [8, 6, 8], 'libellés posés');
+        // l\'étape « formes » est coupée : le panneau n\'a rien lu, l\'erreur n\'a plus lieu d\'être
+        app.reset();
+        const off = importScene();
+        const o = off.call('importBatch', { items: [{ path: PSD_A, shapes: null, shapesError: 'x' }], rules: RULES, steps: { shapes: false } });
+        assert.deepStrictEqual(o.status, { text: '1 PSD importé · 1 texte · Ctrl+Z pour annuler', level: 'ok' });
+        assert.deepStrictEqual(o.report.skipped, []);
+    });
+
+    test('Import PSD : I4, After dépose l\'import dans le dossier sélectionné du Projet -> compo et « N Calques » rangés quand même ; métrages et précompos restent dans « N Calques »', () => {
+        const { call } = importScene();
+        const client = new FolderItem('Client A');
+        const divers = new FolderItem('Divers', client);
+        app.project.items.push(client, divers);
+        app.importFolder = divers;
+        const r = call('importBatch', { items: [{ path: PSD_A, dir: 'V', shapes: null }], rules: RULES });
+        const outer = itemById(r.imported[0].compId);
+        assert.strictEqual(chain(outer), '02_ASSET/V');
+        assert.strictEqual(chain(folders('1 Calques')[0]), '02_ASSET/V');
+        assert.strictEqual(app.project.items.filter((it) => it.parentFolder === divers).length, 0, 'plus rien dans le dossier sélectionné');
+        const footage = app.project.items.filter((it) => it instanceof FootageItem);
+        assert.ok(footage.length === 3 && footage.every((f) => f.parentFolder === folders('1 Calques')[0]), 'métrages dans « 1 Calques »');
+        assert.strictEqual(outer.layers[0].source.parentFolder, folders('1 Calques')[0], 'précompo dans « 1 Calques »');
+        // un dossier du panneau Projet qui existait déjà reste en place
+        assert.strictEqual(divers.parentFolder, client);
+    });
+
+    test('Import PSD : M1, un item avec error ou un import qui lève une erreur : la raison et le nom du fichier remontent', () => {
+        const { call } = importScene();
+        app.importRecipes[PSD_A] = { throws: 'File format not supported' };
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: null }, { path: PSD_B, shapes: null, error: 'EACCES' }], rules: RULES });
+        assert.deepStrictEqual(r.status, { text: '0 PSD importés · 2 PSD illisibles', level: 'warn' });
+        assert.deepStrictEqual(r.report.skipped, ['2.psd : EACCES', '1.psd : File format not supported']);
+    });
+
+    test('Import PSD : S3, texts donné par le panneau -> seuls ces calques sont convertis et seules leurs compos ouvertes ; sans texts, tous les calques PSD sont essayés', () => {
+        const recipe = { layers: [
+            { name: 'Titre', psdText: 'Titre' },
+            { name: 'Image', psdText: 'Image' },     // pas un texte pour le panneau : la conversion n\'est pas lancée
+            { name: 'Groupe', group: { layers: [{ name: 'Fond', psdText: 'Fond' }] } },
+        ] };
+        const { call } = importScene();
+        app.importRecipes[PSD_A] = recipe;
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: null, texts: [{ name: 'Titre', nth: 0 }] }], rules: RULES });
+        assert.strictEqual(r.status.text, '1 PSD importé · 1 texte · Ctrl+Z pour annuler');
+        const outer = itemById(r.imported[0].compId);
+        assert.deepStrictEqual(kinds(outer), ['text', 'av', 'av']);
+        assert.deepStrictEqual(kinds(outer.layers[2].source), ['av']);
+        assert.deepStrictEqual(app.commands, [3799], 'une seule conversion');
+        assert.ok(app.viewerOpens.indexOf(outer.id) >= 0);
+        assert.strictEqual(app.viewerOpens.indexOf(outer.layers[2].source.id), -1, 'la précompo sans texte n\'est pas ouverte');
+        // texts vide : aucun texte dans le PSD, rien n\'est ouvert ni lancé
+        app.reset();
+        const none = importScene();
+        app.importRecipes[PSD_A] = recipe;
+        none.call('importBatch', { items: [{ path: PSD_A, shapes: null, texts: [] }], rules: RULES });
+        assert.deepStrictEqual(app.commands, []);
+        // texts absent (lecture du panneau ratée, étape « formes » coupée) : repli, tous les calques PSD sont essayés
+        app.reset();
+        const all = importScene();
+        app.importRecipes[PSD_A] = recipe;
+        const a = all.call('importBatch', { items: [{ path: PSD_A, shapes: null }], rules: RULES });
+        assert.strictEqual(a.status.text, '1 PSD importé · 3 textes · Ctrl+Z pour annuler');
+        assert.ok(app.viewerOpens.indexOf(itemById(a.imported[0].compId).layers[2].source.id) >= 0);
+    });
+
+    test('Import PSD : m2, calque texte verrouillé (texts donné) -> pas converti mais signalé ; l\'autre texte est converti', () => {
+        const { call } = importScene();
+        app.importRecipes[PSD_A] = { layers: [{ name: 'Titre', psdText: 'Titre', locked: true }, { name: 'Autre', psdText: 'Autre' }] };
+        const r = call('importBatch', { items: [{ path: PSD_A, shapes: null, texts: [{ name: 'Titre', nth: 0 }, { name: 'Autre', nth: 0 }] }], rules: RULES });
+        assert.deepStrictEqual(r.status, { text: '1 PSD importé · 1 texte · 1 avertissement · Ctrl+Z pour annuler', level: 'warn' });
+        assert.deepStrictEqual(r.report.skipped, ['1.psd : texte non converti, Titre : calque verrouillé']);
+        assert.deepStrictEqual(kinds(itemById(r.imported[0].compId)), ['av', 'text']);
+    });
+
+    test('Import PSD : m1, la forme reprend l\'étiquette du calque PSD', () => {
+        const { comp, run } = psdScene({ layer: { label: 9 } });
+        assert.ok(run(shapeOf()));
+        assert.strictEqual(comp.layer(2).label, 9);
+    });
+
+    test('Import PSD : m4, boîte qui déborde du document : métrage rogné au document ou boîte entière, les deux donnent une forme à sa place ; une autre taille, panne', () => {
+        const box = { left: 1800, top: 100, right: 2100, bottom: 200 };   // 300 × 100, dépasse à droite de la planche (1920)
+        const over = (size, pos, anchor) => {
+            const s = psdScene({ size });
+            setState(s.st, 'ADBE Anchor Point', anchor);
+            setState(s.st, 'ADBE Position', pos);
+            const out = s.run(shapeOf({ box, paths: [{ type: 'rect', center: [1950, 150], size: [300, 100], rotation: 0, roundness: 0 }], stroke: null }));
+            return Object.assign({ out }, s);
+        };
+        const cropped = over([120, 100], [1860, 150], [60, 50]);   // After rogne au document : 120 × 100, coin en 1800, 100
+        assert.ok(cropped.out, 'métrage rogné au document');
+        assert.deepStrictEqual(plain(cropped.comp.layer(2).property('ADBE Transform Group').property('ADBE Position').value), [0, 0]);
+        const whole = over([300, 100], [1950, 150], [150, 50]);    // la boîte entière
+        assert.ok(whole.out, 'métrage de la boîte entière');
+        assert.deepStrictEqual(plain(whole.comp.layer(2).property('ADBE Transform Group').property('ADBE Position').value), [0, 0]);
+        const other = over([200, 100], [1850, 150], [100, 50]);
+        assert.strictEqual(other.out, null);
+        assert.strictEqual(other.core.lastFailure().name, 'Mismatch');
+    });
+
+    test('Import PSD : m6, list arrête la lecture après 3000 entrées et le dit (un dossier très haut ne fige pas After)', withTree((t) => {
+        const { call } = host();
+        const big = path.join(t.asset, 'BIG');
+        fs.mkdirSync(big);
+        for (let i = 0; i < 3010; i++) fs.closeSync(fs.openSync(path.join(big, 'n' + i + '.txt'), 'w'));
+        const r = call('list', { folder: t.asset });
+        assert.deepStrictEqual(r.files.map((f) => f.name), ['1.psd', '2.psd', '10.psd'], 'ce qui a été lu avant la limite est là');
+        assert.deepStrictEqual(r.status, { text: '3 PSD trouvés · lecture arrêtée après 3000 éléments : choisis un dossier plus précis', level: 'warn' });
+        assert.strictEqual(call('list', { folder: path.join(t.asset, 'SOUS') }).status.level, 'warn');
+        fs.rmSync(big, { recursive: true, force: true });
+        assert.deepStrictEqual(call('list', { folder: t.asset }).status, { text: '3 PSD trouvés', level: 'ok' });
+    }));
+
+    test('Import PSD : M2, list dit pourquoi il n\'y a pas de dossier (hint court pour la carte)', withTree((t) => {
+        const { call } = host();
+        app.project.file = null;
+        assert.strictEqual(call('list', {}).hint, 'Projet non enregistré');
+        app.project.file = new FakeFile(t.aep);
+        assert.strictEqual(call('list', { sourcePath: 'Mes/PSD' }).hint, 'Mes/PSD introuvable depuis le projet');
+        assert.strictEqual(call('list', {}).hint, undefined, 'trouvé : pas d\'indication');
+        assert.strictEqual(call('list', { folder: path.join(t.root, 'nulle-part') }).hint, 'Dossier introuvable');
+    }));
 
     // ------------------------------------------------------------------------
     //  Sous-dossiers du dossier des PSD, chutier de dépose et étapes réglables
@@ -1257,17 +1424,14 @@ module.exports = function (test) {
     });
 
     test('Import PSD : importBatch, un PSD en échec retire aussi les chutiers que son dossier relatif avait fait créer', () => {
-        const real = FakeComp.prototype.openInViewer;
-        FakeComp.prototype.openInViewer = function () { if (this.name === '1') throw new Error('viewer indisponible'); return real.call(this); };
-        try {
-            const { call } = importScene();
-            const r = call('importBatch', { items: [{ path: PSD_A, dir: 'V/W', shapes: [shapeOf()] }, { path: PSD_B, dir: 'V', shapes: null }], rules: RULES });
-            assert.strictEqual(r.imported.length, 1);
-            assert.strictEqual(folders('W').length, 0, 'sous-dossier du PSD en échec retiré');
-            assert.strictEqual(chain(itemById(r.imported[0].compId)), '02_ASSET/V');
-        } finally {
-            FakeComp.prototype.openInViewer = real;
-        }
+        const { call } = importScene();
+        failFolder('W');
+        const r = call('importBatch', { items: [{ path: PSD_A, dir: 'V/W', shapes: [shapeOf()] }, { path: PSD_B, dir: 'V', shapes: null }], rules: RULES });
+        assert.strictEqual(r.imported.length, 1);
+        assert.strictEqual(folders('W').length, 0, 'sous-dossier du PSD en échec absent');
+        assert.strictEqual(chain(itemById(r.imported[0].compId)), '02_ASSET/V');
+        assert.deepStrictEqual(sortedNames(), ['02_ASSET', '2', '2', '2 Calques', 'Avant', 'Calque 0/2.psd', 'PourQUOI ???/2.psd', 'Rectangle 1/2.psd', 'V']);
+        assert.deepStrictEqual(r.report.skipped, ['1.psd : création du dossier refusée']);
     });
 
     /** Importe PSD_A (formes, texte, libellés, précompo à recadrer) avec ces étapes ; renvoie la compo interne. */

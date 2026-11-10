@@ -76,7 +76,7 @@ const vstk = (extra) => Object.assign({
 function layer(name, extra) {
     return Object.assign({
         id: null, name, box: { left: 10, top: 20, right: 110, bottom: 70 }, opacity: 255, blend: 'norm', hidden: false,
-        clipped: false, masked: false, kind: 'layer', artboard: null,
+        clipped: false, masked: false, kind: 'layer',
         blocks: {
             TySh: false, unreadable: [], vscgKind: 'SoCo',
             vogk: { _class: 'null', keyDescriptorList: [rectOrigin(10, 20, 110, 70)] },
@@ -92,7 +92,7 @@ const withBlocks = (name, blocks, extra) => {
     return l;
 };
 const docOf = (...layers) => ({ width: 1000, height: 500, layers });
-const group = (name, ...children) => ({ id: null, name, box: { left: 0, top: 0, right: 0, bottom: 0 }, opacity: 255, blend: 'pass', hidden: false, kind: 'group', artboard: null, children, blocks: { TySh: false, unreadable: [] } });
+const group = (name, ...children) => ({ id: null, name, box: { left: 0, top: 0, right: 0, bottom: 0 }, opacity: 255, blend: 'pass', hidden: false, kind: 'group', children, blocks: { TySh: false, unreadable: [] } });
 
 const gradient = (extra) => Object.assign({
     _class: 'null', gradientsInterpolationMethod: { enum: 'gradientInterpolationMethodType', v: 'Smoo' }, Angl: { unit: '#Ang', v: 90 }, Type: { enum: 'GrdT', v: 'Lnr ' },
@@ -441,7 +441,6 @@ module.exports = function (test) {
         const styled = shapes(docOf(withBlocks('F', { iOpa: 128, lfx2 })));
         assert.strictEqual(styled.length, 1, 'fond translucide et styles : plus un refus');
         assert.ok(Math.abs(styled[0].fillOpacity - 128 / 255 * 100) < 0.001);
-        assert.ok(!('styles' in styled[0]));
     });
 
     test('formes : calque détouré ou avec masque de calque = laissé en PSD', () => {
@@ -463,19 +462,25 @@ module.exports = function (test) {
         assert.strictEqual(shapes(docOf(withBlocks('S', { vstk: vstk(cap('strokeStyleRoundCap')) }))).length, 1);
     });
 
-    test('formes : la conversion de couleur est celle de shapes.js (SIMING.psd.color)', () => {
-        assert.strictEqual(typeof globalThis.SIMING.psd.color, 'function');
-        near(globalThis.SIMING.psd.color({ 'Rd  ': 255, 'Grn ': 0, 'Bl  ': 51 }), [1, 0, 0.2], 0.001, 'rvb');
-        assert.strictEqual(globalThis.SIMING.psd.color({ _class: 'HSBC' }), null);
+    test('formes : texts liste les calques texte (TySh) avec le même rang nth que les formes, groupes exclus, en profondeur', () => {
+        const text = (name) => withBlocks(name, { TySh: true });
+        const doc = docOf(layer('A'), text('Titre'), group('G', text('Titre'), layer('Titre'), text('Titre')));
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(doc), [{ name: 'Titre', nth: 0 }, { name: 'Titre', nth: 1 }, { name: 'Titre', nth: 3 }]);
+        assert.deepStrictEqual(shapes(doc).map((x) => x.match.name + x.match.nth), ['A0', 'Titre0', 'Titre1', 'Titre2', 'Titre3'], 'mêmes rangs que les formes');
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(docOf(layer('A'))), []);
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(docOf()), []);
+        // un calque détouré ou base de détourage reste compté (son rang compte, comme pour les formes)
+        const clip = docOf(withBlocks('Haut', {}, { clipped: true }), text('Base'));
+        assert.deepStrictEqual(globalThis.SIMING.psd.texts(clip), [{ name: 'Base', nth: 0 }]);
+        assert.strictEqual(shapes(clip).length, 0, 'ni le calque détouré ni sa base ne sont des formes');
     });
 
-    test('formes : les styles de calque ne font plus refuser le calque (motif, illisible, lmfx, lfxs, couleur HSB) et ne sont pas lus', () => {
+    test('formes : les styles de calque ne font pas refuser le calque (motif, illisible, lmfx, lfxs, couleur HSB)', () => {
         const pattern = { patternFill: { _class: 'patternFill', enab: true } };
         const lfx2 = { masterFXSwitch: true, SoFi: { _class: 'SoFi', enab: true, 'Md  ': { enum: 'BlnM', v: 'normal' }, 'Clr ': { _class: 'HSBC' }, Opct: { unit: '#Prc', v: 50 } } };
         for (const blocks of [{ lfx2: pattern }, { lfx2 }, { unreadable: ['lfx2'] }, { lmfx: true }, { lfxs: true }]) {
             const out = shapes(docOf(withBlocks('M', blocks)));
             assert.strictEqual(out.length, 1, JSON.stringify(blocks));
-            assert.ok(!('styles' in out[0]));
         }
         // le fond uni aussi
         const fond = planche();

@@ -8,10 +8,12 @@
  * chaque geste et quand le pointeur entre dans la vue.
  * Importer les PSD ouvre une liste à cocher qui remplace le contenu de la boîte (son bouton
  * principal est alors le seul à l'écran) ; Échap ou Annuler rend la boîte. Les PSD sont lus ici
- * (Node du panneau), l'import se fait en un seul appel à l'hôte (outil psdimport). Les sous-dossiers du dossier
+ * (Node du panneau : formes et calques texte), l'import se fait en un seul appel à l'hôte (outil psdimport) ; un
+ * PSD que le panneau ne sait pas lire est importé quand même, sans formes. Les sous-dossiers du dossier
  * des PSD sont listés par groupes ; le dossier des PSD, le chutier de dépose et les étapes de l'import sont
  * des réglages (Réglages › Import PSD, js/psd/settings.js), relus à chaque ouverture de la liste et à chaque
  * import ; une icône Réglages de la liste ouvre cet onglet (ctx.openSettings, absent d'un panneau isolé).
+ * Le dossier des PSD est cherché depuis le projet à chaque ouverture ; seul un dossier choisi à la main est gardé.
  */
 (function (global) {
     'use strict';
@@ -74,7 +76,7 @@
     });
     /** fs.readFile en promesse (Node du panneau, sans bloquer l'interface pendant un gros PSD). */
     const readFile = (fs, p) => new Promise((resolve, reject) => fs.readFile(p, (e, buf) => (e ? reject(e) : resolve(buf))));
-    const PSD_NO_NODE = 'Lecture des PSD impossible : Node n\'est pas activé dans ce panneau';
+    const PSD_NO_NODE = 'Node n\'est pas activé dans ce panneau ; décoche « Recréer les formes » dans Réglages › Import PSD pour ne plus voir ce message';
     const roleOf = (id) => 'format-' + id.replace(':', 'x');
 
     function mount(view, ctx) {
@@ -83,9 +85,10 @@
         let busy = null;
         let last = null;    // { el, replay } : dernier geste, rejoué par Entrée
         let psd = null;     // { pane, list, folder, primary } tant que la liste des PSD remplace la vue
-        let psdFolder = null;   // dernier dossier de PSD connu de l'hôte (rouvert au geste suivant)
+        let psdFolder = null;   // dossier de la dernière liste (affiché, départ de la fenêtre de choix)
         let psdStart = null;    // sans dossier de PSD : le dossier du projet, où ouvrir la fenêtre de choix
-        let psdSourceUsed = null;   // réglage « Dossier des PSD » qui a trouvé psdFolder ; null si choisi à la main (gardé)
+        let psdPicked = null;   // dossier choisi à la main, gardé ; sinon la liste est cherchée depuis le projet à chaque ouverture
+        let psdSourceUsed = null;   // réglage « Dossier des PSD » qui a trouvé la liste affichée ; null si choisie à la main
         const psdSettings = SIMING.psdSettings;
         const settings = ctx.settings;
         const keys = ctx.keys || SIMING.keys;
@@ -278,7 +281,6 @@
             psd.primary.set({ label: 'Importer ' + n + ' PSD', enabled: n > 0 && !view.classList.contains('is-busy') });
         }
 
-        const ASSET_HINT = '02_ASSET introuvable depuis le projet';
         const PSD_EMPTY = 'Aucun PSD dans ce dossier';
         const PSD_NO_FOLDER = 'Aucun dossier : clique sur la carte au-dessus pour le choisir';
 
@@ -319,7 +321,7 @@
                 const f = splitFolder(l.folder);
                 psd.folder.set({ title: f.name, subtitle: f.parent });
             } else {
-                psd.folder.set({ title: 'Choisir le dossier des PSD', subtitle: ASSET_HINT, empty: true });
+                psd.folder.set({ title: 'Choisir le dossier des PSD', subtitle: l.hint || '', empty: true });
             }
             psd.dirs = {};
             const grouped = l.files.some((f) => f.dir);   // des sous-dossiers : un intitulé au-dessus de chaque groupe
@@ -345,16 +347,14 @@
 
         function cancelPsd() {
             closePsd();
-            ctx.status.set('Import des PSD annulé', 'info');
+            ctx.status.set('', 'info');   // la liste n'a rien changé : son statut ne vaut plus
         }
         action('psd-cancel', 'Annuler l\'import des PSD', () => { if (!busy) cancelPsd(); }, 'Escape', () => !focusRoot.hidden && !!psd);
 
         async function openPsdList() {
             const source = psdSettings.read(settings).sourcePath;
-            if (psdSourceUsed !== null && psdSourceUsed !== source) psdFolder = null;   // le réglage a changé depuis
-            const auto = !psdFolder;
-            const l = await psdCall('list', psdFolder ? { folder: psdFolder } : { sourcePath: source });
-            if (auto) psdSourceUsed = source;
+            const l = await psdCall('list', psdPicked ? { folder: psdPicked } : { sourcePath: source });
+            psdSourceUsed = psdPicked ? null : source;
             showPsd(l);
         }
 
@@ -380,11 +380,16 @@
             let picked = nativeFolderPick(psdFolder || psdStart);
             if (picked === undefined) picked = (await psdCall('pickFolder', psdFolder ? { from: psdFolder } : {})).folder;
             if (!picked) return;
-            psdSourceUsed = null;   // choisi à la main : gardé, quel que soit le réglage
+            psdPicked = picked;     // choisi à la main : gardé, quel que soit le réglage ou le projet
+            psdSourceUsed = null;
             showPsd(await psdCall('list', { folder: picked }));
         }
 
-        /** Lit les PSD cochés un par un (Node du panneau), puis les importe d'un seul appel à l'hôte. */
+        /**
+         * Lit les PSD cochés un par un (Node du panneau) pour en tirer formes et calques texte, puis les importe d'un
+         * seul appel à l'hôte. Un PSD que le panneau ne sait pas lire (ou sans Node) est importé quand même, sans
+         * formes : shapesError dit pourquoi, l'hôte le signale dans la fenêtre « Éléments ignorés ».
+         */
         async function importChecked() {
             const paths = psd.list.checked();
             if (!paths.length) return;
@@ -392,18 +397,19 @@
             let fs = null;
             if (cfg.steps.shapes) {   // les PSD ne se lisent ici que pour recréer leurs formes
                 try { const req = SIMING.nodeRequire(); fs = req ? req('fs') : null; } catch (e) { fs = null; }
-                if (!fs) { ctx.status.set(PSD_NO_NODE, 'error'); return; }
             }
             const items = [];
             for (let i = 0; i < paths.length; i++) {
                 const dir = psd.dirs[paths[i]] || '';
-                if (!fs) { items.push({ path: paths[i], dir, shapes: null }); continue; }
+                if (!cfg.steps.shapes) { items.push({ path: paths[i], dir, shapes: null }); continue; }
+                if (!fs) { items.push({ path: paths[i], dir, shapes: null, shapesError: PSD_NO_NODE }); continue; }
                 ctx.status.set('Lecture des PSD… (' + (i + 1) + ' / ' + paths.length + ')', 'info');
                 await painted();   // la progression s'affiche avant la lecture (un PSD peut peser 100 Mo)
                 try {
-                    items.push({ path: paths[i], dir, shapes: SIMING.psd.shapes(SIMING.psd.read(await readFile(fs, paths[i]))) });
+                    const doc = SIMING.psd.read(await readFile(fs, paths[i]));
+                    items.push({ path: paths[i], dir, shapes: SIMING.psd.shapes(doc), texts: SIMING.psd.texts(doc) });
                 } catch (e) {
-                    items.push({ path: paths[i], dir, error: e.message });
+                    items.push({ path: paths[i], dir, shapes: null, shapesError: e.message });
                 }
             }
             ctx.status.set('Import des PSD…', 'info');

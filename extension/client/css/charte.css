@@ -324,9 +324,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-psd-pane { flex: 1; min-height: 0; }
 .s-psd-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .s-psd-head .s-section { flex: 1; min-width: 0; }
-.s-psd-head .s-icon-btn { height: 32px; flex: none; }
+.s-psd-head .s-icon-btn { flex: none; }
 .s-check-group { flex: none; padding: 8px 10px 2px; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.s-check-group:first-child { padding-top: 4px; }
 
 /* Aide en fiches : en-tête, fiches (picto ou numéro, nom, une phrase, touches), pied */
 .s-help-backdrop { padding: 8px; }

@@ -3,6 +3,7 @@
  * Ni navigateur ni Node : testé tel quel, sans After Effects.
  *
  *   SIMING.psd.shapes(doc) -> Shape[]     doc : le résultat de SIMING.psd.read
+ *   SIMING.psd.texts(doc)  -> [{ name, nth }]   les calques texte (même rang nth que les formes)
  *
  * Un calque de pixels d'une seule couleur, opaque sur toute sa boîte (le fond d'une planche), devient
  * aussi une forme : un rectangle plein de sa boîte (voir uniformOf).
@@ -428,28 +429,46 @@
         };
     }
 
-    function shapes(doc) {
+    /**
+     * Parcours des calques (groupes exclus), le plus haut d'abord et en profondeur : visit(layer, nth, isBase), nth
+     * étant le rang du calque parmi ceux du même nom. Base d'un détourage : calque juste sous un calque détouré,
+     * l'ordre étant haut -> bas.
+     */
+    function walkLayers(doc, visit) {
         const counts = Object.create(null);   // sans prototype : un calque peut s'appeler « constructor »
-        const out = [];
         const walk = (layers) => {
             layers.forEach((layer, i) => {
                 if (layer.kind !== 'group') {
                     // Seuls les calques comptent : un groupe devient un précomp, que l'hôte ne cherche pas.
                     const nth = counts[layer.name] || 0;
                     counts[layer.name] = nth + 1;
-                    // Base d'un détourage (juste sous un calque détouré, l'ordre étant haut -> bas) : la
-                    // remplacer changerait ce que détourent les calques au-dessus. Son rang compte quand même.
-                    const isBase = layer.clipped !== true && i > 0 && layers[i - 1].clipped === true;
-                    const shape = isBase ? null : shapeOf(layer, nth, doc);
-                    if (shape) out.push(shape);
+                    visit(layer, nth, layer.clipped !== true && i > 0 && layers[i - 1].clipped === true);
                 }
                 if (layer.children) walk(layer.children);
             });
         };
         walk(doc.layers);
+    }
+
+    function shapes(doc) {
+        const out = [];
+        // Base d'un détourage : la remplacer changerait ce que détourent les calques au-dessus (son rang compte quand même).
+        walkLayers(doc, (layer, nth, isBase) => {
+            const shape = isBase ? null : shapeOf(layer, nth, doc);
+            if (shape) out.push(shape);
+        });
         return out;
     }
 
-    SIMING.psd = Object.assign(SIMING.psd || {}, { shapes, color });
+    /** Calques texte du PSD (bloc TySh) : [{ name, nth }], le rang étant celui de shapes (match.nth). */
+    function texts(doc) {
+        const out = [];
+        walkLayers(doc, (layer, nth) => {
+            if (layer.blocks && layer.blocks.TySh === true) out.push({ name: layer.name, nth });
+        });
+        return out;
+    }
+
+    SIMING.psd = Object.assign(SIMING.psd || {}, { shapes, texts });
     if (typeof module !== 'undefined' && module.exports) module.exports = shapes;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -542,12 +542,14 @@ class ImportOptions {
     }
 }
 
-/** Taille par défaut d'un métrage de calque PSD importé : la boîte 861 × 205 de « Rectangle 1 » (planche test). */
+/** Taille par défaut d'un métrage de calque de pixels importé : la boîte 861 × 205 de « Rectangle 1 » (planche test). */
 const FOOTAGE_SIZE = [861, 205];
+/** Boîte [gauche, haut, droite, bas] de « Rectangle 1 » dans la planche test (un calque de forme Photoshop). */
+const RECTANGLE_BOX = [759, 272, 1620, 477];
 
-/** Recette d'import d'un PSD, par défaut : compo « <nom> » > précompo « <nom> » > Rectangle 1, PourQUOI ??? (texte), Calque 0. */
+/** Recette d'import d'un PSD, par défaut : compo « <nom> » > précompo « <nom> » > Rectangle 1 (forme), PourQUOI ??? (texte), Calque 0 (pixels). */
 function defaultRecipe(base) {
-    return { layers: [{ name: base, group: { layers: [{ name: 'Rectangle 1' }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
+    return { layers: [{ name: base, group: { layers: [{ name: 'Rectangle 1', vector: RECTANGLE_BOX }, { name: 'PourQUOI ???', psdText: 'PourQUOI ???' }, { name: 'Calque 0' }] } }] };
 }
 
 /**
@@ -555,10 +557,14 @@ function defaultRecipe(base) {
  * `app.importRecipes[chemin]` (défaut : defaultRecipe) : une compo « <nom> », un dossier « <nom> Calques » qui
  * range les métrages (« <calque>/<fichier>.psd », source = le PSD) et les précompos des groupes. Recette :
  *  { throws: 'message' }  -> After lève cette erreur ;
- *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size?, styles? } :
+ *  { comp?: nom, layers: [calque] } avec calque = { name, group?: { layers }, psdText?, locked?, from?, size?, vector?, styles? } :
  *  group = précompo des calques donnés ; psdText = calque texte du PSD ; from = autre fichier pour le métrage ;
- *  size = [largeur, hauteur] du métrage (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests) ;
+ *  size = [largeur, hauteur] du métrage d'un calque de pixels (défaut FOOTAGE_SIZE : la boîte 861 × 205 de « Rectangle 1 » des tests) ;
+ *  vector = [gauche, haut, droite, bas] : calque de forme Photoshop, que After (26.2) importe en métrage de la taille du
+ *  document (celle de la compo importée), ancre et position au centre, son tracé en masque (ici le rectangle donné) ;
  *  styles = styles de calque actifs que After a importés avec le PSD (['outerGlow', { style: 'dropShadow', values: { blur: 12 } }]).
+ * Où After dépose la compo et le dossier « N Calques » : à la racine du Projet, ou dans app.importFolder (le dossier
+ * sélectionné du panneau Projet) s'il est donné.
  * Les calques sont donnés du haut vers le bas. Renvoie la compo (ou un métrage en import FOOTAGE).
  */
 function importFile(opts) {
@@ -571,14 +577,19 @@ function importFile(opts) {
         app.project.items.push(f);
         return f;
     }
-    const calques = new FolderItem(base + ' Calques', null);
+    const calques = new FolderItem(base + ' Calques', app.importFolder);
     app.project.items.push(calques);
+    const root = new FakeComp(nextId++, recipe.comp || base, { parentFolder: app.importFolder });
     const fill = (comp, layers) => {
         for (const spec of layers) {
             const extra = {};
             if (spec.psdText !== undefined) extra.psdText = spec.psdText;
             if (spec.locked) extra.locked = true;
             if (spec.styles) extra.styles = spec.styles;
+            if (spec.vector) {
+                const [l, t, r, b] = spec.vector;
+                extra.masks = [{ mode: 'ADD', vertices: [[l, t], [r, t], [r, b], [l, b]] }];
+            }
             if (spec.group) {
                 const sub = new FakeComp(nextId++, spec.name, { parentFolder: calques });
                 fill(sub, spec.group.layers);
@@ -586,17 +597,19 @@ function importFile(opts) {
                 comp.addLayer(spec.name, Object.assign({ source: sub }, extra));
             } else {
                 const from = spec.from ? new FakeFile(path.join(path.dirname(file.fsName), spec.from)) : file;
-                const size = spec.size || FOOTAGE_SIZE;
+                const size = spec.vector ? [root.width, root.height] : (spec.size || FOOTAGE_SIZE);
                 const footage = new FootageItem(spec.name + '/' + from.name, new FileSource(from, true), { parentFolder: calques, width: size[0], height: size[1] });
                 app.project.items.push(footage);
-                comp.addLayer(spec.name, Object.assign({ source: footage }, extra));
+                const st = comp.addLayer(spec.name, Object.assign({ source: footage }, extra));
+                if (spec.vector) {
+                    for (const m of ['ADBE Anchor Point', 'ADBE Position']) st.transform.children.find((c) => c.matchName === m).value = [size[0] / 2, size[1] / 2];
+                }
             }
         }
     };
-    const comp = new FakeComp(nextId++, recipe.comp || base);
-    fill(comp, recipe.layers);
-    app.project.items.push(comp);
-    return comp;
+    fill(root, recipe.layers);
+    app.project.items.push(root);
+    return root;
 }
 
 const app = {
@@ -620,6 +633,7 @@ const app = {
     undoGroups: [],
     commands: [],          // identifiants passés à executeCommand
     importRecipes: {},     // chemin du PSD -> recette de importFile (voir importFile)
+    importFolder: null,    // dossier du Projet où importFile dépose compo et « N Calques » (null : la racine)
     viewerOpens: [],       // id des comps ouvertes par openInViewer, dans l'ordre
     menuNames: MENU_COMMANDS,
     layerStylesClipboard: null,   // presse-papiers des styles de calque (commandes 19 et 20)
@@ -670,6 +684,7 @@ const app = {
         this.undoGroups = [];
         this.commands = [];
         this.importRecipes = {};
+        this.importFolder = null;
         this.viewerOpens = [];
         this.menuNames = MENU_COMMANDS;
         this.layerStylesClipboard = null;
