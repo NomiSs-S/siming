@@ -49,10 +49,38 @@ module.exports = function (test) {
         assert.strictEqual((await t.rpc('tools/call', { name: 'nope' })).error.code, -32602);
     });
 
-    test('mcp protocole : tools/list, six outils décrits, sans détail interne', async () => {
+    test('mcp protocole : ask_user rend la réponse de ask, client transmis ; sans ask : personne pour répondre', async () => {
+        const asked = [];
+        const t = setup({}, { ask: async (q, meta) => { asked.push([q, meta]); return 'Oui, prends-la'; } });
+        const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'ask_user', arguments: {
+            question: 'Je prends STORY_9x16 ?', options: [{ label: 'Oui' }, { label: 'Non', description: 'laisse-la' }, 'pas un objet'], multiple: true } } };
+        const r = (await t.handle(msg, { client: 'tab-42' })).result;
+        assert.strictEqual(r.content[0].text, 'Oui, prends-la');
+        assert.deepEqual(asked[0][0], { question: 'Je prends STORY_9x16 ?', options: [{ label: 'Oui' }, { label: 'Non', description: 'laisse-la' }], multiple: true, allowText: true });
+        assert.deepEqual(asked[0][1], { client: 'tab-42' });
+        assert.ok(/question/.test(t.activity[0].text), t.activity[0].text);
+        const alone = setup({});
+        const none = await alone.tool('ask_user', { question: 'Alors ?' });
+        assert.strictEqual(none.content[0].text, alone.mcp.NOBODY);
+        assert.ok(/Personne ne peut répondre/.test(alone.mcp.NOBODY));
+        const empty = await alone.tool('ask_user', {});
+        assert.strictEqual(empty.isError, true, 'question manquante');
+    });
+
+    test('mcp protocole : une question en attente ne bloque pas les appels à After Effects', async () => {
+        let release = null;
+        const t = setup({ 'mcp.run': { ok: true, value: 1, undo: 'Claude : x', logs: [] } }, { ask: () => new Promise((r) => { release = r; }) });
+        const pending = t.tool('ask_user', { question: 'Tu es là ?' });
+        const run = await t.tool('run_extendscript', { code: 'return 1;' });
+        assert.strictEqual(JSON.parse(run.content[0].text).value, 1, 'run_extendscript passe pendant la question');
+        release('oui');
+        assert.strictEqual((await pending).content[0].text, 'oui');
+    });
+
+    test('mcp protocole : tools/list, sept outils décrits, sans détail interne', async () => {
         const t = setup({});
         const { tools } = (await t.rpc('tools/list')).result;
-        assert.deepEqual(tools.map((x) => x.name), ['get_project', 'get_comp', 'get_properties', 'run_extendscript', 'capture_frame', 'siming_tool']);
+        assert.deepEqual(tools.map((x) => x.name), ['get_project', 'get_comp', 'get_properties', 'run_extendscript', 'capture_frame', 'siming_tool', 'ask_user']);
         for (const x of tools) {
             assert.strictEqual(x.inputSchema.type, 'object', x.name);
             assert.ok(x.description.length > 40, x.name);

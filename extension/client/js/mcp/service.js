@@ -4,8 +4,10 @@
  *
  * Lit les réglages (écrits par Réglages › Claude du hub), ouvre ou ferme le serveur MCP
  * local, et dialogue avec le hub par événements CEP (SIMING.mcp.EVENTS) :
- *   reçoit  reload (relire les réglages), ping (renvoyer l'état) ;
- *   publie  state (après chaque changement), activity (après chaque appel de Claude).
+ *   reçoit  reload (relire les réglages), ping (renvoyer l'état), tab (onglet Claude actif),
+ *           answer (réponse à une question) ;
+ *   publie  state (après chaque changement), activity (après chaque appel de Claude),
+ *           ask (question de Claude pour l'onglet actif).
  *
  *   SIMING.mcp.startService({ cs, req, readJson? }) -> Promise(service)
  *   service : { apply(), state, stop() }
@@ -55,6 +57,9 @@
         });
     };
 
+    /** Attente maximale d'une réponse à ask_user (Claude Code attend 15 min : MCP_TOOL_TIMEOUT). */
+    mcp.ASK_TIMEOUT = 14 * 60 * 1000;
+
     mcp.startService = async function (opts) {
         const o = opts || {};
         let cs = o.cs;
@@ -102,8 +107,42 @@
             };
         }
 
+        // Questions de Claude (ask_user) : relayées à l'onglet Claude actif seulement
+        // (en-tête X-Siming-Client) ; un Claude Code de terminal n'a personne pour répondre.
+        let activeTab = '';
+        let askSeq = 0;
+        const pending = new Map();   // id -> { resolve, timer }
+        function settle(id, text) {
+            const p = pending.get(id);
+            if (!p) return;
+            pending.delete(id);
+            global.clearTimeout(p.timer);
+            p.resolve(text);
+        }
+        function ask(q, meta) {
+            const client = (meta && meta.client) || '';
+            if (!activeTab || client !== activeTab) return Promise.resolve(mcp.NOBODY);
+            const id = 'q' + (++askSeq);
+            return new Promise((resolve) => {
+                const timer = global.setTimeout(() => settle(id, mcp.NO_ANSWER), mcp.ASK_TIMEOUT);
+                pending.set(id, { resolve, timer });
+                emit(mcp.EVENTS.ask, Object.assign({ id, client }, q));
+            });
+        }
+        cs.addEventListener(mcp.EVENTS.answer, (e) => {
+            const d = mcp.eventData(e);
+            if (!d || !d.id) return;
+            settle(d.id, d.cancelled || typeof d.text !== 'string' ? mcp.NO_ANSWER : d.text);
+        });
+        cs.addEventListener(mcp.EVENTS.tab, (e) => {
+            const d = mcp.eventData(e);
+            const next = (d && typeof d.client === 'string') ? d.client : '';
+            if (next !== activeTab) for (const id of Array.from(pending.keys())) settle(id, mcp.NO_ANSWER);
+            activeTab = next;
+        });
+
         const handle = mcp.createHandler({
-            call, capture, version,
+            call, capture, version, ask,
             onActivity: (a) => { state.calls++; emit(mcp.EVENTS.activity, a); },
         });
 
