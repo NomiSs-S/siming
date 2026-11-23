@@ -169,7 +169,7 @@ module.exports = function (test) {
         const bar = ui.valueBar({ label: 'Sortie', min: 0, max: 100, value: 10, defaultValue: 33, onInput: (v) => inputs.push(v), onChange: (v) => changes.push(v) });
         doc.body.append(bar);
         bar.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 30, right: 200, bottom: 30 });
-        const pe = (type, x, extra) => bar.dispatchEvent(new win.PointerEvent(type, Object.assign({ clientX: x, button: 0, pointerId: 1, bubbles: true }, extra || {})));
+        const pe = (type, x, extra) => bar.dispatchEvent(new win.MouseEvent(type.replace('pointer', 'mouse'), Object.assign({ clientX: x, button: 0, bubbles: true, cancelable: true }, extra || {})));
         pe('pointerdown', 100);
         assert.strictEqual(bar.value, 50, 'clic = saut à la position');
         assert.ok(bar.classList.contains('is-dragging'));
@@ -222,7 +222,7 @@ module.exports = function (test) {
         const bar = ui.valueBar({ label: 'Entrée', min: 1, max: 100, unit: ' %', integer: true, snap: 5, value: 33, defaultValue: 33, onChange: (v) => changes.push(v) });
         doc.body.append(bar);
         bar.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 30, right: 200, bottom: 30 });
-        const pe = (type, x, extra) => bar.dispatchEvent(new win.PointerEvent(type, Object.assign({ clientX: x, button: 0, pointerId: 1, bubbles: true }, extra || {})));
+        const pe = (type, x, extra) => bar.dispatchEvent(new win.MouseEvent(type.replace('pointer', 'mouse'), Object.assign({ clientX: x, button: 0, bubbles: true, cancelable: true }, extra || {})));
         const kd = (key, shiftKey) => bar.dispatchEvent(new win.KeyboardEvent('keydown', { key, shiftKey: !!shiftKey, bubbles: true }));
         const wheel = (deltaY, shiftKey) => bar.dispatchEvent(new win.WheelEvent('wheel', { deltaY, shiftKey: !!shiftKey, bubbles: true, cancelable: true }));
         assert.strictEqual(bar.value, 33, 'valeur gardée telle quelle');
@@ -267,7 +267,7 @@ module.exports = function (test) {
         const bar = ui.valueBar({ label: 'Entrée', min: 0, max: 100, integer: true, snap: 5, value: 33, onChange: (v) => changes.push(v) });
         doc.body.append(bar);
         bar.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 30, right: 200, bottom: 30 });
-        const pe = (type, x) => bar.dispatchEvent(new win.PointerEvent(type, { clientX: x, button: 0, pointerId: 1, bubbles: true }));
+        const pe = (type, x) => bar.dispatchEvent(new win.MouseEvent(type.replace('pointer', 'mouse'), { clientX: x, button: 0, bubbles: true, cancelable: true }));
         pe('pointerdown', 100);
         pe('pointerup', 100);
         assert.strictEqual(bar.value, 50, 'saut affiché tout de suite');

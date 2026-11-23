@@ -428,6 +428,13 @@ planche test (6 formes dont l'ellipse en dégradé, 576 points comparés au PSD 
 dans 02_ASSET même avec un dossier sélectionné. Restent à essayer à la main : interface (sous-dossiers, Réglages ›
 Import PSD), un seul Ctrl+Z, opacité du fond sous l'effet Dégradé.
 
+### 2026-11-23 : curseurs de lissage inertes à la souris sur Mac (1.5.3, à valider sur Mac)
+
+Retour de Simon : sur Mac, un clic sur les barres de lissage de Quick Tools ne fait rien ; la molette marche.
+
+- Le geste ne démarrait pas : `pointerdown` n'arrive pas (ou mal) à la barre dans le CEF de macOS, alors que les événements souris passent (boutons, `click`). `ui.valueBar` suit maintenant le glissé en `mousedown` + `mousemove` / `mouseup` sur le document, sans `setPointerCapture`. Tests passés aux `MouseEvent`. Toutes les barres de valeur en profitent (Boîte à outils, réglages).
+- À vérifier sur Mac : clic, glissé, Maj + glissé, Alt + clic, double-clic ; et les autres gestes encore en pointer events (pastilles de Libellés).
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

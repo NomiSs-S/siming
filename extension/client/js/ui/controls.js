@@ -410,21 +410,27 @@
             return dir > 0 ? Math.floor(current / grid) * grid + grid : Math.ceil(current / grid) * grid - grid;
         }
 
+        // Événements souris, suivis sur le document : sur Mac, le CEF d'After Effects ne livre pas
+        // pointerdown à la barre (le clic ne faisait rien, la molette marchait).
+        const doc = el.ownerDocument || document;
         let drag = null;      // { x, from, lastRaw, fine, moved }
         let pending = null;   // { timer, from } : clic simple en attente de validation
-        el.addEventListener('pointerdown', (e) => {
+        el.addEventListener('mousedown', (e) => {
             if (e.button !== 0 || !input.hidden) return;
+            e.preventDefault();   // pas de sélection de texte pendant le glissé…
+            el.focus();           // …mais le focus, comme un clic normal (flèches ensuite)
             // Deuxième clic d'un double-clic : on garde la valeur d'avant le premier.
             const from = pending ? pending.from : current;
             if (pending) { clearTimeout(pending.timer); pending = null; }
             if (e.altKey) { set(base, 'change'); return; }
             const raw = valueAt(e.clientX);
             drag = { x: e.clientX, from, lastRaw: raw, fine: null, moved: false };
-            if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) { /* hors navigateur */ } }
+            doc.addEventListener('mousemove', onMove, true);
+            doc.addEventListener('mouseup', endDrag, true);
             el.classList.add('is-dragging');
             set(e.shiftKey ? raw : snapped(raw), 'input');
         });
-        el.addEventListener('pointermove', (e) => {
+        function onMove(e) {
             if (!drag) return;
             const raw = valueAt(e.clientX);
             if (Math.abs(e.clientX - drag.x) > 3) drag.moved = true;
@@ -437,19 +443,18 @@
                 set(snapped(raw), 'input');
             }
             drag.lastRaw = raw;
-        });
-        const endDrag = (e) => {
+        }
+        function endDrag() {
+            doc.removeEventListener('mousemove', onMove, true);
+            doc.removeEventListener('mouseup', endDrag, true);
             if (!drag) return;
             const d = drag;
             drag = null;
             el.classList.remove('is-dragging');
-            if (el.releasePointerCapture) { try { el.releasePointerCapture(e.pointerId); } catch (err) { /* idem */ } }
-            if (d.moved || e.type === 'pointercancel') { set(current, 'change'); return; }
+            if (d.moved) { set(current, 'change'); return; }
             const timer = setTimeout(() => { pending = null; set(current, 'change'); }, ui.DOUBLE_CLICK_MS);
             pending = { timer, from: d.from };
-        };
-        el.addEventListener('pointerup', endDrag);
-        el.addEventListener('pointercancel', endDrag);
+        }
         el.addEventListener('wheel', (e) => {
             if (!input.hidden) return;
             e.preventDefault();
