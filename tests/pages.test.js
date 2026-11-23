@@ -126,6 +126,12 @@ module.exports = function (test) {
         assert.ok(/carte Parent/.test(app.status.text));
         const unknown = win.SIMING.startStandalone({ root: win.document.getElementById('app'), list: LIST, toolId: 'nope', bridge: null });
         assert.strictEqual(unknown.status.level, 'error');
+        const hubOnly = win.SIMING.startStandalone({
+            root: win.document.getElementById('app'), bridge: null, toolId: 'seul',
+            list: { version: '1.0.0', tools: [{ id: 'seul', name: 'Seul', icon: 'aide', version: '1.0.0', script: 'x.js', hubOnly: true }] },
+        });
+        assert.strictEqual(hubOnly.mounted, null, 'outil du hub seulement : pas monté en panneau isolé');
+        assert.ok(/panneau SIMING/.test(hubOnly.view.textContent));
     });
 
     test('démarrage hub : CSInterface présent, cœur hôte prêt, Unparent monté', async () => {

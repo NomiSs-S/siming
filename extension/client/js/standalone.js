@@ -19,6 +19,11 @@
             status.set('Outil introuvable : ' + toolId, 'error');
             return { status, view, mounted: null, ready: Promise.resolve() };
         }
+        if (meta.hubOnly) {   // onglet du hub seulement (Claude) : pas de panneau isolé
+            view.append(h('div', { class: 's-error', text: '« ' + meta.name + ' » s\'ouvre dans le panneau SIMING (Fenêtre › Extensions › SIMING).' }));
+            status.set('« ' + meta.name + ' » : dans le panneau SIMING seulement', 'warn');
+            return { status, view, mounted: null, ready: Promise.resolve() };
+        }
         const mounted = SIMING.mountTool(view, meta, { bridge, ui, status, settings: SIMING.settings, keys: SIMING.keys }, {});
         SIMING.keys.attach(global.document);   // raccourcis de l'outil (réglés dans le hub, mémoire commune)
         return { status, view, mounted, ready: (mounted && mounted.ready) || Promise.resolve() };

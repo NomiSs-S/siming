@@ -65,6 +65,14 @@ module.exports = function (test) {
         assert.ok(fs.existsSync(path.join(ROOT, 'extension', 'client', 'claude.html')));
     });
 
+    test('manifeste : un outil « hubOnly » (onglet Claude) n\'a pas de panneau isolé', () => {
+        const list = Object.assign({}, LIST, { tools: LIST.tools.concat([{ id: 'claude', name: 'Claude', icon: 'bulle', version: '1.0.0', script: 'tools/claude.js', hubOnly: true }]) });
+        const doc = parseXml(M.buildManifest(list));
+        const ids = Array.from(doc.querySelectorAll('ExtensionList > Extension')).map((e) => e.getAttribute('Id'));
+        assert.deepEqual(ids, ['com.siming.hub', 'com.siming.tool.unparent', 'com.siming.tool.ancre', 'com.siming.mcp']);
+        assert.ok(!/com\.siming\.tool\.claude/.test(M.buildManifest(list)));
+    });
+
     test('manifeste : tools.json invalide refusé avec un message clair', () => {
         const bad = (patch) => Object.assign({}, LIST, patch);
         assert.throws(() => M.validate(bad({ version: '1.2' })), /version invalide/);
