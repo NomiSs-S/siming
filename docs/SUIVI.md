@@ -435,6 +435,32 @@ Retour de Simon : sur Mac, un clic sur les barres de lissage de Quick Tools ne f
 - Le geste ne démarrait pas : `pointerdown` n'arrive pas (ou mal) à la barre dans le CEF de macOS, alors que les événements souris passent (boutons, `click`). `ui.valueBar` suit maintenant le glissé en `mousedown` + `mousemove` / `mouseup` sur le document, sans `setPointerCapture`. Tests passés aux `MouseEvent`. Toutes les barres de valeur en profitent (Boîte à outils, réglages).
 - À vérifier sur Mac : clic, glissé, Maj + glissé, Alt + clic, double-clic ; et les autres gestes encore en pointer events (pastilles de Libellés).
 
+### 2026-11-23 : onglet Claude (1.6.0, non publiée, à valider dans AE)
+
+Spec : `docs/superpowers/specs/2026-11-23-claude-tab-design.md` ; plan : `docs/superpowers/plans/2026-11-23-claude-tab.md`.
+
+- Outil `claude` 1.0.0, `"hubOnly": true` : onglet du hub seulement (`tools/manifest.js` ne crée pas de panneau
+  `com.siming.tool.claude`, pas de bouton « panneau », `startStandalone` refuse). `ctx.claude` (accès Node et service)
+  passé à toutes les vues.
+- L'onglet lance `claude -p` en flux JSON (`js/claude/cli.js`), lit le flux (`stream.js`), rend le Markdown sans HTML
+  (`markdown.js`). Dossier de travail `<USER_DATA>/SIMING/claude-work/`, fil gardé dans `claude-thread.json` (sans images)
+  et repris par `--resume`. Il active le serveur MCP s'il est éteint.
+- Outil MCP `ask_user` (hors file d'attente d'AE) : le service ne relaie la question (`com.siming.mcp.ask`) qu'à l'onglet
+  actif, reconnu par l'en-tête `X-Siming-Client` ; terminal ou autre onglet : `mcp.NOBODY` aussitôt ; onglet fermé ou
+  Arrêter : `mcp.NO_ANSWER` ; sans réponse au bout de 14 min aussi (Claude Code attend 15 min).
+- Hôte (`mcp.jsx`, comme demandé, au lieu d'un `claude.jsx` que citait la spec § 7) : `context`, `activeComp`,
+  `snapshot` (paquets de 20 calques, clés `matchName/…` avec `#n` sous effets et masques ; au-delà de 300 calques,
+  sélection et ids demandés seulement). Les valeurs des propriétés animées ne sont pas relevées (les keyframes suffisent) :
+  déplacer la tête de lecture pendant l'observation ne crée pas de faux changements.
+- Différence (`observe.js`, pur) : effets appariés par matchName et nom, pour qu'un effet inséré avant un autre ne décale
+  pas les réglages ; masques ajoutés / retirés en plus des natures du plan.
+- `ui.dialog` gagne `cancelLabel` (confirmation de « Nouvelle conversation ») et rend vrai / faux. Icône `bulle`.
+- Choix laissés au constructeur : un `.cmd` (npm) passe par `shell: true` avec arguments entre guillemets ;
+  réglages « Chemin de Claude Code » et « Modèle » dans le `localStorage` du hub (`claudeCode.path`, `claudeCode.model`).
+- À vérifier dans AE : tout `docs/TESTS-MANUELS.md` › Onglet Claude ; texte exact d'une erreur de connexion (motif
+  `SIMING.claude.AUTH_ERROR`) ; `beforeunload` du hub prévient-il bien le service à la fermeture ; `require('process')` ;
+  `cs.openURLInDefaultBrowser`.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.

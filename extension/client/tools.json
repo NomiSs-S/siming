@@ -1,5 +1,5 @@
 {
-  "version": "1.5.3",
+  "version": "1.6.0",
   "repository": "NomiSs-S/siming",
   "tools": [
     { "id": "quicktools", "name": "Quick Tools", "icon": "eclair", "version": "1.1.1", "script": "tools/quicktools.js" },

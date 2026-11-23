@@ -6,7 +6,8 @@ projet (`extension/host/`). Spec de référence :
 `docs/superpowers/specs/2026-10-05-siming-cep-design.md`. Visuel :
 `docs/CHARTE-GRAPHIQUE.md` (maquettes : https://claude.ai/artifact/XiZ4HWrNKuWiaYUXKGZhgQ).
 
-**État : 1.5.3** : Quick Tools (outil par défaut), Boîte à outils (dont Importer les PSD), Unparent, Libellés, et
+**État : 1.6.0** : Quick Tools (outil par défaut), Boîte à outils (dont Importer les PSD), Unparent, Libellés, onglet **Claude**
+(hub seulement : discuter avec Claude Code dans AE ; spec `docs/superpowers/specs/2026-11-23-claude-tab-design.md`), et
 Claude Code (serveur MCP local, Réglages › Claude ; spec
 `docs/superpowers/specs/2026-11-06-claude-code-mcp-design.md`)
 (plan d'origine : `docs/superpowers/plans/2026-10-05-siming-cep-1-0-0.md`).
@@ -19,10 +20,11 @@ Claude Code (serveur MCP local, Réglages › Claude ; spec
   registre d'actions, un outil y enregistre ses gestes via `ctx.keys`), `js/ui/` (composants),
   `tools/<id>.js` (vues), `js/psd/` (Importer les PSD : `reader.js` lit le PSD, `shapes.js` en tire les formes
   en JSON, dégradés compris), `js/mcp/` (Claude Code : protocole MCP, serveur HTTP et réglages,
-  service, onglet Claude du hub), `claude.html` (page de l'extension invisible `com.siming.mcp`).
+  service, onglet Claude des Réglages), `js/claude/` (onglet Claude : `cli.js` lance Claude Code, `stream.js` lit
+  son flux JSON, `observe.js` différence d'observation, `markdown.js`), `claude.html` (page de l'extension invisible `com.siming.mcp`).
 - `extension/host/` : `siming.jsx` (JSON, helpers AE, géométrie partagée `SIMING.geom`, sélection
   de propriétés et keyframes, annulation, routeur),
-  `tools/<id>.jsx` (cœur et API de chaque outil ; `mcp.jsx` : ce que Claude Code lit et exécute ; `psdimport.jsx` : import des PSD,
+  `tools/<id>.jsx` (cœur et API de chaque outil ; `mcp.jsx` : ce que Claude Code lit et exécute, et contexte / photo pour l'onglet Claude ; `psdimport.jsx` : import des PSD,
   formes recréées, styles de calque recopiés du calque PSD par Copier / Coller).
 - `tests/` : `node tests/run.js`. `tools/` : dev-install, make-cert, release.js, installeurs.
 - `docs/SUIVI.md` : journal, pistes, erreurs. À mettre à jour à chaque session.
