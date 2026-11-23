@@ -31,6 +31,7 @@ const FILES = [
     './mcp-protocol.test.js',
     './mcp-server.test.js',
     './mcp-settings.test.js',
+    './claude-observe.test.js',
     './bridge.test.js',
     './ui-dom.test.js',
     './ui-controls.test.js',
