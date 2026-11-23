@@ -6,6 +6,8 @@
  *
  * ctx.claude : accès Node et service (SIMING.mcp.hubEnv), null hors After Effects.
  * Fil enregistré dans <USER_DATA>/SIMING/claude-thread.json, repris par --resume.
+ * Historique : « Nouvelle conversation » range le fil dans <USER_DATA>/SIMING/claude-history/
+ * (un fichier par conversation, HISTORY_MAX au plus) ; le bouton Historique les rouvre.
  */
 (function (global) {
     'use strict';
@@ -29,13 +31,62 @@
             ] },
             { title: 'Montrer un geste', items: [
                 { icon: 'visible', name: 'Observer', text: 'Clique Observer, fais ton geste à la main, reclique : la différence part avec ton prochain message.' },
-                { icon: 'rafraichir', name: 'Nouvelle conversation', text: 'Efface le fil ; Claude repart de zéro.' },
+            ] },
+            { title: 'Conversations', items: [
+                { icon: 'rafraichir', name: 'Nouvelle conversation', text: 'Range le fil dans l\'historique ; Claude repart de zéro.' },
+                { icon: 'menu', name: 'Historique', text: 'Rouvre une ancienne conversation : Claude s\'en souvient et continue où vous en étiez.' },
             ] },
             { title: 'À savoir', items: [
                 { icon: 'attention', name: 'Claude Code', text: 'Installé sur l\'ordinateur et connecté au compte de l\'équipe. Il ne touche qu\'à After Effects.' },
             ] },
         ],
         footer: 'Réglages › Claude : chemin de Claude Code et modèle.',
+    };
+
+    // --- Historique des conversations (pur, fs et path passés) ----------------------------
+
+    claude.HISTORY_MAX = 50;
+
+    /** Titre d'une conversation : début de sa première demande (sans le contexte joint). */
+    claude.historyTitle = function (items) {
+        const first = (items || []).find((i) => i && i.type === 'user' && String(i.text || '').trim());
+        if (!first) return 'Conversation sans message';
+        const t = String(first.text).replace(/\s+/g, ' ').trim();
+        return t.length > 70 ? t.slice(0, 69) + '…' : t;
+    };
+
+    /** Conversations rangées, la plus récente d'abord : [{ id, title, updated, count, file }]. */
+    claude.listHistory = function (fs, path, dir) {
+        let names = [];
+        try { names = fs.readdirSync(dir); } catch (e) { return []; }
+        const out = [];
+        for (const name of names) {
+            if (!/\.json$/.test(name) || name.startsWith('._')) continue;   // ._ : métadonnées de macOS
+            const file = path.join(dir, name);
+            let data = null;
+            try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { data = null; }
+            if (!data || !Array.isArray(data.items)) continue;
+            out.push({
+                id: String(data.id || name.replace(/\.json$/, '')), title: data.title || claude.historyTitle(data.items),
+                updated: String(data.updated || ''), count: data.items.filter((i) => i && (i.type === 'user' || i.type === 'claude')).length, file,
+            });
+        }
+        return out.sort((a, b) => (a.updated < b.updated ? 1 : a.updated > b.updated ? -1 : 0));
+    };
+
+    /** Date lisible d'une conversation : « aujourd'hui 14:05 », « hier 09:12 », « 3 nov. 16:40 ». */
+    claude.historyDate = function (iso, now) {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const n = now || new Date();
+        const pad = (x) => (x < 10 ? '0' : '') + x;
+        const hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+        const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        const diff = Math.round((day(n) - day(d)) / 86400000);
+        if (diff === 0) return 'aujourd\'hui ' + hm;
+        if (diff === 1) return 'hier ' + hm;
+        const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+        return d.getDate() + ' ' + months[d.getMonth()] + (d.getFullYear() !== n.getFullYear() ? ' ' + d.getFullYear() : '') + ' ' + hm;
     };
 
     // --- Contexte joint aux messages (pur) -------------------------------------------------
@@ -95,10 +146,13 @@
         const siming = env.path.join(env.userData, 'SIMING');
         const workDir = env.path.join(siming, 'claude-work');
         const threadFile = env.path.join(siming, 'claude-thread.json');
+        const historyDir = env.path.join(siming, 'claude-history');
+        const newId = () => Date.now().toString(36) + '-' + env.crypto.randomBytes(3).toString('hex');
 
         let claudePath = null;
         let session = null;
         let sessionId = null;
+        let conversationId = newId();
         let resumed = false;          // la session courante a été lancée avec --resume
         let items = [];
         let busy = false;
@@ -118,7 +172,13 @@
             title: 'Observer un geste fait à la main', onclick: () => toggleObserve() }, h('span', { class: 's-observe-dot' }), observeLabel);
         const newBtn = h('button', { class: 's-icon-btn', type: 'button', 'data-role': 'claude-new', title: 'Nouvelle conversation',
             'aria-label': 'Nouvelle conversation', onclick: () => newConversation() }, ui.icon('rafraichir', 16));
-        const bar = h('div', { class: 's-chat-bar' }, modelLabel, observeBtn, newBtn);
+        const historyBtn = h('button', { class: 's-icon-btn', type: 'button', 'data-role': 'claude-history', title: 'Historique des conversations',
+            'aria-label': 'Historique des conversations', 'aria-pressed': 'false', onclick: () => toggleHistory() }, ui.icon('menu', 16));
+        const bar = h('div', { class: 's-chat-bar' }, modelLabel, observeBtn, historyBtn, newBtn);
+        const historyList = h('div', { class: 's-stack s-history-list', 'data-role': 'claude-history-list' });
+        const historyPane = h('div', { class: 's-stack s-history', 'data-role': 'claude-history-pane', hidden: true },
+            ui.sectionTitle('Historique'), historyList,
+            ui.button({ label: 'Retour au fil', role: 'claude-history-back', onClick: () => toggleHistory(false) }));
 
         const pathField = ui.textField({
             role: 'claude-missing-path', label: 'Chemin de Claude Code', placeholder: 'Chemin de Claude Code (facultatif)',
@@ -145,7 +205,7 @@
         const stopBtn = ui.button({ label: 'Arrêter', role: 'claude-stop', onClick: () => stop() });
         stopBtn.hidden = true;
         const composer = h('div', { class: 's-composer' }, chips, input, h('div', { class: 's-chat-actions' }, sendBtn, stopBtn));
-        const main = h('div', { class: 's-stack s-chat-main' }, bar, login, chat, composer);
+        const main = h('div', { class: 's-stack s-chat-main' }, bar, historyPane, login, chat, composer);
         main.hidden = true;
         view.append(setup, main);
 
@@ -249,20 +309,105 @@
         function save() {
             try {
                 env.fs.mkdirSync(siming, { recursive: true });
-                env.fs.writeFileSync(threadFile, JSON.stringify({ version: 1, sessionId, items }), 'utf8');
+                env.fs.writeFileSync(threadFile, JSON.stringify({ version: 1, id: conversationId, sessionId, items }), 'utf8');
             } catch (e) { /* le fil reste affiché, seulement pas repris à la réouverture */ }
         }
 
-        function restore() {
+        function restore(fromFile, removeAfter) {
             let data = null;
-            try { data = JSON.parse(env.fs.readFileSync(threadFile, 'utf8')); } catch (e) { data = null; }
-            if (!data || !Array.isArray(data.items)) return;
+            try { data = JSON.parse(env.fs.readFileSync(fromFile || threadFile, 'utf8')); } catch (e) { data = null; }
+            if (!data || !Array.isArray(data.items)) return false;
             sessionId = typeof data.sessionId === 'string' ? data.sessionId : null;
+            conversationId = typeof data.id === 'string' && data.id ? data.id : newId();
+            if (removeAfter) { try { env.fs.unlinkSync(fromFile); } catch (e) { /* déjà retiré */ } }
             for (const it of data.items) {
                 if (it && it.type === 'tool' && it.state === 'run') it.state = 'error';   // interrompu par la fermeture
                 if (it && it.type === 'question' && (it.answer === null || it.answer === undefined)) it.answer = '(sans réponse)';
                 if (it && it.type) add(it, null);
             }
+            return true;
+        }
+
+        // --- Historique ------------------------------------------------------------------
+        /** Range le fil courant dans l'historique (rien s'il est vide) ; garde HISTORY_MAX fichiers. */
+        function archive() {
+            if (!items.length) return;
+            try {
+                env.fs.mkdirSync(historyDir, { recursive: true });
+                const data = { version: 1, id: conversationId, sessionId, title: claude.historyTitle(items), updated: new Date().toISOString(), items };
+                env.fs.writeFileSync(env.path.join(historyDir, conversationId + '.json'), JSON.stringify(data), 'utf8');
+                for (const old of claude.listHistory(env.fs, env.path, historyDir).slice(claude.HISTORY_MAX)) {
+                    try { env.fs.unlinkSync(old.file); } catch (e) { /* déjà retiré */ }
+                }
+            } catch (e) {
+                status.set('Conversation non rangée dans l\'historique : ' + e.message, 'warn');
+            }
+        }
+
+        /** Vide le fil affiché et arrête Claude Code (la conversation, elle, reste reprenable). */
+        function clearThread() {
+            cancelQuestion();
+            if (session) { const s = session; session = null; s.stop(); }
+            items = [];
+            sessionId = null;
+            stream = null;
+            toolLines.clear();
+            chat.replaceChildren(empty);
+            login.hidden = true;
+            modelLabel.textContent = '';
+            setBusy(false);
+        }
+
+        function renderHistory() {
+            const list = claude.listHistory(env.fs, env.path, historyDir);
+            historyList.replaceChildren();
+            if (!list.length) {
+                historyList.append(h('div', { class: 's-hint', 'data-role': 'claude-history-empty', text: 'Aucune conversation rangée. « Nouvelle conversation » y range le fil en cours.' }));
+                return;
+            }
+            for (const c of list) {
+                const open = h('button', { class: 's-history-item', type: 'button', 'data-role': 'claude-history-item', title: c.title, onclick: () => openConversation(c) },
+                    h('span', { class: 's-history-title', text: c.title }),
+                    h('span', { class: 's-history-meta', text: [claude.historyDate(c.updated), SIMING.plural(c.count, 'message', 'messages')].filter(Boolean).join(' · ') }));
+                const del = h('button', { class: 's-icon-btn', type: 'button', 'data-role': 'claude-history-delete', title: 'Supprimer cette conversation',
+                    'aria-label': 'Supprimer « ' + c.title + ' »', onclick: () => deleteConversation(c) }, ui.icon('fermer', 14));
+                historyList.append(h('div', { class: 's-history-row' }, open, del));
+            }
+        }
+
+        function toggleHistory(on) {
+            const show = on === undefined ? historyPane.hidden : !!on;
+            if (show && busy) { status.set('Claude travaille : attends qu\'il ait fini, ou arrête-le', 'warn'); return; }
+            if (show) renderHistory();
+            historyPane.hidden = !show;
+            chat.hidden = show;
+            composer.hidden = show;
+            historyBtn.setAttribute('aria-pressed', String(show));
+            historyBtn.classList.toggle('is-on', show);
+        }
+
+        function openConversation(c) {
+            if (busy) return;
+            archive();
+            clearThread();
+            if (!restore(c.file, true)) {
+                status.set('Conversation illisible : « ' + c.title + ' »', 'error');
+                conversationId = newId();
+                renderHistory();
+                return;
+            }
+            save();
+            toggleHistory(false);
+            status.set('Conversation rouverte : Claude reprend où vous en étiez', 'ok');
+        }
+
+        async function deleteConversation(c) {
+            const ok = await ui.dialog({ title: 'Supprimer la conversation', okLabel: 'Supprimer', cancelLabel: 'Annuler',
+                message: '« ' + c.title + ' » sera retirée de l\'historique. Ce que Claude a fait dans After Effects reste en place.' });
+            if (!ok) return;
+            try { env.fs.unlinkSync(c.file); } catch (e) { /* déjà retirée */ }
+            renderHistory();
+            status.set('Conversation supprimée', 'ok');
         }
 
         // --- États ---------------------------------------------------------------------
@@ -495,24 +640,15 @@
         }
 
         // --- Nouvelle conversation -----------------------------------------------------------
-        async function newConversation() {
-            if (items.length) {
-                const ok = await ui.dialog({ title: 'Nouvelle conversation', okLabel: 'Effacer le fil', cancelLabel: 'Annuler',
-                    message: 'Le fil sera effacé et Claude repartira de zéro. Ce qu\'il a fait dans After Effects reste en place.' });
-                if (!ok) return;
-            }
-            cancelQuestion();
-            if (session) { const s = session; session = null; s.stop(); }
-            items = [];
-            sessionId = null;
-            stream = null;
-            toolLines.clear();
-            chat.replaceChildren(empty);
-            login.hidden = true;
-            modelLabel.textContent = '';
-            setBusy(false);
+        /** Range le fil dans l'historique (sans confirmation : rien n'est perdu) et repart de zéro. */
+        function newConversation() {
+            const had = items.length > 0;
+            archive();
+            clearThread();
+            conversationId = newId();
+            toggleHistory(false);
             try { env.fs.unlinkSync(threadFile); } catch (e) { /* déjà vide */ }
-            status.set('Nouvelle conversation', 'ok');
+            status.set(had ? 'Nouvelle conversation : l\'ancienne est dans l\'historique' : 'Nouvelle conversation', 'ok');
         }
 
         // --- Observer --------------------------------------------------------------------------
@@ -630,7 +766,7 @@
             if (session) session.stop();
         });
         const ready = locate();
-        return { ready, clientId, poll, threadFile };
+        return { ready, clientId, poll, threadFile, historyDir };
     }
 
     SIMING.registerTool('claude', { help: HELP, mount });

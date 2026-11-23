@@ -217,7 +217,8 @@ aucun identifiant ne passe par SIMING.
 - **Observer** : clique, fais un geste à la main (dans une ou plusieurs comps), reclique. La différence
   (propriétés, keyframes, expressions, effets, calques ajoutés…) part avec le message suivant : « fais pareil
   sur les 10 autres comps ».
-- ⟲ **Nouvelle conversation** efface le fil. Sinon le fil est gardé et repris à la réouverture du hub.
+- ⟲ **Nouvelle conversation** range le fil dans l'historique et repart de zéro. Sinon le fil est gardé et repris à la réouverture du hub.
+- ☰ **Historique** : les 50 dernières conversations (titre, date, nombre de messages). Clique pour en rouvrir une : Claude s'en souvient et continue ; la croix la supprime.
 - Claude Code absent : l'onglet propose la page d'installation et un champ pour son chemin. Pas connecté :
   bouton **Se connecter** (un terminal s'ouvre : `/login`, compte de l'équipe).
 

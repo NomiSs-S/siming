@@ -363,6 +363,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text
 .s-observe-btn.is-on .s-observe-dot { background: var(--error); }
 .s-chat { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; user-select: text; }
 .s-chat-empty { margin: auto 0; text-align: center; color: var(--text-muted); font-size: 11px; }
+/* Onglet Claude : historique des conversations */
+.s-history { flex: 1; min-height: 0; }
+.s-history-list { flex: 1; min-height: 0; overflow-y: auto; gap: 4px; }
+.s-history-row { display: flex; align-items: stretch; gap: 2px; }
+.s-history-item { flex: 1; min-width: 0; min-height: 36px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-inset); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.s-history-item:hover { background: var(--bg-hover); }
+.s-history-title { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-strong); }
+.s-history-meta { font-size: 11px; color: var(--text-muted); }
+.s-chat-bar .s-icon-btn.is-on { color: var(--accent-text); }
 .s-msg { display: flex; flex-direction: column; gap: 4px; }
 .s-msg-who { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .s-msg-user .s-msg-who { color: var(--accent-text); }

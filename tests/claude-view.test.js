@@ -253,7 +253,7 @@ module.exports = function (test) {
         assert.strictEqual(t.$('[data-role=claude-chip]'), null);
     });
 
-    test('onglet Claude : nouvelle conversation (confirmée) efface le fil et le fichier ; fil restauré au montage', async () => {
+    test('onglet Claude : fil restauré au montage ; nouvelle conversation rangée dans l\'historique, rouverte, supprimée', async () => {
         const t = await setup();
         scene();
         t.type('Bonjour');
@@ -270,20 +270,67 @@ module.exports = function (test) {
         await until(() => again.env.children.length && again.child().written.length, 'envoi repris');
         assert.strictEqual(again.child().args[again.child().args.indexOf('--resume') + 1], 'sess-r');
         again.child().say({ type: 'result', is_error: false, result: 'ok', session_id: 'sess-r' });
-        // Nouvelle conversation : Annuler garde tout, OK efface
+        // Nouvelle conversation : le fil est rangé dans l'historique, sans confirmation
         again.$('[data-role=claude-new]').click();
-        await tick();
-        again.win.document.querySelector('[data-role=dialog-cancel]').click();
-        await tick();
-        assert.strictEqual(again.$$('.s-msg').length, 3);
-        again.$('[data-role=claude-new]').click();
-        await tick();
-        again.win.document.querySelector('[data-role=dialog-ok]').click();
         await until(() => !again.$$('.s-msg').length, 'fil vidé');
-        assert.ok(!fs.existsSync(again.api.threadFile), 'fichier du fil effacé');
+        assert.ok(!fs.existsSync(again.api.threadFile), 'fil courant effacé');
+        const files = fs.readdirSync(again.api.historyDir);
+        assert.strictEqual(files.length, 1, 'conversation rangée');
+        const archived = JSON.parse(fs.readFileSync(path.join(again.api.historyDir, files[0]), 'utf8'));
+        assert.deepEqual([archived.sessionId, archived.title, archived.items.length], ['sess-r', 'Bonjour', 3]);
         again.type('Neuf');
         again.$('[data-role=claude-send]').click();
         await until(() => again.env.children.length === 2 && again.child().written.length, 'nouvelle session');
         assert.ok(!again.child().args.includes('--resume'));
+        again.child().say({ type: 'system', subtype: 'init', session_id: 'sess-n' });
+        again.child().say({ type: 'result', is_error: false, result: 'ok', session_id: 'sess-n' });
+        await tick();
+        // Historique : la conversation rangée ; la rouvrir range celle en cours et reprend la sienne
+        again.$('[data-role=claude-history]').click();
+        assert.strictEqual(again.$('[data-role=claude-history-pane]').hidden, false);
+        assert.strictEqual(again.$('[data-role=claude-thread]').hidden, true, 'fil masqué pendant l\'historique');
+        const rows = again.$$('[data-role=claude-history-item]');
+        assert.strictEqual(rows.length, 1);
+        assert.ok(/Bonjour/.test(rows[0].textContent) && /3 messages/.test(rows[0].textContent), rows[0].textContent);
+        rows[0].click();
+        await tick();
+        assert.strictEqual(again.$('[data-role=claude-history-pane]').hidden, true);
+        assert.deepEqual(again.$$('.s-msg-text').map((m) => m.textContent), ['Bonjour', 'Salut', 'Encore']);
+        const left = t.win.SIMING.claude.listHistory(fs, path, again.api.historyDir);
+        assert.deepEqual(left.map((c) => c.title), ['Neuf'], 'la conversation en cours a pris sa place');
+        again.type('Suite');
+        again.$('[data-role=claude-send]').click();
+        await until(() => again.env.children.length === 3 && again.child().written.length, 'reprise');
+        assert.strictEqual(again.child().args[again.child().args.indexOf('--resume') + 1], 'sess-r');
+        again.child().say({ type: 'result', is_error: false, result: 'ok', session_id: 'sess-r' });
+        await tick();
+        // Supprimer : confirmé par le dialogue
+        again.$('[data-role=claude-history]').click();
+        again.$('[data-role=claude-history-delete]').click();
+        await tick();
+        again.win.document.querySelector('[data-role=dialog-ok]').click();
+        await until(() => again.$('[data-role=claude-history-empty]'), 'historique vide');
+        assert.strictEqual(fs.readdirSync(again.api.historyDir).length, 0);
+    });
+
+    test('onglet Claude : titres et dates de l\'historique, fichiers illisibles ignorés', async () => {
+        const win = makeDom(SCRIPTS);
+        const c = win.SIMING.claude;
+        assert.strictEqual(c.historyTitle([{ type: 'claude', text: 'x' }]), 'Conversation sans message');
+        assert.strictEqual(c.historyTitle([{ type: 'user', text: '  Déplace\n le logo ' }]), 'Déplace le logo');
+        assert.strictEqual(c.historyTitle([{ type: 'user', text: 'a'.repeat(100) }]).length, 70);
+        const now = new Date(2026, 10, 23, 18, 0);
+        assert.strictEqual(c.historyDate(new Date(2026, 10, 23, 14, 5).toISOString(), now), 'aujourd\'hui 14:05');
+        assert.strictEqual(c.historyDate(new Date(2026, 10, 22, 9, 12).toISOString(), now), 'hier 09:12');
+        assert.strictEqual(c.historyDate(new Date(2026, 10, 3, 16, 40).toISOString(), now), '3 nov. 16:40');
+        assert.strictEqual(c.historyDate('n\'importe quoi', now), '');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'siming-hist-'));
+        fs.writeFileSync(path.join(dir, 'a.json'), JSON.stringify({ id: 'a', updated: '2026-11-01T10:00:00.000Z', items: [{ type: 'user', text: 'Ancienne' }] }));
+        fs.writeFileSync(path.join(dir, 'b.json'), JSON.stringify({ id: 'b', updated: '2026-11-20T10:00:00.000Z', items: [{ type: 'user', text: 'Récente' }, { type: 'claude', text: 'ok' }, { type: 'tool' }] }));
+        fs.writeFileSync(path.join(dir, 'c.json'), '{ cassé');
+        fs.writeFileSync(path.join(dir, '._b.json'), 'métadonnées');
+        const list = c.listHistory(fs, path, dir);
+        assert.deepEqual(list.map((x) => [x.title, x.count]), [['Récente', 2], ['Ancienne', 1]]);
+        assert.deepEqual(c.listHistory(fs, path, path.join(dir, 'absent')), []);
     });
 };

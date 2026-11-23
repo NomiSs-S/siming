@@ -177,7 +177,8 @@ Projet de test jetable (jamais le projet en cours).
 - [ ] Fermer le hub pendant une question, le rouvrir : le fil est là (sans les vignettes), la question est « (sans réponse) » ; le message suivant reprend la conversation.
 - [ ] Claude Code lancé dans un terminal (Réglages › Claude › commande) pendant que l'onglet est ouvert : s'il appelle `ask_user`, il reçoit aussitôt « Personne ne peut répondre… » (aucune carte dans l'onglet).
 - [ ] **Observer** : clic (point rouge, « Observer prépare… » bref), déplacer et réduire le logo, ajouter un effet Lueur, reclic → pastille « Observation : n changements » (dépliable, ×). « Fais pareil sur Comp 2 » : Claude reproduit. Changer de comp pendant l'observation : les deux comps sont comparées. Comp de plus de 300 calques : seuls les calques sélectionnés, et le texte le dit. Noter la durée de la photo sur une grosse comp et si AE se fige.
-- [ ] ⟲ **Nouvelle conversation** : dialogue « Effacer le fil » / « Annuler » ; Annuler garde tout, Effacer vide le fil ; Claude ne se souvient plus de rien.
+- [ ] ⟲ **Nouvelle conversation** : sans dialogue, le fil se vide et Claude ne se souvient plus de rien ; l'ancienne conversation apparaît dans ☰ Historique.
+- [ ] ☰ **Historique** : rouvrir une conversation réaffiche son fil, et Claude se souvient de ce qui y a été dit (demande-lui « qu'est-ce que je t'avais demandé ? ») ; la conversation en cours passe dans l'historique ; la croix supprime après confirmation.
 - [ ] Chemin de Windows avec espaces ou accents dans le nom d'utilisateur, Claude Code installé par npm (`claude.cmd`) : le lancement marche (arguments entre guillemets par le shell).
 
 ## Importer les PSD (Boîte à outils 1.1.2)
