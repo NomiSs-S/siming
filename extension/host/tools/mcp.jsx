@@ -12,6 +12,10 @@
  *                 effets, propriétés animées, expressions) et sélection ;
  *  - properties : arbre des propriétés d'un calque (valeurs, keyframes, expressions) ;
  *  - frame      : rend une frame en PNG dans le dossier temporaire (le service le lit).
+ *  Pour l'onglet Claude du hub (lectures seules) :
+ *  - context    : projet, comp active, calques et propriétés sélectionnés ;
+ *  - activeComp : id et nom de la comp active (relevé de l'observation) ;
+ *  - snapshot   : photo d'une comp par paquets de 20 calques (bouton Observer).
  *  Tout ce qui est renvoyé est fait de données simples : un objet d'After Effects
  *  devient une courte description { $type, name, index, id }.
  *  Contraintes : ES3, jamais === entre deux calques, UTF-8 avec BOM.
@@ -595,6 +599,198 @@
     }
 
     // ------------------------------------------------------------------------
+    //  Onglet Claude du hub : contexte joint aux messages, comp active, photo
+    //  d'une comp (bouton Observer). Lectures seules : aucun groupe d'annulation.
+    // ------------------------------------------------------------------------
+
+    var SHOT_SEP        = ' › ';   // « › » : chemin lisible dans l'onglet
+    var MAX_SHOT_LAYERS = 300;          // au-delà : seulement la sélection (et les ids demandés)
+    var MAX_PACK        = 20;           // calques par appel : After Effects ne fige pas
+    var PARADES         = { 'ADBE Effect Parade': 'effect', 'ADBE Mask Parade': 'mask' };
+
+    /** Chemin d'une propriété en noms affichés, joints par « › ». */
+    function displayPath(prop) {
+        var names = [];
+        for (var k = prop.propertyDepth - 1; k >= 1; k--) names.push(prop.propertyGroup(k).name);
+        names.push(prop.name);
+        return names.join(SHOT_SEP);
+    }
+
+    function projectInfo() {
+        var out = { name: null, path: null, dirty: null };
+        var p = app.project;
+        if (!p) return out;
+        try {
+            if (p.file) {
+                out.name = String(p.file.displayName || p.file.name);
+                out.path = String(p.file.fsName);
+            }
+        } catch (e) { /* projet jamais enregistré */ }
+        try { if (typeof p.dirty === 'boolean') out.dirty = p.dirty; } catch (e1) { /* inconnu */ }
+        return out;
+    }
+
+    /** Ce que l'onglet joint à chaque message : projet, comp active, sélection. */
+    function context() {
+        var out = { project: projectInfo(), comp: null, layers: [], properties: [] };
+        var c = ae.getActiveComp();
+        if (!c) return out;
+        out.comp = { id: c.id, name: c.name, width: c.width, height: c.height, frameRate: frameRateOf(c),
+                     duration: round(c.duration), time: round(c.time), numLayers: c.numLayers };
+        var i, sel = c.selectedLayers;
+        for (i = 0; i < sel.length; i++) {
+            var l = sel[i];
+            var item = { index: l.index, id: ae.layerId(l), name: l.name, kind: layerKind(l) };
+            try { if (l.source) item.source = l.source.name; } catch (e) { /* sans source */ }
+            out.layers.push(item);
+        }
+        var leaves = [];
+        try { leaves = ae.selectedProperties(c); } catch (e1) { leaves = []; }
+        for (i = 0; i < leaves.length; i++) {
+            var p = leaves[i];
+            var prop = { layer: ae.ownerLayer(p).index, path: p.name };
+            try { prop.path = displayPath(p); } catch (e2) { /* nom seul */ }
+            try { if (p.numKeys > 0) prop.numKeys = p.numKeys; } catch (e3) { /* sans keyframes */ }
+            out.properties.push(prop);
+        }
+        return out;
+    }
+
+    /** Comp active (relevé léger de l'onglet pendant l'observation), ou null. */
+    function activeComp() {
+        var c = ae.getActiveComp();
+        return c ? { id: c.id, name: c.name } : null;
+    }
+
+    /** Propriété feuille photographiée : valeur (sans keyframes), keyframes, expression. */
+    function shotLeaf(p, path) {
+        var node = { path: path };
+        var n = 0;
+        try { n = p.numKeys || 0; } catch (e0) { n = 0; }
+        var type = null;
+        try { type = p.propertyValueType; } catch (e) { type = null; }
+        if (type === PropertyValueType.CUSTOM_VALUE) {
+            node.value = '[valeur personnalisée]';
+        } else if (type !== PropertyValueType.NO_VALUE && !n) {
+            try { node.value = plain(p.valueAtTime(0, true), 0, 4); } catch (e1) { node.value = '[illisible]'; }
+        }
+        if (n) {
+            node.keys = [];
+            for (var i = 1; i <= n && i <= MAX_KEYS; i++) {
+                var k = keyInfo(p, i);
+                delete k.selected;   // la sélection change sans que le geste change
+                node.keys.push(k);
+            }
+        }
+        try {
+            if (p.expression) {
+                node.expression = p.expression;
+                if (!p.expressionEnabled) node.expressionEnabled = false;
+            }
+        } catch (e2) { /* sans expression */ }
+        return node;
+    }
+
+    /** Parcourt un groupe : props[clé] = feuille ; effets et masques listés dans l'ordre.
+     *  Clé = matchNames joints par « / », « #n » sous les effets et les masques. */
+    function shotGroup(group, key, path, shot, depth) {
+        if (depth > 14) return;
+        var n = 0;
+        try { n = group.numProperties || 0; } catch (e) { return; }
+        var parade = null;
+        try { parade = PARADES.hasOwnProperty(group.matchName) ? PARADES[group.matchName] : null; } catch (e0) { parade = null; }
+        for (var i = 1; i <= n; i++) {
+            var c = null;
+            try { c = group.property(i); } catch (e1) { c = null; }
+            if (!c) continue;
+            var k = (key ? key + '/' : '') + (parade ? '#' + i : c.matchName);
+            var pth = (path ? path + SHOT_SEP : '') + c.name;
+            if (parade === 'effect') {
+                var fx = { key: k, name: c.name, matchName: c.matchName, enabled: true };
+                try { if (c.enabled === false) fx.enabled = false; } catch (e2) { /* toujours actif */ }
+                shot.effects.push(fx);
+            } else if (parade === 'mask') {
+                var m = { key: k, name: c.name };
+                try { m.mode = c.maskMode; m.inverted = !!c.inverted; } catch (e3) { /* inconnus */ }
+                shot.masks.push(m);
+            }
+            if (isLeaf(c)) shot.props[k] = shotLeaf(c, pth);
+            else shotGroup(c, k, pth, shot, depth + 1);
+        }
+    }
+
+    function flag(layer, name) {
+        try { return !!layer[name]; } catch (e) { return false; }
+    }
+
+    /** Photo d'un calque, repéré par son id. */
+    function layerShot(layer) {
+        var out = { id: ae.layerId(layer), index: layer.index, name: layer.name, kind: layerKind(layer), parent: null };
+        try { var src = layer.source; if (src) out.source = { id: src.id, name: src.name }; } catch (e0) { /* sans source */ }
+        try { var par = layer.parent; if (par) out.parent = ae.layerId(par); } catch (e1) { /* sans parent */ }
+        out.inPoint = round(layer.inPoint);
+        out.outPoint = round(layer.outPoint);
+        out.startTime = round(layer.startTime);
+        out.enabled = flag(layer, 'enabled');
+        out.solo = flag(layer, 'solo');
+        out.shy = flag(layer, 'shy');
+        out.locked = flag(layer, 'locked');
+        out.threeD = flag(layer, 'threeDLayer');
+        out.props = {};
+        out.effects = [];
+        out.masks = [];
+        var n = 0;
+        try { n = layer.numProperties; } catch (e2) { n = 0; }
+        for (var i = 1; i <= n; i++) {
+            var top = null;
+            try { top = layer.property(i); } catch (e3) { top = null; }
+            if (!top) continue;
+            if (isLeaf(top)) out.props[top.matchName] = shotLeaf(top, top.name);
+            else shotGroup(top, top.matchName, top.name, out, 1);
+        }
+        return out;
+    }
+
+    /** args : { compId, from (index, 1), count (≤ 20), ids (calques à garder au-delà de 300) }.
+     *  Un paquet de calques à la fois ; next = index du calque suivant, ou null. */
+    function snapshot(args) {
+        var a = args || {};
+        var c = compOf(a);
+        var n = c.numLayers;
+        var limited = n > MAX_SHOT_LAYERS;
+        var targets = [], i;
+        if (!limited) {
+            for (i = 1; i <= n; i++) targets.push(i);
+        } else {
+            var wanted = {};
+            var sel = c.selectedLayers;
+            for (i = 0; i < sel.length; i++) wanted[sel[i].index] = true;
+            var ids = isArray(a.ids) ? a.ids : [];
+            for (i = 0; i < ids.length; i++) {
+                var found = ae.findLayerById(c, Number(ids[i]));
+                if (found) wanted[found.index] = true;
+            }
+            for (i = 1; i <= n; i++) if (wanted[i] === true) targets.push(i);
+        }
+        var from = clampInt(a.from, 1, 100000, 1);
+        var count = clampInt(a.count, 1, MAX_PACK, MAX_PACK);
+        var layers = [], next = null;
+        for (i = 0; i < targets.length; i++) {
+            if (targets[i] < from) continue;
+            if (layers.length >= count) { next = targets[i]; break; }
+            layers.push(layerShot(c.layer(targets[i])));
+        }
+        var out = {
+            comp: { id: c.id, name: c.name, width: c.width, height: c.height, duration: round(c.duration),
+                    frameRate: frameRateOf(c), numLayers: n },
+            layers: layers,
+            next: next
+        };
+        if (limited) out.limited = true;
+        return out;
+    }
+
+    // ------------------------------------------------------------------------
     //  API publique
     // ------------------------------------------------------------------------
 
@@ -603,7 +799,10 @@
         project: project,
         comp: comp,
         properties: properties,
-        frame: frame
+        frame: frame,
+        context: context,
+        activeComp: activeComp,
+        snapshot: snapshot
     };
 
     api._core = {
