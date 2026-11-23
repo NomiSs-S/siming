@@ -28,6 +28,9 @@
         ping: 'com.siming.mcp.ping',           // hub -> service : renvoyer l'état
         state: 'com.siming.mcp.state',         // service -> hub : { enabled, running, port, error, errorCode, calls }
         activity: 'com.siming.mcp.activity',   // service -> hub : { text, level } après chaque appel de Claude
+        ask: 'com.siming.mcp.ask',             // service -> hub : { id, client, question, options, multiple, allowText }
+        answer: 'com.siming.mcp.answer',       // hub -> service : { id, text } ou { id, cancelled: true }
+        tab: 'com.siming.mcp.tab',             // hub -> service : { client } onglet Claude actif ('' : fermé)
     };
 
     /** Données d'un événement CEP : selon la version, texte JSON ou objet déjà lu. */
@@ -73,7 +76,7 @@
             res.end(text);
         }
 
-        async function answer(res, body) {
+        async function answer(res, body, meta) {
             let msg;
             try {
                 msg = JSON.parse(body);
@@ -83,12 +86,12 @@
             }
             try {
                 if (Array.isArray(msg)) {
-                    const out = (await Promise.all(msg.map((m) => handle(m)))).filter(Boolean);
+                    const out = (await Promise.all(msg.map((m) => handle(m, meta)))).filter(Boolean);
                     if (out.length) send(res, 200, out);
                     else send(res, 202, null);
                     return;
                 }
-                const r = await handle(msg);
+                const r = await handle(msg, meta);
                 if (r) send(res, 200, r);
                 else send(res, 202, null);
             } catch (e) {
@@ -115,7 +118,9 @@
                 }
                 body += chunk;
             });
-            req.on('end', () => { if (!tooBig) answer(res, body); });
+            // Onglet Claude du hub qui a lancé ce Claude Code (questions ask_user)
+            const meta = { client: String(req.headers['x-siming-client'] || '') };
+            req.on('end', () => { if (!tooBig) answer(res, body, meta); });
         }
 
         return {

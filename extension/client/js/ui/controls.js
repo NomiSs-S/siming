@@ -269,28 +269,31 @@
         return el;
     };
 
-    /** Fenêtre de dialogue de la charte (remplace alert). Résout la promesse à la fermeture. */
-    ui.dialog = function ({ title, message, items, okLabel }) {
+    /** Fenêtre de dialogue de la charte (remplace alert et confirm). Résout la promesse à la
+     *  fermeture : true par OK (ou Entrée), false par Annuler, Échap ou clic dehors.
+     *  cancelLabel : ajoute le bouton Annuler (confirmation). */
+    ui.dialog = function ({ title, message, items, okLabel, cancelLabel }) {
         const doc = global.document;
         return new Promise((resolve) => {
             let backdrop = null;
             const onKey = (e) => {
-                if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
+                if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(e.key === 'Enter' || !cancelLabel); }
             };
-            function close() {
+            function close(result) {
                 if (!backdrop) return;
                 backdrop.remove();
                 backdrop = null;
                 doc.removeEventListener('keydown', onKey);
-                resolve();
+                resolve(result === true);
             }
-            const ok = h('button', { class: 's-btn s-btn-primary', type: 'button', 'data-role': 'dialog-ok', onclick: close, text: okLabel || 'OK' });
+            const ok = h('button', { class: 's-btn s-btn-primary', type: 'button', 'data-role': 'dialog-ok', onclick: () => close(true), text: okLabel || 'OK' });
+            const cancel = cancelLabel ? h('button', { class: 's-btn', type: 'button', 'data-role': 'dialog-cancel', onclick: () => close(false), text: cancelLabel }) : null;
             const box = h('div', { class: 's-dialog', role: 'dialog', 'aria-modal': 'true', 'data-role': 'dialog' },
                 h('div', { class: 's-dialog-title', text: title || '' }),
                 message ? h('div', { class: 's-dialog-msg', text: message }) : null,
                 (items && items.length) ? h('ul', { class: 's-dialog-list' }, items.map((it) => h('li', { text: it }))) : null,
-                h('div', { class: 's-dialog-actions' }, ok));
-            backdrop = h('div', { class: 's-dialog-backdrop', onclick: (e) => { if (e.target === backdrop) close(); } }, box);
+                h('div', { class: 's-dialog-actions' }, cancel, ok));
+            backdrop = h('div', { class: 's-dialog-backdrop', onclick: (e) => { if (e.target === backdrop) close(!cancelLabel); } }, box);
             doc.body.append(backdrop);
             doc.addEventListener('keydown', onKey);
             ok.focus();
@@ -410,21 +413,27 @@
             return dir > 0 ? Math.floor(current / grid) * grid + grid : Math.ceil(current / grid) * grid - grid;
         }
 
+        // Événements souris, suivis sur le document : sur Mac, le CEF d'After Effects ne livre pas
+        // pointerdown à la barre (le clic ne faisait rien, la molette marchait).
+        const doc = el.ownerDocument || document;
         let drag = null;      // { x, from, lastRaw, fine, moved }
         let pending = null;   // { timer, from } : clic simple en attente de validation
-        el.addEventListener('pointerdown', (e) => {
+        el.addEventListener('mousedown', (e) => {
             if (e.button !== 0 || !input.hidden) return;
+            e.preventDefault();   // pas de sélection de texte pendant le glissé…
+            el.focus();           // …mais le focus, comme un clic normal (flèches ensuite)
             // Deuxième clic d'un double-clic : on garde la valeur d'avant le premier.
             const from = pending ? pending.from : current;
             if (pending) { clearTimeout(pending.timer); pending = null; }
             if (e.altKey) { set(base, 'change'); return; }
             const raw = valueAt(e.clientX);
             drag = { x: e.clientX, from, lastRaw: raw, fine: null, moved: false };
-            if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) { /* hors navigateur */ } }
+            doc.addEventListener('mousemove', onMove, true);
+            doc.addEventListener('mouseup', endDrag, true);
             el.classList.add('is-dragging');
             set(e.shiftKey ? raw : snapped(raw), 'input');
         });
-        el.addEventListener('pointermove', (e) => {
+        function onMove(e) {
             if (!drag) return;
             const raw = valueAt(e.clientX);
             if (Math.abs(e.clientX - drag.x) > 3) drag.moved = true;
@@ -437,19 +446,18 @@
                 set(snapped(raw), 'input');
             }
             drag.lastRaw = raw;
-        });
-        const endDrag = (e) => {
+        }
+        function endDrag() {
+            doc.removeEventListener('mousemove', onMove, true);
+            doc.removeEventListener('mouseup', endDrag, true);
             if (!drag) return;
             const d = drag;
             drag = null;
             el.classList.remove('is-dragging');
-            if (el.releasePointerCapture) { try { el.releasePointerCapture(e.pointerId); } catch (err) { /* idem */ } }
-            if (d.moved || e.type === 'pointercancel') { set(current, 'change'); return; }
+            if (d.moved) { set(current, 'change'); return; }
             const timer = setTimeout(() => { pending = null; set(current, 'change'); }, ui.DOUBLE_CLICK_MS);
             pending = { timer, from: d.from };
-        };
-        el.addEventListener('pointerup', endDrag);
-        el.addEventListener('pointercancel', endDrag);
+        }
         el.addEventListener('wheel', (e) => {
             if (!input.hidden) return;
             e.preventDefault();

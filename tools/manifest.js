@@ -104,7 +104,8 @@ function buildManifest(list) {
     validate(list);
     const v = list.version;
     const panels = [{ id: 'com.siming.hub', name: 'SIMING', page: './client/index.html', size: [340, 640] }]
-        .concat(list.tools.map((t) => ({ id: 'com.siming.tool.' + t.id, name: 'SIMING – ' + t.name, page: './client/tool.html', size: [320, 560] })));
+        // Un outil « hubOnly » (onglet Claude) vit dans le hub seulement : pas de panneau isolé.
+        .concat(list.tools.filter((t) => !t.hubOnly).map((t) => ({ id: 'com.siming.tool.' + t.id, name: 'SIMING – ' + t.name, page: './client/tool.html', size: [320, 560] })));
     return [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<ExtensionManifest Version="' + CSXS + '" ExtensionBundleId="com.siming" ExtensionBundleVersion="' + v + '" ExtensionBundleName="SIMING" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',

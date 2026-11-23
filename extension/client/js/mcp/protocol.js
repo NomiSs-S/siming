@@ -2,12 +2,15 @@
  * SIMING : protocole MCP du service Claude Code (JSON-RPC 2.0, transport HTTP « streamable »
  * sans flux SSE : chaque POST reçoit sa réponse JSON). Ni navigateur ni Node : testé tel quel.
  *
- *   const handle = SIMING.mcp.createHandler({ call, capture, version, onActivity });
- *   const response = await handle(message);   // null pour une notification
+ *   const handle = SIMING.mcp.createHandler({ call, capture, version, onActivity, ask });
+ *   const response = await handle(message, meta);   // null pour une notification
+ *   meta : { client } (en-tête X-Siming-Client : l'onglet Claude du hub qui a lancé Claude Code)
  *
  *   call(tool, fn, args, { timeoutMs }) -> Promise(données) : cœur hôte (pont + délai d'attente)
  *   capture({ compId, time, maxSize }) -> Promise({ info, data, mimeType }) : frame en image
  *   onActivity({ tool, text, level }) : chaque appel d'outil terminé (ligne de statut du hub)
+ *   ask({ question, options, multiple, allowText }, meta) -> Promise(texte) : question posée dans
+ *     l'onglet Claude ; absent : personne pour répondre (mcp.NOBODY)
  */
 (function (global) {
     'use strict';
@@ -33,6 +36,10 @@
         '- Un plantage d\'After Effects perd tout ce qui n\'est pas enregistré : avant un import de nombreux fichiers ou une construction longue, propose à l\'utilisateur d\'enregistrer.',
         '- Si la connexion à siming se coupe d\'un coup (connexion fermée, aucune réponse), After Effects a sans doute planté : dis-le à l\'utilisateur et attends qu\'il le relance, sans réessayer en boucle.',
     ].join('\n');
+
+    /** Réponses de ask_user quand personne ne répond. */
+    mcp.NOBODY = 'Personne ne peut répondre dans SIMING : décide prudemment ou arrête-toi et explique.';
+    mcp.NO_ANSWER = 'L\'utilisateur n\'a pas répondu (conversation arrêtée ou onglet fermé) : arrête-toi et explique où tu en es.';
 
     mcp.SYNTAX_HINT = 'Rappel : ExtendScript est en ES3 (var seulement, pas de =>, de gabarits `…`, de let / const, ni de forEach, map, filter, indexOf, JSON, trim).';
 
@@ -168,6 +175,26 @@
             },
             annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         },
+        {
+            name: 'ask_user',
+            title: 'Poser une question',
+            description: 'Pose une question à l\'utilisateur dans l\'onglet Claude de SIMING et attend sa réponse (texte). Utilise-le pour toute question (choix ambigu, accord avant une action lourde) au lieu d\'écrire la question puis d\'agir. options : choix cliquables (label court, description facultative) ; multiple : plusieurs choix permis ; allowText : réponse libre permise (vrai par défaut). Sans onglet ouvert, la réponse dit que personne ne peut répondre.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    question: { type: 'string', description: 'la question, courte et claire' },
+                    options: {
+                        type: 'array', description: 'choix proposés',
+                        items: { type: 'object', properties: { label: { type: 'string' }, description: { type: 'string' } }, required: ['label'] },
+                    },
+                    multiple: { type: 'boolean', description: 'plusieurs choix permis' },
+                    allowText: { type: 'boolean', description: 'réponse libre permise (vrai par défaut)' },
+                },
+                required: ['question'],
+            },
+            annotations: { readOnlyHint: true, openWorldHint: false },
+            unqueued: true,
+        },
     ];
 
     // --- Réponses ----------------------------------------------------------------
@@ -214,13 +241,14 @@
             case 'capture_frame': return 'regarde une frame';
             case 'siming_tool': return 'geste ' + String(args.tool) + ' / ' + String(args.action);
             case 'run_extendscript': return String(args.undoName || '').trim() || 'exécute un script';
+            case 'ask_user': return 'pose une question';
             default: return name;
         }
     }
 
     // --- Gestionnaire ----------------------------------------------------------------
 
-    mcp.createHandler = function ({ call, capture, version, onActivity }) {
+    mcp.createHandler = function ({ call, capture, version, onActivity, ask }) {
         // Un appel d'outil à la fois : After Effects n'exécute qu'un script à la fois,
         // et le délai d'attente d'un appel ne court qu'à partir de son tour.
         let chain = Promise.resolve();
@@ -233,6 +261,17 @@
         const timeoutOf = (args) => clampInt(args.timeoutSeconds, 5, 600, mcp.DEFAULT_TIMEOUT) * 1000;
 
         const runners = {
+            /** Hors file d'attente : une question en attente ne bloque pas After Effects. */
+            async ask_user(args, meta) {
+                const question = typeof args.question === 'string' ? args.question.trim() : '';
+                if (!question) return errorResult('question manquante');
+                if (typeof ask !== 'function') return textResult(mcp.NOBODY);
+                const options = (Array.isArray(args.options) ? args.options : [])
+                    .filter((o) => isObject(o) && typeof o.label === 'string' && o.label.trim())
+                    .map((o) => (typeof o.description === 'string' && o.description ? { label: o.label, description: o.description } : { label: o.label }));
+                const text = await ask({ question, options, multiple: args.multiple === true, allowText: args.allowText !== false }, meta || { client: '' });
+                return textResult(String(text === undefined || text === null ? mcp.NO_ANSWER : text));
+            },
             async run_extendscript(args) {
                 const code = typeof args.code === 'string' ? args.code : '';
                 if (!code.trim()) return errorResult('code manquant : le corps de fonction ExtendScript à exécuter');
@@ -261,15 +300,18 @@
             },
         };
 
-        async function callTool(name, rawArgs) {
+        async function callTool(name, rawArgs, meta) {
             const def = mcp.TOOLS.find((t) => t.name === name);
             if (!def) throw rpcError(-32602, 'Outil inconnu : ' + name);
             const args = isObject(rawArgs) ? rawArgs : {};
             let result;
             try {
-                result = await queued(() => (def.host
-                    ? call('mcp', def.host, args, { timeoutMs: timeoutOf(args) }).then((data) => textResult(data))
-                    : runners[name](args)));
+                if (def.unqueued) result = await runners[name](args, meta);
+                else {
+                    result = await queued(() => (def.host
+                        ? call('mcp', def.host, args, { timeoutMs: timeoutOf(args) }).then((data) => textResult(data))
+                        : runners[name](args)));
+                }
             } catch (e) {
                 result = errorResult((e && e.message) || String(e));
             }
@@ -281,7 +323,7 @@
             return result;
         }
 
-        async function dispatch(method, params) {
+        async function dispatch(method, params, meta) {
             switch (method) {
                 case 'initialize': {
                     const asked = params && params.protocolVersion;
@@ -295,15 +337,15 @@
                 case 'ping':
                     return {};
                 case 'tools/list':
-                    return { tools: mcp.TOOLS.map(({ host, ...pub }) => pub) };
+                    return { tools: mcp.TOOLS.map(({ host, unqueued, ...pub }) => pub) };
                 case 'tools/call':
-                    return callTool(params && params.name, params && params.arguments);
+                    return callTool(params && params.name, params && params.arguments, meta);
                 default:
                     throw rpcError(-32601, 'Méthode inconnue : ' + method);
             }
         }
 
-        return async function handle(msg) {
+        return async function handle(msg, meta) {
             if (!isObject(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Requête invalide' } };
             const hasId = Object.prototype.hasOwnProperty.call(msg, 'id') && msg.id !== null && msg.id !== undefined;
             if (typeof msg.method !== 'string') {
@@ -313,7 +355,7 @@
             }
             if (!hasId) return null;   // notification (initialized, cancelled…) : pas de réponse
             try {
-                return { jsonrpc: '2.0', id: msg.id, result: await dispatch(msg.method, isObject(msg.params) ? msg.params : {}) };
+                return { jsonrpc: '2.0', id: msg.id, result: await dispatch(msg.method, isObject(msg.params) ? msg.params : {}, isObject(meta) ? meta : { client: '' }) };
             } catch (e) {
                 return { jsonrpc: '2.0', id: msg.id, error: { code: e.rpcCode || -32603, message: e.message || String(e) } };
             }

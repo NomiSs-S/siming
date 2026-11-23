@@ -160,6 +160,27 @@ Il faut Claude Code installé (`claude` dans un terminal). Projet de test : la c
 - [ ] Sécurité : `curl -i -X POST http://127.0.0.1:47821/mcp -d "{}"` (sans jeton) : 403 ; depuis un autre ordinateur du réseau : connexion impossible.
 - [ ] Panneaux Unparent ouverts pendant que Claude agit : rien ne casse (le service recharge `siming.jsx` à son démarrage, comme chaque panneau).
 
+## Onglet Claude (1.6.0)
+
+À faire sur Mac **et** Windows, et une fois sur le poste d'un collègue qui n'a jamais installé Claude Code.
+Projet de test jetable (jamais le projet en cours).
+
+- [ ] Rail du hub : icône bulle « Claude » ; pas de bouton « Ouvrir dans un panneau » dans son en-tête ; Fenêtre › Extensions ne propose pas « SIMING – Claude ».
+- [ ] Poste **sans Claude Code** : l'onglet affiche « Claude Code introuvable », le bouton ouvre la page d'installation dans le navigateur, « Chercher à nouveau » retrouve Claude Code une fois installé (sans relancer AE). Noter si le chemin trouvé est le bon (Windows : `where claude`, `%USERPROFILE%\.local\bin\claude.exe`, `%APPDATA%\npm\claude.cmd` ; Mac lancé depuis le Dock : `~/.local/bin`, Homebrew, sinon `zsh -lc`).
+- [ ] Réglages › Claude › **Tester** : « Claude Code 2.x (chemin) » ; chemin faux : « introuvable ».
+- [ ] Claude Code **pas connecté** (`claude /logout` avant) : premier message → bouton **Se connecter**, un terminal s'ouvre sur Claude Code (Windows : nouvelle fenêtre cmd ; Mac : Terminal) ; `/login`, compte de l'équipe ; renvoyer le message : réponse. Noter le texte exact de l'erreur reçue si le bouton n'apparaît pas.
+- [ ] Service éteint dans Réglages › Claude : premier message → le service s'allume tout seul (Réglages › Claude passe à « Actif »).
+- [ ] « Quelle est la comp active ? » avec deux calques sélectionnés : réponse juste ; sous ton message, le résumé « Comp · 2 calques sélectionnés » se déplie sur le bloc `<contexte_ae>`. Texte affiché au fil de l'eau ; AE reste utilisable pendant que Claude réfléchit.
+- [ ] « Crée un texte Bonjour centré, en fondu sur 1 s » : lignes d'outils « Lit la comp », « Claude : … » (dépliables : code, résultat) ; un Ctrl+Z (Cmd+Z) par action. « Regarde la frame à 1 s » : vignette dans le fil.
+- [ ] Question : « Supprime les calques cachés, mais demande-moi d'abord » → carte de question, saisie principale grisée ; clic sur un choix : Claude continue. Réponse libre : champ + « Envoyer la réponse ».
+- [ ] **Arrêter** pendant un long travail (et pendant une question) : la vue sort de « travaille », statut orange ; ce qui est fait reste ; le message suivant reprend la conversation (Claude se souvient).
+- [ ] Fermer le hub pendant une question, le rouvrir : le fil est là (sans les vignettes), la question est « (sans réponse) » ; le message suivant reprend la conversation.
+- [ ] Claude Code lancé dans un terminal (Réglages › Claude › commande) pendant que l'onglet est ouvert : s'il appelle `ask_user`, il reçoit aussitôt « Personne ne peut répondre… » (aucune carte dans l'onglet).
+- [ ] **Observer** : clic (point rouge, « Observer prépare… » bref), déplacer et réduire le logo, ajouter un effet Lueur, reclic → pastille « Observation : n changements » (dépliable, ×). « Fais pareil sur Comp 2 » : Claude reproduit. Changer de comp pendant l'observation : les deux comps sont comparées. Comp de plus de 300 calques : seuls les calques sélectionnés, et le texte le dit. Noter la durée de la photo sur une grosse comp et si AE se fige.
+- [ ] ⟲ **Nouvelle conversation** : sans dialogue, le fil se vide et Claude ne se souvient plus de rien ; l'ancienne conversation apparaît dans ☰ Historique.
+- [ ] ☰ **Historique** : rouvrir une conversation réaffiche son fil, et Claude se souvient de ce qui y a été dit (demande-lui « qu'est-ce que je t'avais demandé ? ») ; la conversation en cours passe dans l'historique ; la croix supprime après confirmation.
+- [ ] Chemin de Windows avec espaces ou accents dans le nom d'utilisateur, Claude Code installé par npm (`claude.cmd`) : le lancement marche (arguments entre guillemets par le shell).
+
 ## Importer les PSD (Boîte à outils 1.1.2)
 
 À faire sur une **copie** d'un projet client de référence, `PROJET_CLIENT` (`02_RESSOURCES/02_ASSET` avec 7 planches ; jamais l'original : le geste ajoute des compositions et des calques). Il faut un After Effects où l'on a le droit d'écrire dans le projet. Touche 2 : la Boîte à outils s'affiche ; le geste est dans la section Calques, aide (point d'interrogation) : fiche « Importer les PSD ».

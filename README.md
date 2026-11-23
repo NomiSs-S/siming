@@ -4,7 +4,7 @@ Outils pour Adobe After Effects, réunis dans un panneau : un rail d'outils, une
 vue par outil, une ligne de statut commune. Chaque outil peut aussi s'ouvrir seul
 dans son propre panneau.
 
-> Version 1.5.2 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
+> Version 1.6.0 : extension CEP pour After Effects 2024 et plus (Windows, macOS).
 
 | Outil | Version | Rôle |
 |---|---|---|
@@ -12,8 +12,9 @@ dans son propre panneau.
 | Boîte à outils | 1.1.2 | Frame (copier, exporter), séquencer, null relié, fond, formats et déclinaisons, zone de travail, source, textes PSD, importer les PSD, expressions en keyframes |
 | Unparent | 2.0.0 | Détacher temporairement les enfants d'un calque, puis les rattacher |
 | Libellés | 1.1.0 | Poser les couleurs d'étiquette d'après la nature et le nom des calques |
+| Claude | 1.0.0 | Discuter avec Claude dans le hub : il voit la comp et la sélection, agit dans After Effects, pose ses questions, refait un geste observé |
 
-Et, en option, **Claude Code** : Claude lit le projet et agit dans After Effects (voir plus bas).
+Et, en option, **Claude Code** dans un terminal : Claude lit le projet et agit dans After Effects (voir plus bas).
 
 Quick Tools est le premier outil du rail (touche 1) et celui qui s'ouvre la première fois.
 Le panneau se range même très étroit : ce qui ne tient plus côte à côte passe à la ligne.
@@ -190,6 +191,7 @@ Ce que Claude peut faire (outils MCP du serveur `siming`) :
 | `run_extendscript` | exécuter du code ExtendScript : tout ce qu'un script peut faire |
 | `capture_frame` | voir une frame rendue, pour vérifier le résultat |
 | `siming_tool` | jouer un geste de Quick Tools ou de la Boîte à outils |
+| `ask_user` | poser une question dans l'onglet Claude (sans onglet ouvert : « personne pour répondre ») |
 
 Chaque action de Claude forme **un seul groupe d'annulation** « Claude : … » : Ctrl+Z (Cmd+Z) la
 défait d'un coup. Claude peut tout modifier dans le projet ouvert, comme un script : garde un œil
@@ -200,6 +202,29 @@ Effects ou par le hub) fait tourner un petit serveur MCP sur `http://127.0.0.1:4
 n'écoute que l'ordinateur, refuse les requêtes de navigateur et exige un jeton (rangé dans les
 réglages de l'utilisateur, renouvelable). Si After Effects n'était pas ouvert au lancement de
 Claude Code : `/mcp` dans Claude Code, puis reconnecter `siming`. Détail : `docs/INSTALLATION.md`.
+
+## Onglet Claude : principe
+
+Un onglet du hub (pas de panneau isolé) pour parler à Claude sans quitter After Effects. Il passe par
+**Claude Code**, installé sur l'ordinateur et connecté au compte Claude de l'équipe : rien à payer en plus,
+aucun identifiant ne passe par SIMING.
+
+- Écris ta demande (Entrée envoie, Maj + Entrée va à la ligne) : le projet, la comp active, les calques
+  et propriétés sélectionnés partent avec chaque message (résumé sous le message, dépliable).
+- Claude répond au fil de l'eau ; chacune de ses actions s'affiche sur une ligne (dépliable : code et
+  résultat, images en vignette) et s'annule d'un Ctrl+Z (Cmd+Z). **Arrêter** l'interrompt ; ce qui est fait reste.
+- Ses questions (outil MCP `ask_user`) s'affichent en carte : clique un choix ou écris ta réponse.
+- **Observer** : clique, fais un geste à la main (dans une ou plusieurs comps), reclique. La différence
+  (propriétés, keyframes, expressions, effets, calques ajoutés…) part avec le message suivant : « fais pareil
+  sur les 10 autres comps ».
+- ⟲ **Nouvelle conversation** range le fil dans l'historique et repart de zéro. Sinon le fil est gardé et repris à la réouverture du hub.
+- ☰ **Historique** : les 50 dernières conversations (titre, date, nombre de messages). Clique pour en rouvrir une : Claude s'en souvient et continue ; la croix la supprime.
+- Claude Code absent : l'onglet propose la page d'installation et un champ pour son chemin. Pas connecté :
+  bouton **Se connecter** (un terminal s'ouvre : `/login`, compte de l'équipe).
+
+Claude Code est lancé sans terminal (`claude -p`, flux JSON), avec le serveur MCP SIMING pour seuls outils :
+ni fichiers ni commandes de l'ordinateur. L'onglet active le serveur s'il est éteint. Réglages › Claude :
+chemin de Claude Code, modèle, **Tester**.
 
 ## Réglages
 
@@ -226,7 +251,8 @@ Le bouton Réglages du rail ouvre cinq onglets, pensés pour beaucoup d'outils :
   avec `..` ou un caractère interdit dans un nom de dossier n'est pas enregistré (message dans la ligne de statut,
   valeur gardée). « Rétablir » remet les défauts.
 - **Claude** : laisser Claude Code agir dans After Effects (éteint par défaut), état du service,
-  commande à coller dans un terminal, nouveau jeton, autre port si le sien est pris.
+  commande à coller dans un terminal, nouveau jeton, autre port si le sien est pris ; pour l'onglet
+  Claude : chemin de Claude Code (vide = automatique), modèle (vide = celui du compte), Tester.
 
 Le dernier onglet ouvert est retrouvé. Les raccourcis agissent quand le panneau a le focus ; ils sont repérés
 par la touche physique, donc valables en AZERTY comme en QWERTY.

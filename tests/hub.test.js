@@ -372,4 +372,21 @@ module.exports = function (test) {
         t.win.demoCtx.openSettings('claude');   // onglet absent : repli sur le premier
         assert.strictEqual(t.$('[data-pane=tools]').hidden, false);
     });
+    test('hub : outil « hubOnly » sans bouton « panneau », ctx.claude = accès au service Claude', () => {
+        const win = makeDom(SCRIPTS);
+        const { sandbox } = loadHost();
+        win.SIMING.registerTool('seul', { help: '', mount(view, ctx) { win.seulCtx = ctx; return {}; } });
+        const env = { marque: 1, on() {}, emit() {} };
+        const list = { version: '1.0.0', repository: 'OWNER/siming', tools: [
+            { id: 'unparent', name: 'Unparent', icon: 'delier', version: '2.0.0', script: 'tools/unparent.js' },
+            { id: 'seul', name: 'Hub seul', icon: 'aide', version: '0.1.0', script: 'tools/seul.js', hubOnly: true },
+        ] };
+        const hub = win.SIMING.startHub({
+            root: win.document.getElementById('app'), list, claude: env,
+            bridge: win.SIMING.createBridge(hostEvalScript(sandbox)), openExtension: () => {},
+        });
+        assert.ok(hub.views.get('unparent').querySelector('[data-role=open-standalone]'));
+        assert.strictEqual(hub.views.get('seul').querySelector('[data-role=open-standalone]'), null);
+        assert.strictEqual(win.seulCtx.claude, env);
+    });
 };

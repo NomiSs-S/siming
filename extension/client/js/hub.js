@@ -73,13 +73,14 @@
         rail.setOrder(tools.map((t) => t.id), hidden);
 
         // openSettings(onglet?) : ouvre Réglages (sur cet onglet) ; un outil l'utilise pour ses propres réglages
-        const ctx = { bridge, ui, status, settings: SIMING.settings, keys, openSettings: (tab) => hub.openSettings(tab) };
+        // claude : accès au service Claude Code (onglet Claude), null hors After Effects
+        const ctx = { bridge, ui, status, settings: SIMING.settings, keys, claude: claude || null, openSettings: (tab) => hub.openSettings(tab) };
         for (const meta of list.tools) {
             const view = h('section', { class: 's-view', 'data-tool': meta.id, tabindex: '-1', hidden: true });
             stack.append(view);
             views.set(meta.id, view);
             mounted[meta.id] = SIMING.mountTool(view, meta, ctx, {
-                onOpenStandalone: openExtension ? () => openExtension('com.siming.tool.' + meta.id) : null,
+                onOpenStandalone: openExtension && !meta.hubOnly ? () => openExtension('com.siming.tool.' + meta.id) : null,
             });
         }
 

@@ -78,8 +78,9 @@ async function startService(cfg) {
     const readJson = (url) => JSON.parse(fs.readFileSync(path.join(CLIENT, url), 'utf8'));
     const service = await mcp.startService({ cs, req: require, readJson });
     const send = async (type) => { (listeners[type] || []).forEach((fn) => fn({ type, data: '' })); await service.apply(); };
+    const fire = (type, data) => { (listeners[type] || []).forEach((fn) => fn({ type, data: JSON.stringify(data) })); };
     const last = (type) => events.filter((e) => e.type === type).pop();
-    return { win, mcp, service, file, events, last, send, sandbox };
+    return { win, mcp, service, file, events, last, send, fire, sandbox };
 }
 
 module.exports = function (test) {
@@ -231,6 +232,55 @@ module.exports = function (test) {
             const before = s.events.length;
             await s.send('com.siming.mcp.ping');
             assert.ok(s.events.length > before, 'ping : état republié');
+        } finally {
+            await s.service.stop();
+        }
+    });
+
+    test('mcp serveur : en-tête X-Siming-Client transmis au gestionnaire', async () => {
+        const { SIMING } = makeDom(['js/mcp/server.js']);
+        const port = await freePort();
+        const metas = [];
+        const srv = SIMING.mcp.createServer({ http, port, token: TOKEN, handle: async (msg, meta) => { metas.push(meta); return { jsonrpc: '2.0', id: msg.id, result: {} }; } });
+        await srv.start();
+        try {
+            await request(port, { body: { jsonrpc: '2.0', id: 1, method: 'ping' }, headers: { 'X-Siming-Client': 'tab-7' } });
+            await request(port, { body: { jsonrpc: '2.0', id: 2, method: 'ping' } });
+            assert.deepEqual(metas, [{ client: 'tab-7' }, { client: '' }]);
+        } finally {
+            await srv.stop();
+        }
+    });
+
+    test('mcp service : ask_user relayé à l\'onglet actif ; terminal ou onglet fermé : personne pour répondre', async () => {
+        const port = await freePort();
+        const s = await startService({ enabled: true, port, token: TOKEN });
+        const ask = (id, client) => request(port, { headers: client ? { 'X-Siming-Client': client } : {}, body: {
+            jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'ask_user', arguments: { question: 'Je continue ?', options: [{ label: 'Oui' }] } } } });
+        const text = (r) => r.json.result.content[0].text;
+        const tick = () => new Promise((r) => setTimeout(r, 20));
+        try {
+            assert.strictEqual(text(await ask(1, 'tab-1')), s.mcp.NOBODY, 'aucun onglet ouvert');
+            s.fire('com.siming.mcp.tab', { client: 'tab-1' });
+            assert.strictEqual(text(await ask(2, '')), s.mcp.NOBODY, 'Claude Code d\'un terminal');
+            assert.strictEqual(text(await ask(3, 'tab-9')), s.mcp.NOBODY, 'un autre onglet');
+            const pending = ask(4, 'tab-1');
+            while (!s.last('com.siming.mcp.ask')) await tick();
+            const q = s.last('com.siming.mcp.ask').data;
+            assert.deepEqual([q.client, q.question, q.options, q.multiple], ['tab-1', 'Je continue ?', [{ label: 'Oui' }], false]);
+            s.fire('com.siming.mcp.answer', { id: q.id, text: 'Oui' });
+            assert.strictEqual(text(await pending), 'Oui');
+            // Question laissée sans réponse : l'onglet se ferme
+            const late = ask(5, 'tab-1');
+            while (s.events.filter((e) => e.type === 'com.siming.mcp.ask').length < 2) await tick();
+            s.fire('com.siming.mcp.tab', { client: '' });
+            assert.strictEqual(text(await late), s.mcp.NO_ANSWER);
+            // Bouton Arrêter : réponse annulée
+            s.fire('com.siming.mcp.tab', { client: 'tab-1' });
+            const stopped = ask(6, 'tab-1');
+            while (s.events.filter((e) => e.type === 'com.siming.mcp.ask').length < 3) await tick();
+            s.fire('com.siming.mcp.answer', { id: s.last('com.siming.mcp.ask').data.id, cancelled: true });
+            assert.strictEqual(text(await stopped), s.mcp.NO_ANSWER);
         } finally {
             await s.service.stop();
         }
