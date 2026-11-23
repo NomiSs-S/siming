@@ -34,6 +34,7 @@ const FILES = [
     './claude-observe.test.js',
     './claude-stream.test.js',
     './claude-cli.test.js',
+    './claude-view.test.js',
     './bridge.test.js',
     './ui-dom.test.js',
     './ui-controls.test.js',

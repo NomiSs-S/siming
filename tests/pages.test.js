@@ -74,7 +74,8 @@ module.exports = function (test) {
         for (const t of LIST.tools) {
             assert.ok(fs.existsSync(path.join(CLIENT, t.script)), t.script);
             assert.ok(win.SIMING.ICONS[t.icon], 'icône ' + t.icon);
-            assert.ok(fs.existsSync(path.join(EXT, 'host', 'tools', t.id + '.jsx')), 'cœur hôte de ' + t.id);
+            // L'onglet Claude (hubOnly) passe par le cœur hôte de Claude Code (mcp.jsx)
+            assert.ok(fs.existsSync(path.join(EXT, 'host', 'tools', (t.id === 'claude' ? 'mcp' : t.id) + '.jsx')), 'cœur hôte de ' + t.id);
             assert.ok(/^\d+\.\d+\.\d+$/.test(t.version), t.id);
         }
     });

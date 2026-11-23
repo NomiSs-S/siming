@@ -156,6 +156,24 @@
         return session;
     };
 
+    /** Réglages de l'onglet (Réglages › Claude) : chemin de Claude Code, modèle (vides = automatique). */
+    claude.SETTINGS = { path: 'claudeCode.path', model: 'claudeCode.model' };
+
+    /** « claude --version » : version installée, rejette si le programme ne répond pas. */
+    claude.versionOf = function ({ execFile, file }) {
+        const shell = claude.needsShell(file);
+        return new Promise((resolve, reject) => {
+            try {
+                execFile(shell ? claude.quoteCmd(file) : file, ['--version'], { windowsHide: true, timeout: 15000, shell }, (err, stdout, stderr) => {
+                    if (err) reject(new Error(String(stderr || err.message).trim() || 'pas de réponse'));
+                    else resolve(String(stdout).trim());
+                });
+            } catch (e) {
+                reject(e);
+            }
+        });
+    };
+
     /** Terminal qui lance Claude Code, pour s'y connecter (/login). */
     claude.loginCommand = function (platform, file) {
         if (platform === 'win32') return { file: 'cmd.exe', args: ['/c', 'start', 'Claude Code', 'cmd', '/k', file] };

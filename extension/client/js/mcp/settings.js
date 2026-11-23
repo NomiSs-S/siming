@@ -1,11 +1,13 @@
 /*
  * SIMING : Réglages › Claude (hub). Interrupteur « Claude Code peut agir », état du service,
- * commande à coller une fois dans un terminal, nouveau jeton, autre port.
+ * commande à coller une fois dans un terminal, nouveau jeton, autre port ; onglet Claude :
+ * chemin de Claude Code, modèle, Tester (si js/claude/cli.js est chargé).
  *
  *   SIMING.mcp.settingsPane(pane, { status, env }) -> { refresh() }
  *
  * env : accès aux réglages et au service, construit par SIMING.mcp.hubEnv(cs) :
- *   { fs, path, crypto, file, on(type, fn(data)), emit(type, data), openService() }
+ *   { fs, path, crypto, file, userData, on(type, fn(data)), emit(type, data), openService(),
+ *     spawn, execFile, platform, procEnv, openUrl(url) }   (les derniers : onglet Claude)
  * null hors After Effects (ou sans Node) : le volet l'explique.
  */
 (function (global) {
@@ -23,9 +25,18 @@
         if (!cs || !req) return null;
         try {
             const path = req('path');
+            const userData = cs.getSystemPath(global.SystemPath.USER_DATA);
+            // Onglet Claude : lancer Claude Code (processus enfant), ouvrir un lien
+            let cp = null, proc = null;
+            try { cp = req('child_process'); proc = req('process'); } catch (e) { cp = null; }
             return {
-                fs: req('fs'), path, crypto: req('crypto'),
-                file: mcp.configFile(path, cs.getSystemPath(global.SystemPath.USER_DATA)),
+                fs: req('fs'), path, crypto: req('crypto'), userData,
+                file: mcp.configFile(path, userData),
+                spawn: cp ? cp.spawn : null,
+                execFile: cp ? cp.execFile : null,
+                platform: proc ? proc.platform : '',
+                procEnv: proc ? proc.env : {},
+                openUrl(url) { try { cs.openURLInDefaultBrowser(url); } catch (e) { /* CEP sans navigateur */ } },
                 on(type, fn) { cs.addEventListener(type, (e) => fn(mcp.eventData(e))); },
                 emit(type, data) {
                     const ev = new global.CSEvent(type, 'APPLICATION');
@@ -108,6 +119,39 @@
             h('div', { class: 's-hint', text: 'Laisse Claude Code (l\'assistant de code d\'Anthropic) lire le projet et agir dans After Effects, comme un script.' }),
             toggle, stateRow, portBtn, setup,
             h('div', { class: 's-hint', text: 'Claude peut tout modifier dans le projet ouvert : garde un œil sur ce qu\'il fait. Chacune de ses actions s\'annule d\'un Ctrl+Z (Cmd+Z). Le service n\'écoute que cet ordinateur et exige le jeton.' }));
+
+        // --- Onglet Claude : où trouver Claude Code, quel modèle ---------------------------
+        const cc = SIMING.claude;
+        if (cc && cc.findClaude && env.execFile) {
+            const pathField = ui.textField({
+                role: 'claude-path', label: 'Chemin de Claude Code', placeholder: 'Automatique',
+                value: SIMING.settings.get(cc.SETTINGS.path, ''),
+                onCommit: (v) => { SIMING.settings.set(cc.SETTINGS.path, v.trim()); status.set(v.trim() ? 'Chemin de Claude Code enregistré' : 'Claude Code cherché automatiquement', 'ok'); },
+            });
+            const modelField = ui.textField({
+                role: 'claude-model', label: 'Modèle', placeholder: 'Celui du compte',
+                value: SIMING.settings.get(cc.SETTINGS.model, ''),
+                onCommit: (v) => { SIMING.settings.set(cc.SETTINGS.model, v.trim()); status.set(v.trim() ? 'Modèle : ' + v.trim() : 'Modèle du compte', 'ok'); },
+            });
+            const testBtn = ui.button({ label: 'Tester', role: 'claude-test', onClick: testClaude });
+            pane.append(ui.sectionTitle('Onglet Claude'),
+                h('div', { class: 's-hint', text: 'Chemin de Claude Code (vide : cherché tout seul) et modèle (vide : celui du compte, ex. opus ou sonnet).' }),
+                pathField, modelField, h('div', { class: 's-settings-actions' }, testBtn));
+        }
+
+        async function testClaude() {
+            const cc2 = SIMING.claude;
+            status.set('Recherche de Claude Code…', 'info');
+            try {
+                const file = await cc2.findClaude({ fs: env.fs, execFile: env.execFile, platform: env.platform, env: env.procEnv,
+                    configured: SIMING.settings.get(cc2.SETTINGS.path, '') });
+                if (!file) { status.set('Claude Code introuvable : installe-le, ou indique son chemin', 'error'); return; }
+                const v = await cc2.versionOf({ execFile: env.execFile, file });
+                status.set('Claude Code ' + v + ' (' + file + ')', 'ok');
+            } catch (e) {
+                status.set('Claude Code ne répond pas : ' + e.message, 'error');
+            }
+        }
 
         function render() {
             toggle.select(cfg.enabled ? 1 : 0);

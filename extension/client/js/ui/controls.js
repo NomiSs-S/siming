@@ -269,28 +269,31 @@
         return el;
     };
 
-    /** Fenêtre de dialogue de la charte (remplace alert). Résout la promesse à la fermeture. */
-    ui.dialog = function ({ title, message, items, okLabel }) {
+    /** Fenêtre de dialogue de la charte (remplace alert et confirm). Résout la promesse à la
+     *  fermeture : true par OK (ou Entrée), false par Annuler, Échap ou clic dehors.
+     *  cancelLabel : ajoute le bouton Annuler (confirmation). */
+    ui.dialog = function ({ title, message, items, okLabel, cancelLabel }) {
         const doc = global.document;
         return new Promise((resolve) => {
             let backdrop = null;
             const onKey = (e) => {
-                if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
+                if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(e.key === 'Enter' || !cancelLabel); }
             };
-            function close() {
+            function close(result) {
                 if (!backdrop) return;
                 backdrop.remove();
                 backdrop = null;
                 doc.removeEventListener('keydown', onKey);
-                resolve();
+                resolve(result === true);
             }
-            const ok = h('button', { class: 's-btn s-btn-primary', type: 'button', 'data-role': 'dialog-ok', onclick: close, text: okLabel || 'OK' });
+            const ok = h('button', { class: 's-btn s-btn-primary', type: 'button', 'data-role': 'dialog-ok', onclick: () => close(true), text: okLabel || 'OK' });
+            const cancel = cancelLabel ? h('button', { class: 's-btn', type: 'button', 'data-role': 'dialog-cancel', onclick: () => close(false), text: cancelLabel }) : null;
             const box = h('div', { class: 's-dialog', role: 'dialog', 'aria-modal': 'true', 'data-role': 'dialog' },
                 h('div', { class: 's-dialog-title', text: title || '' }),
                 message ? h('div', { class: 's-dialog-msg', text: message }) : null,
                 (items && items.length) ? h('ul', { class: 's-dialog-list' }, items.map((it) => h('li', { text: it }))) : null,
-                h('div', { class: 's-dialog-actions' }, ok));
-            backdrop = h('div', { class: 's-dialog-backdrop', onclick: (e) => { if (e.target === backdrop) close(); } }, box);
+                h('div', { class: 's-dialog-actions' }, cancel, ok));
+            backdrop = h('div', { class: 's-dialog-backdrop', onclick: (e) => { if (e.target === backdrop) close(!cancelLabel); } }, box);
             doc.body.append(backdrop);
             doc.addEventListener('keydown', onKey);
             ok.focus();

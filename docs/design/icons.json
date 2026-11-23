@@ -55,5 +55,6 @@
   "seqCascade":  [{"path": "M9 2.75h5.5M6.5 6.25h5.5M4 9.75h5.5M1.5 13.25h5.5"}],
   "seqReverse":  [{"path": "M1.5 2.75h5.5M4 6.25h5.5M6.5 9.75h5.5M9 13.25h5.5"}],
   "seqRandom":   [{"path": "M6.5 2.75h5.5M1.5 6.25h5.5M9 9.75h5.5M4 13.25h5.5"}],
-  "rognerDuree": [{"path": "M4.5 4v8M11.5 4v8M4.5 8h7"}, {"dash": [1.2, 2]}, {"path": "M1.5 8h1.5M13 8h1.5"}]
+  "rognerDuree": [{"path": "M4.5 4v8M11.5 4v8M4.5 8h7"}, {"dash": [1.2, 2]}, {"path": "M1.5 8h1.5M13 8h1.5"}],
+  "bulle":       [{"path": "M2.5 3.5h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"}, {"path": "M5.5 7.25h5"}]
 }

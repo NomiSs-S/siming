@@ -144,4 +144,34 @@ module.exports = function (test) {
         assert.strictEqual(st(on, { missing: true }).level, 'error');
         assert.ok(/Démarrage/.test(st(on, null).text));
     });
+
+    test('Réglages › Claude : onglet Claude, chemin et modèle mémorisés, Tester lance « claude --version »', async () => {
+        const win = makeDom(SCRIPTS.concat(['js/claude/stream.js', 'js/claude/cli.js']));
+        const env = fakeEnv(win);
+        const exe = path.join(path.dirname(env.file), 'claude.exe');
+        fs.mkdirSync(path.dirname(exe), { recursive: true });
+        fs.writeFileSync(exe, '');
+        const runs = [];
+        Object.assign(env, { platform: 'win32', procEnv: {}, execFile(file, args, opts, cb) { runs.push([file, args]); setTimeout(() => cb(null, '2.1.185 (Claude Code)\n', ''), 0); } });
+        const { sandbox } = loadHost();
+        const hub = win.SIMING.startHub({
+            root: win.document.getElementById('app'), claude: env, openExtension: null,
+            list: { version: '1.6.0', repository: 'OWNER/siming', tools: [{ id: 'demo', name: 'Démo', icon: 'ancre', version: '0.1.0', script: 'tools/demo.js' }] },
+            bridge: win.SIMING.createBridge(hostEvalScript(sandbox)),
+        });
+        const $ = (sel) => win.document.querySelector(sel);
+        const commit = (role, v) => { const i = $('[data-role=' + role + '] input'); i.value = v; i.dispatchEvent(new win.Event('change')); };
+        commit('claude-path', '  ' + exe + ' ');
+        commit('claude-model', 'opus');
+        assert.strictEqual(win.localStorage.getItem('siming.claudeCode.path'), exe);
+        assert.strictEqual(win.localStorage.getItem('siming.claudeCode.model'), 'opus');
+        $('[data-role=claude-test]').click();
+        for (let i = 0; i < 50 && hub.status.level !== 'ok'; i++) await new Promise((r) => setTimeout(r, 5));
+        assert.deepEqual(runs.pop(), [exe, ['--version']]);
+        assert.ok(/2\.1\.185/.test(hub.status.text), hub.status.text);
+        commit('claude-path', path.join(path.dirname(exe), 'absent.exe'));
+        $('[data-role=claude-test]').click();
+        for (let i = 0; i < 50 && hub.status.level !== 'error'; i++) await new Promise((r) => setTimeout(r, 5));
+        assert.ok(/introuvable/.test(hub.status.text));
+    });
 };
