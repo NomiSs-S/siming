@@ -468,6 +468,10 @@ Demande de Simon : un historique de conversation, puis publier pour les collègu
 - « Nouvelle conversation » ne demande plus de confirmation : le fil est rangé dans `<USER_DATA>/SIMING/claude-history/<id>.json` (`{ version, id, sessionId, title, updated, items }`, 50 au plus, les plus anciennes retirées). Le bouton ☰ Historique les liste (titre = début de la première demande, date, nombre de messages), en rouvre une (reprise par `--resume` de son `session_id`, la conversation en cours prend sa place dans l'historique) ou en supprime une (dialogue de la charte).
 - Les sessions restent chez Claude Code (`~/.claude/projects/…`) : si Claude Code les a purgées, la reprise échoue et l'onglet repart d'une session neuve (cas déjà géré par « no conversation found »).
 
+### 2026-11-23 : SIMING 1.6.0 publiée
+
+Release GitHub v1.6.0 (zxp signé, installeurs Windows et macOS) : onglet Claude (discussion, questions, Observer, historique) et curseurs au clic sur Mac. Pas encore essayée dans After Effects : retours des collègues attendus, liste dans `TESTS-MANUELS.md` › Onglet Claude.
+
 ## Pistes
 
 Idées notées, à trier. Ne pas implémenter sans besoin réel.
